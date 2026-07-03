@@ -1,16 +1,14 @@
-use crate::domain::world::map::*;
 use crate::domain::world::tile::*;
 use noise::NoiseFn;
 use noise::Perlin;
-
-impl Tile {
-    pub fn new(elevation: f64) -> Tile {
-        Tile { elevation }
-    }
+pub struct Board {
+    pub tiles: Vec<Vec<Tile>>,
+    pub dim_w: usize,
+    pub dim_h: usize,
 }
 
-impl Map {
-    pub fn new(noise_seed: Option<u32>, dim_w: usize, dim_h: usize, min: f64, max: f64) -> Map {
+impl Board {
+    pub fn new(noise_seed: Option<u32>, dim_w: usize, dim_h: usize, min: f64, max: f64) -> Board {
         let noise_map: Perlin = match noise_seed {
             Some(seed) => Perlin::new(seed),
             None => Perlin::default(),
@@ -22,12 +20,12 @@ impl Map {
             let mut tile_row: Vec<Tile> = Vec::new();
             for j in 0..dim_w {
                 let elevation: f64 = get_noise_value(&noise_map, i, j, min, max);
-                tile_row.push(Tile::new(elevation));
+                tile_row.push(Tile::new(elevation, 0));
             }
             tiles.push(tile_row);
         }
 
-        Map {
+        Board {
             tiles,
             dim_w,
             dim_h,

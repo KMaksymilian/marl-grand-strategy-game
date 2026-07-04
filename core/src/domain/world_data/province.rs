@@ -17,16 +17,17 @@ impl Province {
         }
     }
     pub fn centroid(&self) -> Point {
-        let mut sum_x: usize = 0;
-        let mut sum_y: usize = 0;
-
-        for point in &self.territory {
-            sum_x += point.0;
-            sum_y += point.1;
+        if self.territory.is_empty() {
+            self.center
+        } else {
+            let n: usize = self.territory.len();
+            let mut sum_x: usize = 0;
+            let mut sum_y: usize = 0;
+            for point in &self.territory {
+                sum_x += point.0;
+                sum_y += point.1;
+            }
+            Point(sum_x / n, sum_y / n)
         }
-
-        let n: usize = self.territory.len();
-
-        Point(sum_x / n, sum_y / n)
     }
 }

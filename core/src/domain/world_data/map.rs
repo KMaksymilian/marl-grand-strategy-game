@@ -18,6 +18,7 @@ impl Map {
     pub fn new_random(
         elevation_seed: Option<u32>,
         moisture_seed: Option<u32>,
+        scale: f64,
         min: f64,
         max: f64,
         dim_w: usize,
@@ -35,11 +36,12 @@ impl Map {
         let mut terrain: Vec<Vec<Area>> = Vec::new();
         let mut territory: Vec<Vec<usize>> = Vec::new();
 
-        for y in 0..dim_w {
+        for x in 0..dim_h {
             let mut terrain_row: Vec<Area> = Vec::new();
-            for x in 0..dim_h {
-                let elevation_value: f64 = get_noise_value(&elevation_perlin, min, max, x, y);
-                let moisture_value: f64 = get_noise_value(&moisture_perlin, min, max, x, y);
+            for y in 0..dim_w {
+                let elevation_value: f64 =
+                    get_noise_value(&elevation_perlin, scale, min, max, x, y);
+                let moisture_value: f64 = get_noise_value(&moisture_perlin, scale, min, max, x, y);
                 let elevation: Elevation = get_elevation(elevation_value);
                 let moisture: Moisture = get_moisture(moisture_value);
                 terrain_row.push(Area::new(elevation, moisture));
@@ -57,8 +59,8 @@ impl Map {
     }
 }
 
-fn get_noise_value(perlin: &Perlin, min: f64, max: f64, x: usize, y: usize) -> f64 {
-    let point: [f64; 2] = [x as f64, y as f64];
+fn get_noise_value(perlin: &Perlin, scale: f64, min: f64, max: f64, x: usize, y: usize) -> f64 {
+    let point: [f64; 2] = [x as f64 / scale, y as f64 / scale];
     let val: f64 = (perlin.get(point) + 1.0) / 2.0;
     val.clamp(min, max)
 }

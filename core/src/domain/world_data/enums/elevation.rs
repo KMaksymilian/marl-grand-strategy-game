@@ -1,3 +1,4 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Elevation {
     LvL0, // Ocean
     LvL1, // 1 Low

@@ -19,66 +19,35 @@ pub enum Biome {
 }
 
 pub fn get_biome(elevation: &Elevation, moisture: &Moisture) -> Biome {
-    let biomes_1: Vec<Biome> = get_biomes_from_elevation(elevation);
-    let biomes_2: Vec<Biome> = get_biomes_from_moisture(moisture);
-    if let Some(biome) = biomes_1.iter().find(|&&biome| biomes_2.contains(&biome)) {
-        *biome
-    } else {
-        Biome::Ocean
-    }
-}
+    match (elevation, moisture) {
+        (Elevation::LvL0, _) => Biome::Ocean,
+        
+        (Elevation::LvL1, Moisture::LvL1) => Biome::SubtropicalDesert,
+        (Elevation::LvL1, Moisture::LvL2) => Biome::Grassland,
+        (Elevation::LvL1, Moisture::LvL3) => Biome::TropicalSeasonalForest,
+        (Elevation::LvL1, Moisture::LvL4) => Biome::TropicalSeasonalForest,
+        (Elevation::LvL1, Moisture::LvL5) => Biome::TropicalRainForest,
+        (Elevation::LvL1, Moisture::LvL6) => Biome::TropicalRainForest,
 
-fn get_biomes_from_elevation(elevation: &Elevation) -> Vec<Biome> {
-    match elevation {
-        Elevation::LvL0 => vec![Biome::Ocean],
-        Elevation::LvL1 => vec![
-            Biome::SubtropicalDesert,
-            Biome::Grassland,
-            Biome::TropicalSeasonalForest,
-            Biome::TropicalRainForest,
-        ],
-        Elevation::LvL2 => vec![
-            Biome::TemperateDesert,
-            Biome::Grassland,
-            Biome::TemperateDeciduousForest,
-            Biome::TemperateRainForest,
-        ],
-        Elevation::LvL3 => vec![Biome::TemperateDesert, Biome::Shrubland, Biome::Taiga],
-        Elevation::LvL4 => vec![Biome::Scorched, Biome::Bare, Biome::Tundra, Biome::Snow],
-    }
-}
+        (Elevation::LvL2, Moisture::LvL1) => Biome::TemperateDesert,
+        (Elevation::LvL2, Moisture::LvL2) => Biome::Grassland,
+        (Elevation::LvL2, Moisture::LvL3) => Biome::Grassland,
+        (Elevation::LvL2, Moisture::LvL4) => Biome::TemperateDeciduousForest,
+        (Elevation::LvL2, Moisture::LvL5) => Biome::TemperateDeciduousForest,
+        (Elevation::LvL2, Moisture::LvL6) => Biome::TemperateRainForest,
 
-fn get_biomes_from_moisture(moisture: &Moisture) -> Vec<Biome> {
-    match moisture {
-        Moisture::LvL1 => vec![
-            Biome::SubtropicalDesert,
-            Biome::TemperateDesert,
-            Biome::Scorched,
-        ],
-        Moisture::LvL2 => vec![Biome::Grassland, Biome::TemperateDesert, Biome::Bare],
-        Moisture::LvL3 => vec![
-            Biome::TropicalSeasonalForest,
-            Biome::Grassland,
-            Biome::Shrubland,
-            Biome::Tundra,
-        ],
-        Moisture::LvL4 => vec![
-            Biome::TropicalSeasonalForest,
-            Biome::TemperateDeciduousForest,
-            Biome::Shrubland,
-            Biome::Snow,
-        ],
-        Moisture::LvL5 => vec![
-            Biome::TropicalRainForest,
-            Biome::TemperateDeciduousForest,
-            Biome::Taiga,
-            Biome::Snow,
-        ],
-        Moisture::LvL6 => vec![
-            Biome::TropicalRainForest,
-            Biome::TemperateRainForest,
-            Biome::Taiga,
-            Biome::Snow,
-        ],
+        (Elevation::LvL3, Moisture::LvL1) => Biome::TemperateDesert,
+        (Elevation::LvL3, Moisture::LvL2) => Biome::TemperateDesert,
+        (Elevation::LvL3, Moisture::LvL3) => Biome::Shrubland,
+        (Elevation::LvL3, Moisture::LvL4) => Biome::Shrubland,
+        (Elevation::LvL3, Moisture::LvL5) => Biome::Taiga,
+        (Elevation::LvL3, Moisture::LvL6) => Biome::Taiga,
+
+        (Elevation::LvL4, Moisture::LvL1) => Biome::Scorched,
+        (Elevation::LvL4, Moisture::LvL2) => Biome::Bare,
+        (Elevation::LvL4, Moisture::LvL3) => Biome::Tundra,
+        (Elevation::LvL4, Moisture::LvL4) => Biome::Snow,
+        (Elevation::LvL4, Moisture::LvL5) => Biome::Snow,
+        (Elevation::LvL4, Moisture::LvL6) => Biome::Snow,
     }
 }

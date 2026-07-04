@@ -1,1 +1,1 @@
-pub mod map_view;
+pub mod map;

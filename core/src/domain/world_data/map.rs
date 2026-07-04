@@ -10,7 +10,7 @@ impl Map {
         width: usize,
         height: usize,
         terrain: Vec<Vec<Area>>,
-        territory: Vec<Vec<usize>>,
+        territory: Vec<Vec<usize>>, // być może niepotrzebne, wrazie czego wywalić
     ) -> Map {
         Map {
             width,

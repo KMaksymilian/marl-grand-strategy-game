@@ -1,10 +1,10 @@
-use super::voronoi_math::{apply_voronoi, calculate_centroids};
+use super::voronoi_math::{apply_voronoi, calculate_centroids, get_noise_value};
 use crate::domain::geography::area::Area;
 use crate::domain::geography::elevation::Elevation;
 use crate::domain::geography::moisture::Moisture;
 use crate::domain::world_data::{map::Map, point::Point, province::Province, world::World};
 
-use noise::{NoiseFn, Perlin};
+use noise::Perlin;
 use rand::RngExt;
 use rand::prelude::ThreadRng;
 
@@ -15,6 +15,9 @@ pub struct WorldGenerationConfig {
     pub iteration_count: usize,
     pub scale: f64,
     pub min_max: (f64, f64),
+    pub warp_scale: f64,
+    pub warp_intensity: f64,
+    pub borders_seed: Option<u32>,
     pub elevation_seed: Option<u32>,
     pub moisture_seed: Option<u32>,
 }
@@ -38,7 +41,7 @@ impl ProceduralWorldGenerator {
         for y in 0..config.height {
             let mut terrain_row: Vec<Area> = Vec::with_capacity(config.width);
             for x in 0..config.width {
-                let elev_val: f64 = Self::get_noise_value(
+                let elevation_val: f64 = get_noise_value(
                     &elevation_perlin,
                     config.scale,
                     config.min_max.0,
@@ -46,7 +49,7 @@ impl ProceduralWorldGenerator {
                     x,
                     y,
                 );
-                let moist_val: f64 = Self::get_noise_value(
+                let moisture_val: f64 = get_noise_value(
                     &moisture_perlin,
                     config.scale,
                     config.min_max.0,
@@ -55,8 +58,8 @@ impl ProceduralWorldGenerator {
                     y,
                 );
 
-                let elevation: Elevation = Elevation::determine(elev_val);
-                let moisture: Moisture = Moisture::determine(moist_val);
+                let elevation: Elevation = Elevation::determine(elevation_val);
+                let moisture: Moisture = Moisture::determine(moisture_val);
 
                 terrain_row.push(Area::new(elevation, moisture));
             }
@@ -68,6 +71,8 @@ impl ProceduralWorldGenerator {
     }
 
     fn build_provinces(map: &mut Map, config: &WorldGenerationConfig) -> Vec<Province> {
+        let border_perlin: Perlin = config.borders_seed.map(Perlin::new).unwrap_or_default();
+
         let mut points: Vec<Point> =
             Self::generate_random_points(config.province_count, config.width, config.height);
 
@@ -78,17 +83,18 @@ impl ProceduralWorldGenerator {
             .collect();
 
         for _ in 0..config.iteration_count {
-            apply_voronoi(map, &mut provinces, &points);
+            apply_voronoi(
+                &border_perlin,
+                config.warp_scale,
+                config.warp_intensity,
+                map,
+                &mut provinces,
+                &points,
+            );
             points = calculate_centroids(&provinces);
         }
 
         provinces
-    }
-
-    fn get_noise_value(perlin: &Perlin, scale: f64, min: f64, max: f64, x: usize, y: usize) -> f64 {
-        let point: [f64; 2] = [x as f64 / scale, y as f64 / scale];
-        let val: f64 = (perlin.get(point) + 1.0) / 2.0;
-        val.clamp(min, max)
     }
 
     fn generate_random_points(count: usize, width: usize, height: usize) -> Vec<Point> {

@@ -21,7 +21,7 @@ pub enum Biome {
 pub fn get_biome(elevation: &Elevation, moisture: &Moisture) -> Biome {
     match (elevation, moisture) {
         (Elevation::LvL0, _) => Biome::Ocean,
-        
+
         (Elevation::LvL1, Moisture::LvL1) => Biome::SubtropicalDesert,
         (Elevation::LvL1, Moisture::LvL2) => Biome::Grassland,
         (Elevation::LvL1, Moisture::LvL3) => Biome::TropicalSeasonalForest,

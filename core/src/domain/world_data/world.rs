@@ -17,19 +17,26 @@ impl World {
         elevation_seed: Option<u32>,
         moisture_seed: Option<u32>,
         scale: f64,
-        min: f64,
-        max: f64,
-        dim_w: usize,
-        dim_h: usize,
+        min_max: (f64, f64),
+        dim: (usize, usize),
     ) -> World {
-        let mut map: Map =
-            Map::new_random(elevation_seed, moisture_seed, scale, min, max, dim_w, dim_h);
-        let mut points: Vec<Point> = generate_random_provinces(province_count, dim_w, dim_h);
-        let mut provinces: Vec<Province> = Vec::new();
+        let mut map: Map = Map::new_random(
+            elevation_seed,
+            moisture_seed,
+            scale,
+            min_max.0,
+            min_max.1,
+            dim.0,
+            dim.1,
+        );
 
-        for (idx, point) in points.iter().enumerate() {
-            provinces.push(Province::new(idx, *point));
-        }
+        let mut points: Vec<Point> = generate_random_provinces(province_count, dim.0, dim.1);
+
+        let mut provinces: Vec<Province> = points
+            .iter()
+            .enumerate()
+            .map(|(idx, point)| Province::new(idx, *point))
+            .collect();
 
         for _ in 0..iteration_count {
             voronoi(&mut map, &mut provinces, points);
@@ -41,6 +48,10 @@ impl World {
 }
 
 fn voronoi(map: &mut Map, provinces: &mut [Province], points: Vec<Point>) {
+    for province in provinces.iter_mut() {
+        province.territory.clear();
+    }
+
     for x in 0..map.dim_h {
         for y in 0..map.dim_w {
             let mut min_val: usize = usize::MAX;

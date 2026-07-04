@@ -47,7 +47,7 @@ impl Map {
                 terrain_row.push(Area::new(elevation, moisture));
             }
             terrain.push(terrain_row);
-            territory.push(vec![0; dim_h]);
+            territory.push(vec![0; dim_w]);
         }
 
         Map {

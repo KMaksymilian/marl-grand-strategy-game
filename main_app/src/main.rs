@@ -12,16 +12,17 @@ use macroquad::prelude::*;
 async fn main() {
     let world_generation_config: WorldGenerationConfig = WorldGenerationConfig {
         width: 1500,
-        height: 1000,
-        province_count: 300,
+        height: 1500,
+        province_count: 450,
         iteration_count: 3,
-        scale: 200.0,
+        elevation_scale: 200.0,
+        moisture_scale: 600.0,
         min_max: (0.0, 1.0),
         warp_scale: 50.0,
         warp_intensity: 15.0,
-        borders_seed: Some(67),
-        elevation_seed: Some(420),
-        moisture_seed: Some(2137),
+        borders_seed_option: None,   // Some(67),
+        elevation_seed_option: None, //Some(420),
+        moisture_seed_option: None,  //Some(2137),
     };
     let world: World = ProceduralWorldGenerator::generate(&world_generation_config);
 

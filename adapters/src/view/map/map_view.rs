@@ -1,4 +1,4 @@
-use core_engine::domain::{geography::biome::Biome, world_data::world::World};
+use core::domain::{geography::biome::Biome, world_data::world::World};
 use macroquad::prelude::*;
 pub struct MapView {
     pub map_texture: Texture2D,
@@ -27,16 +27,27 @@ impl MapView {
     }
 
     fn determine_color(biome: &Biome) -> Color {
+        // match biome {
+        //     Biome::Ocean => color_u8!(21, 21, 38, 255),
+        //     Biome::Desert => color_u8!(91, 87, 78, 255),
+        //     Biome::Grassland => color_u8!(77, 83, 67, 255),
+        //     Biome::Forest => color_u8!(66, 80, 64, 255),
+        //     Biome::Rainforest => color_u8!(61, 73, 66, 255),
+        //     Biome::Hills => color_u8!(77, 80, 73, 255),
+        //     Biome::Taiga => color_u8!(80, 83, 73, 255),
+        //     Biome::Tundra => color_u8!(87, 87, 73, 255),
+        //     Biome::Snow => color_u8!(97, 97, 97, 255),
+        // }
         match biome {
-            Biome::Ocean => color_u8!(21, 21, 38, 255),
-            Biome::Desert => color_u8!(91, 87, 78, 255),
-            Biome::Grassland => color_u8!(77, 83, 67, 255),
-            Biome::Forest => color_u8!(66, 80, 64, 255),
-            Biome::Rainforest => color_u8!(61, 73, 66, 255),
-            Biome::Hills => color_u8!(77, 80, 73, 255),
-            Biome::Taiga => color_u8!(80, 83, 73, 255),
-            Biome::Tundra => color_u8!(87, 87, 73, 255),
-            Biome::Snow => color_u8!(97, 97, 97, 255),
+            Biome::Ocean => color_u8!(40, 90, 200, 255),        // żywy niebieski
+            Biome::Desert => color_u8!(240, 210, 120, 255),     // piaskowy, jasny
+            Biome::Grassland => color_u8!(80, 200, 90, 255),    // soczysta zieleń
+            Biome::Forest => color_u8!(30, 140, 60, 255),       // ciemniejsza, ale nadal żywa zieleń
+            Biome::Rainforest => color_u8!(20, 110, 70, 255),   // głęboka tropikalna zieleń
+            Biome::Hills => color_u8!(170, 140, 90, 255),       // ziemisty brąz
+            Biome::Taiga => color_u8!(90, 160, 140, 255),       // chłodna zieleń/niebieski mix
+            Biome::Tundra => color_u8!(190, 200, 210, 255),     // zimny szaro-błękit
+            Biome::Snow => color_u8!(245, 245, 250, 255),       // prawie biały, lekko niebieski
         }
     }
 
@@ -61,7 +72,7 @@ impl MapView {
                     || province_id != world.map.territory[y + 1][x]
                     || province_id != world.map.territory[y][x + 1]
                 {
-                    map_image.set_pixel(y as u32, x as u32, BLACK);
+                    map_image.set_pixel(x as u32, y as u32, BLACK);
                 }
             }
         }

@@ -52,10 +52,38 @@ fn get_warp_value(
     (warped_x, warped_y)
 }
 
-pub fn get_noise_value(perlin: &Perlin, scale: f64, min: f64, max: f64, x: usize, y: usize) -> f64 {
+pub fn get_noise_value(
+    perlin: &Perlin,
+    scale: f64,
+    (min, max): (f64, f64),
+    x: usize,
+    y: usize,
+) -> f64 {
     let point: [f64; 2] = [x as f64 / scale, y as f64 / scale];
     let val: f64 = (perlin.get(point) + 1.0) / 2.0;
     val.clamp(min, max)
+}
+
+pub fn get_island_elevation_noise_value(
+    perlin: &Perlin,
+    scale: f64,
+    (min, max): (f64, f64),
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+) -> f64 {
+    let point: [f64; 2] = [x as f64 / scale, y as f64 / scale];
+    let val: f64 = (perlin.get(point) + 1.0) / 2.0;
+
+    let nx: f64 = (x as f64 / width as f64) * 2.0 - 1.0;
+    let ny: f64 = (y as f64 / height as f64) * 2.0 - 1.0;
+    let dist: f64 = (nx * nx + ny * ny).sqrt();
+
+    let dropoff: f64 = dist.powi(4) * 2.0;
+    let final_val: f64 = val - dropoff + 0.5;
+
+    final_val.clamp(min, max)
 }
 
 pub fn calculate_centroids(provinces: &[Province]) -> Vec<Point> {

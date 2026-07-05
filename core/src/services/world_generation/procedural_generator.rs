@@ -4,7 +4,7 @@ use crate::domain::geography::elevation::Elevation;
 use crate::domain::geography::moisture::Moisture;
 use crate::domain::world_data::{map::Map, point::Point, province::Province, world::World};
 use crate::services::world_generation::voronoi_math::{
-    edge_alignment, get_island_elevation_noise_value,
+    edge_alignment, get_island_elevation_noise_value, ocean_set,
 };
 use noise::{Fbm, MultiFractal, Perlin};
 use rand::prelude::ThreadRng;
@@ -85,7 +85,7 @@ impl ProceduralWorldGenerator {
                 let elevation: Elevation = Elevation::determine(elevation_val);
                 let moisture: Moisture = Moisture::determine(moisture_val);
 
-                terrain_row.push(Area::new(elevation, moisture, elevation_val));
+                terrain_row.push(Area::new(elevation, elevation_val, moisture, moisture_val));
             }
             terrain.push(terrain_row);
             territory.push(vec![0; config.width]);
@@ -123,6 +123,7 @@ impl ProceduralWorldGenerator {
         }
 
         edge_alignment(map, &mut provinces);
+        ocean_set(map);
 
         provinces
     }

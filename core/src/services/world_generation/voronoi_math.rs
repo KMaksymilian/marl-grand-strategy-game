@@ -1,6 +1,6 @@
 use crate::{
     domain::{
-        geography::biome::Biome,
+        geography::{biome::Biome, moisture::Moisture},
         world_data::{map::Map, point::Point, province::Province},
     },
     services::world_generation::procedural_generator::ElevationTuningFineConfig,
@@ -56,6 +56,17 @@ pub fn edge_alignment(map: &mut Map, provinces: &mut [Province]) {
         if is_ocean {
             for point in &province.territory {
                 map.terrain[point.1][point.0].biome = Biome::Ocean;
+            }
+        }
+    }
+}
+
+pub fn ocean_set(map: &mut Map) {
+    for area_row in &mut map.terrain {
+        for area in area_row {
+            if area.biome == Biome::Ocean {
+                area.moisture = Moisture::Wet;
+                area.elevation_val = 0.0;
             }
         }
     }

@@ -2,17 +2,24 @@ use crate::domain::geography::{biome::Biome, elevation::Elevation, moisture::Moi
 pub struct Area {
     pub biome: Biome,
     pub elevation: Elevation,
-    pub moisture: Moisture,
     pub elevation_val: f64,
+    pub moisture: Moisture,
+    pub moisture_val: f64,
 }
 impl Area {
-    pub fn new(elevation: Elevation, moisture: Moisture, elevation_val: f64) -> Area {
+    pub fn new(
+        elevation: Elevation,
+        elevation_val: f64,
+        moisture: Moisture,
+        moisture_val: f64,
+    ) -> Area {
         let biome: Biome = Biome::determine(&elevation, &moisture);
         Area {
             biome,
             elevation,
-            moisture,
             elevation_val,
+            moisture,
+            moisture_val,
         }
     }
 }

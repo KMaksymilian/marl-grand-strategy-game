@@ -25,7 +25,7 @@ pub fn apply_voronoi(
             let mut min_idx: usize = 0;
 
             let (warped_x, warped_y) =
-                get_warp_value(border_perlin, warp_scale, warp_intensity, x, y);
+                get_warp_value(border_perlin, warp_scale, warp_intensity, (x, y));
 
             for (idx, point) in points.iter().enumerate() {
                 let dx: usize = warped_x.abs_diff(point.0);
@@ -65,8 +65,7 @@ pub fn get_warp_value(
     border_perlin: &Fbm<Perlin>,
     warp_scale: f64,
     warp_intensity: f64,
-    x: usize,
-    y: usize,
+    (x, y): (usize, usize),
 ) -> (usize, usize) {
     let noise_x: f64 = border_perlin.get([x as f64 / warp_scale, y as f64 / warp_scale]);
     let noise_y: f64 = border_perlin.get([y as f64 / warp_scale, x as f64 / warp_scale]);
@@ -79,8 +78,7 @@ pub fn get_noise_value(
     perlin: &Fbm<Perlin>,
     scale: f64,
     (min, max): (f64, f64),
-    x: usize,
-    y: usize,
+    (x, y): (usize, usize),
 ) -> f64 {
     let point: [f64; 2] = [x as f64 / scale, y as f64 / scale];
     let val: f64 = (perlin.get(point) + 1.0) / 2.0;
@@ -91,8 +89,7 @@ pub fn get_island_elevation_noise_value(
     perlin: &Fbm<Perlin>,
     scale: f64,
     (min, max): (f64, f64),
-    x: usize,
-    y: usize,
+    (x, y): (usize, usize),
     width: usize,
     height: usize,
     config: &ElevationTuningFineConfig,

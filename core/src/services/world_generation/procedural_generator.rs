@@ -58,15 +58,18 @@ impl ProceduralWorldGenerator {
         for y in 0..config.height {
             let mut terrain_row: Vec<Area> = Vec::with_capacity(config.width);
             for x in 0..config.width {
-                let (warped_x, warped_y) =
-                    get_warp_value(&warp_perlin, config.warp_scale, config.warp_intensity, x, y);
+                let (warped_x, warped_y) = get_warp_value(
+                    &warp_perlin,
+                    config.warp_scale,
+                    config.warp_intensity,
+                    (x, y),
+                );
 
                 let elevation_val: f64 = get_island_elevation_noise_value(
                     &elevation_perlin,
                     config.elevation_scale,
                     config.min_max,
-                    warped_x,
-                    warped_y,
+                    (warped_x, warped_y),
                     config.width,
                     config.height,
                     fine_config,
@@ -76,8 +79,7 @@ impl ProceduralWorldGenerator {
                     &moisture_perlin,
                     config.moisture_scale,
                     config.min_max,
-                    warped_x,
-                    warped_y,
+                    (warped_x, warped_y),
                 );
 
                 let elevation: Elevation = Elevation::determine(elevation_val);

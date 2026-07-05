@@ -1,9 +1,7 @@
 use crate::{
     domain::{
-        geography::{biome::Biome, moisture::Moisture},
-        world_data::{map::Map, point::Point, province::Province},
-    },
-    services::world_generation::procedural_generator::ElevationTuningFineConfig,
+        geography::{elevation::Elevation}, world_data::{map::Map, point::Point, province::Province},
+    }, services::world_generation::procedural_generator::ElevationTuningFineConfig,
 };
 use noise::{Fbm, NoiseFn, Perlin};
 
@@ -38,36 +36,36 @@ pub fn apply_voronoi(
             }
 
             let province_idx: usize = min_idx;
-            map.territory[y][x] = province_idx;
+            map.territory[y * map.width + x] = province_idx;
             provinces[province_idx].territory.push(Point(x, y));
         }
     }
 }
 
 pub fn edge_alignment(map: &mut Map, provinces: &mut [Province]) {
+    let ocean_level: f32 = Elevation::determine_ocean_elevation_level();
     for province in provinces {
         let mut is_ocean: bool = false;
         for point in &province.territory {
-            if map.terrain[point.1][point.0].biome == Biome::Ocean {
+            if map.terrain[point.1 * map.width + point.0].elevation_val < ocean_level {
                 is_ocean = true;
                 break;
             }
         }
         if is_ocean {
             for point in &province.territory {
-                map.terrain[point.1][point.0].biome = Biome::Ocean;
+                map.terrain[point.1 * map.width + point.0].elevation_val = 0.0;
             }
         }
     }
 }
 
 pub fn ocean_set(map: &mut Map) {
-    for area_row in &mut map.terrain {
-        for area in area_row {
-            if area.biome == Biome::Ocean {
-                area.moisture = Moisture::Wet;
-                area.elevation_val = 0.0;
-            }
+    let ocean_level: f32 = Elevation::determine_ocean_elevation_level();
+    for area in &mut map.terrain {
+        if area.elevation_val < ocean_level {
+            area.elevation_val = 0.0;
+            area.moisture_val = 1.0;
         }
     }
 }
@@ -90,10 +88,10 @@ pub fn get_noise_value(
     scale: f64,
     (min, max): (f64, f64),
     (x, y): (usize, usize),
-) -> f64 {
+) -> f32 {
     let point: [f64; 2] = [x as f64 / scale, y as f64 / scale];
     let val: f64 = (perlin.get(point) + 1.0) / 2.0;
-    val.clamp(min, max)
+    val.clamp(min, max) as f32
 }
 
 pub fn get_island_elevation_noise_value(
@@ -104,7 +102,7 @@ pub fn get_island_elevation_noise_value(
     width: usize,
     height: usize,
     config: &ElevationTuningFineConfig,
-) -> f64 {
+) -> f32 {
     let point: [f64; 2] = [x as f64 / scale, y as f64 / scale];
     let val: f64 = (perlin.get(point) + 1.0) / 2.0;
 
@@ -115,7 +113,7 @@ pub fn get_island_elevation_noise_value(
     let dropoff: f64 = dist.powi(config.dropoff_powi) * config.dropoff_multiplyer;
     let final_val: f64 = val - dropoff + config.final_val_addition;
 
-    final_val.clamp(min, max)
+    final_val.clamp(min, max) as f32
 }
 
 pub fn calculate_centroids(provinces: &[Province]) -> Vec<Point> {

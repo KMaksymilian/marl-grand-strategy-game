@@ -1,7 +1,5 @@
 use super::voronoi_math::{apply_voronoi, calculate_centroids, get_noise_value, get_warp_value};
 use crate::domain::geography::area::Area;
-use crate::domain::geography::elevation::Elevation;
-use crate::domain::geography::moisture::Moisture;
 use crate::domain::world_data::{map::Map, point::Point, province::Province, world::World};
 use crate::services::world_generation::voronoi_math::{
     edge_alignment, get_island_elevation_noise_value, ocean_set,
@@ -52,8 +50,8 @@ impl ProceduralWorldGenerator {
 
         let warp_perlin: Fbm<Perlin> = Self::generate_fbm(config.borders_seed_option);
 
-        let mut terrain: Vec<Vec<Area>> = Vec::with_capacity(config.height);
-        let mut territory: Vec<Vec<usize>> = Vec::with_capacity(config.height);
+        let mut terrain: Vec<Area> = Vec::with_capacity(config.height * config.width);
+        let mut territory: Vec<usize> = Vec::with_capacity(config.height * config.width);
 
         for y in 0..config.height {
             let mut terrain_row: Vec<Area> = Vec::with_capacity(config.width);
@@ -65,7 +63,7 @@ impl ProceduralWorldGenerator {
                     (x, y),
                 );
 
-                let elevation_val: f64 = get_island_elevation_noise_value(
+                let elevation_val: f32 = get_island_elevation_noise_value(
                     &elevation_perlin,
                     config.elevation_scale,
                     config.min_max,
@@ -75,20 +73,17 @@ impl ProceduralWorldGenerator {
                     fine_config,
                 );
 
-                let moisture_val: f64 = get_noise_value(
+                let moisture_val: f32 = get_noise_value(
                     &moisture_perlin,
                     config.moisture_scale,
                     config.min_max,
                     (warped_x, warped_y),
                 );
 
-                let elevation: Elevation = Elevation::determine(elevation_val);
-                let moisture: Moisture = Moisture::determine(moisture_val);
-
-                terrain_row.push(Area::new(elevation, elevation_val, moisture, moisture_val));
+                terrain_row.push(Area::new(elevation_val, moisture_val));
             }
-            terrain.push(terrain_row);
-            territory.push(vec![0; config.width]);
+            terrain.extend(terrain_row);
+            territory.extend(vec![0; config.width]);
         }
 
         Map::new(config.width, config.height, terrain, territory)

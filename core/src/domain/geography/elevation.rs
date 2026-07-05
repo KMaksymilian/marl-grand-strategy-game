@@ -7,7 +7,7 @@ pub enum Elevation {
     Mountain,
 }
 impl Elevation {
-    pub fn determine(elevation_val: f64) -> Elevation {
+    pub fn determine(elevation_val: f32) -> Elevation {
         if elevation_val < 0.2 {
             Elevation::Ocean
         } else if elevation_val < 0.4 {
@@ -20,4 +20,7 @@ impl Elevation {
             Elevation::Mountain
         }
     }
+    pub fn determine_ocean_elevation_level() -> f32 {
+        0.2
+    } 
 }

@@ -6,7 +6,7 @@ pub enum Moisture {
     Wet,
 }
 impl Moisture {
-    pub fn determine(value: f64) -> Moisture {
+    pub fn determine(value: f32) -> Moisture {
         if value < 0.4 {
             Moisture::Dry
         } else if value < 0.5 {

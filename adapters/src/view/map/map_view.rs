@@ -1,8 +1,7 @@
 use ::rand::RngExt;
 use ::rand::prelude::ThreadRng;
 use core::domain::{
-    geography::biome::Biome,
-    world_data::{map::Map, world::World},
+    geography::{biome::Biome, elevation::Elevation}, world_data::{map::Map, world::World},
 };
 use macroquad::prelude::*;
 pub struct MapView {
@@ -18,10 +17,12 @@ impl MapView {
 
         for y in 0..height {
             for x in 0..width {
-                let base_color: Color = MapView::determine_color(&world.map.terrain[y][x].biome);
+
+                let base_color: Color =
+                    MapView::determine_color(&world.map.terrain[y * width + x].determine_biome());
                 let noise: f32 = rng.random_range(-0.04..=0.04);
                 let lightning: f32 = MapView::calculate_light(&world.map, x, y, width, height);
-                let final_color = Color::new(
+                let final_color: Color = Color::new(
                     (base_color.r + noise + lightning).clamp(0.0, 1.0),
                     (base_color.g + noise + lightning).clamp(0.0, 1.0),
                     (base_color.b + noise + lightning).clamp(0.0, 1.0),
@@ -41,7 +42,8 @@ impl MapView {
     }
 
     fn calculate_light(map: &Map, x: usize, y: usize, width: usize, height: usize) -> f32 {
-        if map.terrain[y][x].biome == Biome::Ocean {
+        let ocean_level: f32 = Elevation::determine_ocean_elevation_level();
+        if map.terrain[y * width + x].elevation_val < ocean_level {
             return 0.0;
         }
 
@@ -50,17 +52,17 @@ impl MapView {
         let y_up: usize = y.saturating_sub(1);
         let y_down: usize = (y + 1).min(height - 1);
 
-        let h_left: f64 = map.terrain[y][x_left].elevation_val;
-        let h_right: f64 = map.terrain[y][x_right].elevation_val;
-        let h_up: f64 = map.terrain[y_up][x].elevation_val;
-        let h_down: f64 = map.terrain[y_down][x].elevation_val;
+        let h_left: f32 = map.terrain[y * width + x_left].elevation_val;
+        let h_right: f32 = map.terrain[y * width + x_right].elevation_val;
+        let h_up: f32 = map.terrain[y_up * width + x].elevation_val;
+        let h_down: f32 = map.terrain[y_down * width + x].elevation_val;
 
-        let dx: f64 = h_left - h_right;
-        let dy: f64 = h_up - h_down;
+        let dx: f32 = h_left - h_right;
+        let dy: f32 = h_up - h_down;
 
-        let light_strength: f64 = 7.5;
+        let light_strength: f32 = 7.5;
 
-        ((dx + dy) * light_strength) as f32
+        (dx + dy) * light_strength
     }
 
     fn determine_color(biome: &Biome) -> Color {
@@ -91,12 +93,12 @@ impl MapView {
     fn extract_province_borders(world: &World, map_image: &mut Image, width: usize, height: usize) {
         for y in 1..height - 1 {
             for x in 1..width - 1 {
-                let province_id: usize = world.map.territory[y][x];
+                let province_id: usize = world.map.territory[y * width + x];
 
-                if province_id != world.map.territory[y - 1][x]
-                    || province_id != world.map.territory[y][x - 1]
-                    || province_id != world.map.territory[y + 1][x]
-                    || province_id != world.map.territory[y][x + 1]
+                if province_id != world.map.territory[(y - 1) * width + x]
+                    || province_id != world.map.territory[y * width + x - 1]
+                    || province_id != world.map.territory[(y + 1) * width + x]
+                    || province_id != world.map.territory[y * width + x + 1]
                 {
                     map_image.set_pixel(x as u32, y as u32, BLACK);
                 }

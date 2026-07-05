@@ -1,25 +1,26 @@
 use crate::domain::geography::{biome::Biome, elevation::Elevation, moisture::Moisture};
 pub struct Area {
-    pub biome: Biome,
-    pub elevation: Elevation,
-    pub elevation_val: f64,
-    pub moisture: Moisture,
-    pub moisture_val: f64,
+    pub elevation_val: f32,
+    pub moisture_val: f32,
 }
 impl Area {
     pub fn new(
-        elevation: Elevation,
-        elevation_val: f64,
-        moisture: Moisture,
-        moisture_val: f64,
+
+        elevation_val: f32,
+        moisture_val: f32,
     ) -> Area {
-        let biome: Biome = Biome::determine(&elevation, &moisture);
         Area {
-            biome,
-            elevation,
             elevation_val,
-            moisture,
             moisture_val,
         }
+    }
+    pub fn determine_biome(&self) -> Biome {
+        Biome::determine(&Self::determine_elevation(&self), &Self::determine_moisture(&self))
+    }
+    pub fn determine_elevation(&self) -> Elevation {
+        Elevation::determine(self.elevation_val)
+    }
+    pub fn determine_moisture(&self) -> Moisture {
+        Moisture::determine(self.moisture_val)
     }
 }

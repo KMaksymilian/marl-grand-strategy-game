@@ -5,4 +5,3 @@ pub enum StatType {
     TradeCapacity,
     // work in progress
 }
-

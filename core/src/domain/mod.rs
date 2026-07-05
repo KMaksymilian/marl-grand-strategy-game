@@ -1,3 +1,3 @@
-pub mod resource;
+pub mod buildings;
+pub mod economy;
 pub mod settlement;
-pub mod stat;

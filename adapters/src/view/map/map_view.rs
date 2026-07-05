@@ -12,26 +12,24 @@ impl MapView {
     pub fn generate_from_world(world: &World) -> MapView {
         let width: usize = world.map.width;
         let height: usize = world.map.height;
-
         let mut map_image: Image = Image::gen_image_color(width as u16, height as u16, BLANK);
         let mut rng: ThreadRng = ::rand::rng();
-
         let image_data: &mut [[u8; 4]] = map_image.get_image_data_mut();
+        let ocean_level: f32 = Elevation::OCEAN_LEVEL;
 
         for y in 0..height {
             for x in 0..width {
                 let base_color: Color =
                     MapView::determine_color(&world.map.terrain[y * width + x].determine_biome());
                 let noise: f32 = rng.random_range(-0.04..=0.04);
-                let lightning: f32 = MapView::calculate_light(&world.map, x, y, width, height);
-
+                let lightning_multiplier: f32 =
+                    MapView::calculate_light(&world.map, x, y, width, height, ocean_level);
                 let final_color: Color = Color::new(
-                    (base_color.r + noise + lightning).clamp(0.0, 1.0),
-                    (base_color.g + noise + lightning).clamp(0.0, 1.0),
-                    (base_color.b + noise + lightning).clamp(0.0, 1.0),
+                    (base_color.r * lightning_multiplier + noise).clamp(0.0, 1.0),
+                    (base_color.g * lightning_multiplier + noise).clamp(0.0, 1.0),
+                    (base_color.b * lightning_multiplier + noise).clamp(0.0, 1.0),
                     1.0,
                 );
-
                 image_data[y * width + x] = final_color.into();
             }
         }
@@ -45,10 +43,16 @@ impl MapView {
         MapView { map_texture }
     }
 
-    fn calculate_light(map: &Map, x: usize, y: usize, width: usize, height: usize) -> f32 {
-        let ocean_level: f32 = Elevation::OCEAN_LEVEL;
+    fn calculate_light(
+        map: &Map,
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+        ocean_level: f32,
+    ) -> f32 {
         if map.terrain[y * width + x].elevation_val < ocean_level {
-            return 0.0;
+            return 1.0;
         }
 
         let x_left: usize = x.saturating_sub(1);
@@ -61,12 +65,25 @@ impl MapView {
         let h_up: f32 = map.terrain[y_up * width + x].elevation_val;
         let h_down: f32 = map.terrain[y_down * width + x].elevation_val;
 
-        let dx: f32 = h_left - h_right;
-        let dy: f32 = h_up - h_down;
+        let scale: f32 = 25.0;
+        let dz_dx: f32 = (h_right - h_left) * scale;
+        let dz_dy: f32 = (h_down - h_up) * scale;
 
-        let light_strength: f32 = 7.5;
+        let n_len: f32 = (dz_dx * dz_dx + dz_dy * dz_dy + 1.0).sqrt();
+        let nx: f32 = -dz_dx / n_len;
+        let ny: f32 = -dz_dy / n_len;
+        let nz: f32 = 1.0 / n_len;
 
-        (dx + dy) * light_strength
+        let lx: f32 = -0.577;
+        let ly: f32 = -0.577;
+        let lz: f32 = 0.577;
+
+        let dot: f32 = (nx * lx + ny * ly + nz * lz).max(0.0);
+
+        let ambient: f32 = 0.4;
+        let diffuse: f32 = 0.8;
+
+        ambient + (diffuse * dot)
     }
 
     fn determine_color(biome: &Biome) -> Color {

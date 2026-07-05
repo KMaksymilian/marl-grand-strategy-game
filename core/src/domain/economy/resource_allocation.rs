@@ -30,7 +30,7 @@ impl AllocationEngine {
     ) -> AllocationResult {
         let mut final_allocations: AllocationResult = HashMap::new();
 
-        requests.sort_by(|a, b| b.priority.cmp(&a.priority));
+        requests.sort_by_key(|b| std::cmp::Reverse(b.priority));
 
         let mut grouped_requests: Vec<Vec<DemandRequest>> = Vec::new();
         for req in requests {

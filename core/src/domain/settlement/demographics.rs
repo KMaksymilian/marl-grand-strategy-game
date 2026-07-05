@@ -23,7 +23,7 @@ pub struct NeedRegistry {
 
 impl NeedRegistry {
     pub fn new(mut tiers: Vec<NeedTier>) -> Self {
-        tiers.sort_by(|a, b| b.min_population.cmp(&a.min_population));
+        tiers.sort_by_key(|b| std::cmp::Reverse(b.min_population));
         Self { tiers }
     }
 

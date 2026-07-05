@@ -1,5 +1,5 @@
 use crate::domain::buildings::factory::{BuildingBehavior, BuildingDefinition};
-use crate::domain::economy::resource::{ResourceInventory, ResourceType};
+use crate::domain::economy::resource::ResourceType;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -13,6 +13,11 @@ pub struct Position {
 pub enum BuildingLocation {
     Hub,
     Spoke,
+}
+
+pub struct ProductionResult {
+    pub produced: HashMap<ResourceType, f32>,
+    pub unused: HashMap<ResourceType, f32>,
 }
 
 #[derive(Debug)]
@@ -67,13 +72,16 @@ impl Building {
 
     pub fn execute_production(
         &self,
-        inventory: &mut ResourceInventory,
-        allocation_ratios: &HashMap<ResourceType, f32>,
-    ) -> HashMap<ResourceType, f32> {
+        granted: Option<&HashMap<ResourceType, f32>>,
+    ) -> ProductionResult {
         let mut produced = HashMap::new();
 
+        let empty_grants = HashMap::new();
+        let granted_ref = granted.unwrap_or(&empty_grants);
+        let mut unused = granted_ref.clone();
+
         if !self.is_active || self.current_workers == 0 {
-            return produced;
+            return ProductionResult { produced, unused };
         }
 
         let efficiency = self.current_workers as f32 / self.definition.max_workers as f32;
@@ -81,10 +89,14 @@ impl Building {
         for behavior in &self.definition.behaviors {
             if let BuildingBehavior::Production { inputs, outputs } = behavior {
                 let mut bottleneck_ratio = 1.0;
-                for (res, _) in inputs {
-                    let ratio = allocation_ratios.get(res).copied().unwrap_or(0.0);
-                    if ratio < bottleneck_ratio {
-                        bottleneck_ratio = ratio;
+                for (res, base_amount) in inputs {
+                    let required = base_amount * efficiency;
+                    if required > 0.0 {
+                        let available = granted_ref.get(res).copied().unwrap_or(0.0);
+                        let ratio = (available / required).min(1.0);
+                        if ratio < bottleneck_ratio {
+                            bottleneck_ratio = ratio;
+                        }
                     }
                 }
 
@@ -92,18 +104,24 @@ impl Building {
                     continue;
                 }
 
-                for (res, amount) in inputs {
-                    let to_consume = amount * efficiency * bottleneck_ratio;
-                    inventory.consume(*res, to_consume);
+                for (res, base_amount) in inputs {
+                    let to_consume = base_amount * efficiency * bottleneck_ratio;
+                    if let Some(leftover) = unused.get_mut(res) {
+                        *leftover -= to_consume;
+                        if *leftover < 0.0001 {
+                            *leftover = 0.0;
+                        }
+                    }
                 }
 
-                for (res, amount) in outputs {
-                    let to_produce = amount * efficiency * bottleneck_ratio;
+                for (res, base_amount) in outputs {
+                    let to_produce = base_amount * efficiency * bottleneck_ratio;
                     *produced.entry(*res).or_insert(0.0) += to_produce;
                 }
             }
         }
-        produced
+
+        ProductionResult { produced, unused }
     }
 }
 
@@ -164,7 +182,7 @@ mod tests {
 
         assert!(
             Arc::ptr_eq(&building.definition, &def_t2),
-            "Ref should point at tier 2 building."
+            "Ref should point at the tier 2 building."
         );
         assert!(!Arc::ptr_eq(&building.definition, &def_t1));
     }
@@ -178,14 +196,20 @@ mod tests {
         let def = create_test_def("free_wood", 5, vec![behavior]);
         let building = Building::new(1, Position { x: 0, y: 0 }, BuildingLocation::Hub, def);
 
-        let mut inventory = ResourceInventory::new(100.0);
-        let ratios = HashMap::new();
+        // We grant some resources to ensure it doesn't touch them if there are no workers
+        let mut granted = HashMap::new();
+        granted.insert(ResourceType::Wood, 50.0);
 
-        let produced = building.execute_production(&mut inventory, &ratios);
+        let result = building.execute_production(Some(&granted));
 
         assert!(
-            produced.is_empty(),
+            result.produced.is_empty(),
             "Building without workers should not produce anything."
+        );
+        assert_eq!(
+            *result.unused.get(&ResourceType::Wood).unwrap_or(&0.0),
+            50.0,
+            "All granted resources should be returned as unused."
         );
     }
 
@@ -200,14 +224,19 @@ mod tests {
         building.current_workers = 5;
         building.is_active = false;
 
-        let mut inventory = ResourceInventory::new(100.0);
-        let ratios = HashMap::new();
+        let mut granted = HashMap::new();
+        granted.insert(ResourceType::Wood, 20.0);
 
-        let produced = building.execute_production(&mut inventory, &ratios);
+        let result = building.execute_production(Some(&granted));
 
         assert!(
-            produced.is_empty(),
+            result.produced.is_empty(),
             "Inactive building should not produce anything."
+        );
+        assert_eq!(
+            *result.unused.get(&ResourceType::Wood).unwrap_or(&0.0),
+            20.0,
+            "Inactive building should return all granted resources."
         );
     }
 
@@ -221,19 +250,21 @@ mod tests {
         let mut building = Building::new(1, Position { x: 0, y: 0 }, BuildingLocation::Spoke, def);
         building.current_workers = 10; // 100% efficiency
 
-        let mut inventory = ResourceInventory::new(100.0);
-        inventory.add(ResourceType::Wood, 15.0);
+        // The AllocationEngine granted exactly what it needed
+        let mut granted = HashMap::new();
+        granted.insert(ResourceType::Wood, 10.0);
 
-        let mut ratios = HashMap::new();
-        ratios.insert(ResourceType::Wood, 1.0);
-
-        let produced = building.execute_production(&mut inventory, &ratios);
+        let result = building.execute_production(Some(&granted));
 
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Wood).unwrap_or(&0.0),
-            5.0
+            *result.produced.get(&ResourceType::Stone).unwrap_or(&0.0),
+            20.0
         );
-        assert_eq!(*produced.get(&ResourceType::Stone).unwrap_or(&0.0), 20.0);
+        assert_eq!(
+            *result.unused.get(&ResourceType::Wood).unwrap_or(&0.0),
+            0.0,
+            "All wood should be consumed."
+        );
     }
 
     #[test]
@@ -244,21 +275,24 @@ mod tests {
         };
         let def = create_test_def("stone_maker", 10, vec![behavior]);
         let mut building = Building::new(1, Position { x: 0, y: 0 }, BuildingLocation::Spoke, def);
-        building.current_workers = 5;
+        building.current_workers = 5; // 50% efficiency (needs 10 Wood, produces 20 Stone)
 
-        let mut inventory = ResourceInventory::new(100.0);
-        inventory.add(ResourceType::Wood, 20.0);
+        // Let's grant 15 Wood (more than the 10 needed at 50% efficiency)
+        let mut granted = HashMap::new();
+        granted.insert(ResourceType::Wood, 15.0);
 
-        let mut ratios = HashMap::new();
-        ratios.insert(ResourceType::Wood, 1.0);
-
-        let produced = building.execute_production(&mut inventory, &ratios);
+        let result = building.execute_production(Some(&granted));
 
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Wood).unwrap_or(&0.0),
-            10.0
+            *result.produced.get(&ResourceType::Stone).unwrap_or(&0.0),
+            20.0,
+            "Should only produce 50% of max capacity."
         );
-        assert_eq!(*produced.get(&ResourceType::Stone).unwrap_or(&0.0), 20.0);
+        assert_eq!(
+            *result.unused.get(&ResourceType::Wood).unwrap_or(&0.0),
+            5.0,
+            "Should return 5 leftover wood out of the 15 granted."
+        );
     }
 
     #[test]
@@ -279,27 +313,28 @@ mod tests {
         let mut building = Building::new(1, Position { x: 0, y: 0 }, BuildingLocation::Spoke, def);
         building.current_workers = 10; // Efficiency = 100%
 
-        let mut inventory = ResourceInventory::new(100.0);
-        inventory.add(ResourceType::Wood, 15.0);
-        inventory.add(ResourceType::Grain, 2.0);
+        // Granted resources create a bottleneck on Grain
+        // Wood = 100% (10 granted / 10 needed)
+        // Grain = 40% (2 granted / 5 needed) -> Bottleneck is 0.4
+        let mut granted = HashMap::new();
+        granted.insert(ResourceType::Wood, 10.0);
+        granted.insert(ResourceType::Grain, 2.0);
 
-        let mut ratios = HashMap::new();
-        ratios.insert(ResourceType::Wood, 1.0);
-        ratios.insert(ResourceType::Grain, 0.4);
+        let result = building.execute_production(Some(&granted));
 
-        let produced = building.execute_production(&mut inventory, &ratios);
-
+        // 1. Produced Stone should be 40% of 20 = 8.0
         assert_eq!(
-            *inventory
-                .resources
-                .get(&ResourceType::Grain)
-                .unwrap_or(&0.0),
+            *result.produced.get(&ResourceType::Stone).unwrap_or(&0.0),
+            8.0
+        );
+
+        // 2. Consumed Grain is 2.0 (100% of granted). Unused = 0.0.
+        assert_eq!(
+            *result.unused.get(&ResourceType::Grain).unwrap_or(&0.0),
             0.0
         );
-        assert_eq!(
-            *inventory.resources.get(&ResourceType::Wood).unwrap_or(&0.0),
-            11.0
-        );
-        assert_eq!(*produced.get(&ResourceType::Stone).unwrap_or(&0.0), 8.0);
+
+        // 3. Consumed Wood is 4.0 (40% of needed). Unused = 10.0 - 4.0 = 6.0.
+        assert_eq!(*result.unused.get(&ResourceType::Wood).unwrap_or(&0.0), 6.0);
     }
 }

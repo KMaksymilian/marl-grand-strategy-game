@@ -51,10 +51,9 @@ impl ProceduralWorldGenerator {
         let warp_perlin: Fbm<Perlin> = Self::generate_fbm(config.borders_seed_option);
 
         let mut terrain: Vec<Area> = Vec::with_capacity(config.height * config.width);
-        let mut territory: Vec<usize> = Vec::with_capacity(config.height * config.width);
+        let territory: Vec<usize> = vec![0; config.height * config.width];
 
         for y in 0..config.height {
-            let mut terrain_row: Vec<Area> = Vec::with_capacity(config.width);
             for x in 0..config.width {
                 let (warped_x, warped_y) = get_warp_value(
                     &warp_perlin,
@@ -80,10 +79,9 @@ impl ProceduralWorldGenerator {
                     (warped_x, warped_y),
                 );
 
-                terrain_row.push(Area::new(elevation_val, moisture_val));
+                // Bezpośredni push, bez tymczasowego wiersza!
+                terrain.push(Area::new(elevation_val, moisture_val));
             }
-            terrain.extend(terrain_row);
-            territory.extend(vec![0; config.width]);
         }
 
         Map::new(config.width, config.height, terrain, territory)

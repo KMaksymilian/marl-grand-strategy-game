@@ -10,11 +10,9 @@ impl Area {
             moisture_val,
         }
     }
+    // W area.rs
     pub fn determine_biome(&self) -> Biome {
-        Biome::determine(
-            &Self::determine_elevation(&self),
-            &Self::determine_moisture(&self),
-        )
+        Biome::determine(&self.determine_elevation(), &self.determine_moisture())
     }
     pub fn determine_elevation(&self) -> Elevation {
         Elevation::determine(self.elevation_val)

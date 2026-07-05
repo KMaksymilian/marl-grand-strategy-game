@@ -45,7 +45,7 @@ pub fn apply_voronoi(
 }
 
 pub fn edge_alignment(map: &mut Map, provinces: &mut [Province]) {
-    let ocean_level: f32 = Elevation::determine_ocean_elevation_level();
+    let ocean_level: f32 = Elevation::OCEAN_LEVEL;
     for province in provinces {
         let mut is_ocean: bool = false;
         for point in &province.territory {
@@ -63,7 +63,7 @@ pub fn edge_alignment(map: &mut Map, provinces: &mut [Province]) {
 }
 
 pub fn ocean_set(map: &mut Map) {
-    let ocean_level: f32 = Elevation::determine_ocean_elevation_level();
+    let ocean_level: f32 = Elevation::OCEAN_LEVEL;
     for area in &mut map.terrain {
         if area.elevation_val < ocean_level {
             area.elevation_val = 0.0;

@@ -6,12 +6,16 @@ pub enum Moisture {
     Wet,
 }
 impl Moisture {
+    pub const DRY_LEVEL: f32 = 0.4;
+    pub const NORMAL_LEVEL: f32 = 0.5;
+    pub const HUIMD_LEVEL: f32 = 0.6;
+
     pub fn determine(value: f32) -> Moisture {
-        if value < 0.4 {
+        if value < Self::DRY_LEVEL {
             Moisture::Dry
-        } else if value < 0.5 {
+        } else if value < Self::NORMAL_LEVEL {
             Moisture::Normal
-        } else if value < 0.6 {
+        } else if value < Self::HUIMD_LEVEL {
             Moisture::Humid
         } else {
             Moisture::Wet

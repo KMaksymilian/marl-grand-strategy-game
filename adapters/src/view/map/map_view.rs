@@ -42,7 +42,7 @@ impl MapView {
     }
 
     fn calculate_light(map: &Map, x: usize, y: usize, width: usize, height: usize) -> f32 {
-        let ocean_level: f32 = Elevation::determine_ocean_elevation_level();
+        let ocean_level: f32 = Elevation::OCEAN_LEVEL;
         if map.terrain[y * width + x].elevation_val < ocean_level {
             return 0.0;
         }

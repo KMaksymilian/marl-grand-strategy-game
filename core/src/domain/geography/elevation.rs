@@ -7,20 +7,22 @@ pub enum Elevation {
     Mountain,
 }
 impl Elevation {
+    pub const OCEAN_LEVEL: f32 = 0.2;
+    pub const LOWLAND_LEVEL: f32 = 0.4;
+    pub const PLAINS_LEVEL: f32 = 0.6;
+    pub const HIGHLAND_LEVEL: f32 = 0.8;
+
     pub fn determine(elevation_val: f32) -> Elevation {
-        if elevation_val < 0.2 {
+        if elevation_val < Self::OCEAN_LEVEL {
             Elevation::Ocean
-        } else if elevation_val < 0.4 {
+        } else if elevation_val < Self::LOWLAND_LEVEL {
             Elevation::Lowland
-        } else if elevation_val < 0.6 {
+        } else if elevation_val < Self::PLAINS_LEVEL {
             Elevation::Plains
-        } else if elevation_val < 0.8 {
+        } else if elevation_val < Self::HIGHLAND_LEVEL {
             Elevation::Highland
         } else {
             Elevation::Mountain
         }
-    }
-    pub fn determine_ocean_elevation_level() -> f32 {
-        0.2
     }
 }

@@ -113,7 +113,11 @@ pub fn get_island_elevation_noise_value(
     let dist: f64 = (nx * nx + ny * ny).sqrt() * config.distance_multiplyer;
 
     let dropoff: f64 = dist.powi(config.dropoff_powi) * config.dropoff_multiplyer;
-    let final_val: f64 = val - dropoff + config.final_val_addition;
+    let mut final_val: f64 = val - dropoff + config.final_val_addition;
+
+    if final_val > 0.85 {
+        final_val = 0.85 + (final_val - 0.85) * 0.4;
+    }
 
     final_val.clamp(min, max) as f32
 }

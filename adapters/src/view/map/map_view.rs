@@ -74,8 +74,8 @@ impl MapView {
         let ny: f32 = -dz_dy / n_len;
         let nz: f32 = 1.0 / n_len;
 
-        let lx: f32 = -0.577;
-        let ly: f32 = -0.577;
+        let lx: f32 = 0.577;
+        let ly: f32 = 0.577;
         let lz: f32 = 0.577;
 
         let dot: f32 = (nx * lx + ny * ly + nz * lz).max(0.0);

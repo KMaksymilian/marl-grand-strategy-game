@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "core",
  "macroquad",
+ "rand 0.10.2",
 ]
 
 [[package]]

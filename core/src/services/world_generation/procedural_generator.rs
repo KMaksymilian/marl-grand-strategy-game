@@ -83,7 +83,7 @@ impl ProceduralWorldGenerator {
                 let elevation: Elevation = Elevation::determine(elevation_val);
                 let moisture: Moisture = Moisture::determine(moisture_val);
 
-                terrain_row.push(Area::new(elevation, moisture));
+                terrain_row.push(Area::new(elevation, moisture, elevation_val));
             }
             terrain.push(terrain_row);
             territory.push(vec![0; config.width]);

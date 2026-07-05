@@ -6,5 +6,6 @@ edition = "2024"
 [dependencies]
 core = { path = "../core" }
 macroquad = "0.4.15"
+rand = "0.10.2"
 
 [build-dependencies]

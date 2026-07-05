@@ -1,4 +1,9 @@
-use core::domain::{geography::biome::Biome, world_data::world::World};
+use ::rand::RngExt;
+use ::rand::prelude::ThreadRng;
+use core::domain::{
+    geography::biome::Biome,
+    world_data::{map::Map, world::World},
+};
 use macroquad::prelude::*;
 pub struct MapView {
     pub map_texture: Texture2D,
@@ -9,11 +14,20 @@ impl MapView {
         let height: usize = world.map.height;
 
         let mut map_image: Image = Image::gen_image_color(width as u16, height as u16, BLANK);
+        let mut rng: ThreadRng = ::rand::rng();
 
         for y in 0..height {
             for x in 0..width {
-                let color: Color = MapView::determine_color(&world.map.terrain[y][x].biome);
-                map_image.set_pixel(x as u32, y as u32, color);
+                let base_color: Color = MapView::determine_color(&world.map.terrain[y][x].biome);
+                let noise: f32 = rng.random_range(-0.04..=0.04);
+                let lightning: f32 = MapView::calculate_light(&world.map, x, y, width, height);
+                let final_color = Color::new(
+                    (base_color.r + noise + lightning).clamp(0.0, 1.0),
+                    (base_color.g + noise + lightning).clamp(0.0, 1.0),
+                    (base_color.b + noise + lightning).clamp(0.0, 1.0),
+                    1.0,
+                );
+                map_image.set_pixel(x as u32, y as u32, final_color);
             }
         }
 
@@ -26,39 +40,40 @@ impl MapView {
         MapView { map_texture }
     }
 
+    fn calculate_light(map: &Map, x: usize, y: usize, width: usize, height: usize) -> f32 {
+        if map.terrain[y][x].biome == Biome::Ocean {
+            return 0.0;
+        }
+
+        let x_left: usize = x.saturating_sub(1);
+        let x_right: usize = (x + 1).min(width - 1);
+        let y_up: usize = y.saturating_sub(1);
+        let y_down: usize = (y + 1).min(height - 1);
+
+        let h_left: f64 = map.terrain[y][x_left].elevation_val;
+        let h_right: f64 = map.terrain[y][x_right].elevation_val;
+        let h_up: f64 = map.terrain[y_up][x].elevation_val;
+        let h_down: f64 = map.terrain[y_down][x].elevation_val;
+
+        let dx: f64 = h_left - h_right;
+        let dy: f64 = h_up - h_down;
+
+        let light_strength: f64 = 7.5;
+
+        ((dx + dy) * light_strength) as f32
+    }
+
     fn determine_color(biome: &Biome) -> Color {
-        // match biome {
-        //     Biome::Ocean => color_u8!(21, 21, 38, 255),
-        //     Biome::Desert => color_u8!(91, 87, 78, 255),
-        //     Biome::Grassland => color_u8!(77, 83, 67, 255),
-        //     Biome::Forest => color_u8!(66, 80, 64, 255),
-        //     Biome::Rainforest => color_u8!(61, 73, 66, 255),
-        //     Biome::Hills => color_u8!(77, 80, 73, 255),
-        //     Biome::Taiga => color_u8!(80, 83, 73, 255),
-        //     Biome::Tundra => color_u8!(87, 87, 73, 255),
-        //     Biome::Snow => color_u8!(97, 97, 97, 255),
-        // }
-        // match biome {
-        //     Biome::Ocean => color_u8!(40, 90, 200, 255), // żywy niebieski
-        //     Biome::Desert => color_u8!(240, 210, 120, 255), // piaskowy, jasny
-        //     Biome::Grassland => color_u8!(80, 200, 90, 255), // soczysta zieleń
-        //     Biome::Forest => color_u8!(30, 140, 60, 255), // ciemniejsza, ale nadal żywa zieleń
-        //     Biome::Rainforest => color_u8!(20, 110, 70, 255), // głęboka tropikalna zieleń
-        //     Biome::Hills => color_u8!(170, 140, 90, 255), // ziemisty brąz
-        //     Biome::Taiga => color_u8!(90, 160, 140, 255), // chłodna zieleń/niebieski mix
-        //     Biome::Tundra => color_u8!(190, 200, 210, 255), // zimny szaro-błękit
-        //     Biome::Snow => color_u8!(245, 245, 250, 255), // prawie biały, lekko niebieski
-        // }
         match biome {
-            Biome::Ocean => DARKBLUE,
-            Biome::Desert => YELLOW,
-            Biome::Grassland => PINK,
-            Biome::Forest => GREEN,
-            Biome::Rainforest => DARKGREEN,
-            Biome::Hills => GRAY,
-            Biome::Taiga => PURPLE,
-            Biome::Tundra => RED,
-            Biome::Snow => WHITE,
+            Biome::Ocean => color_u8!(68, 75, 115, 255),
+            Biome::Desert => color_u8!(198, 185, 155, 255),
+            Biome::Grassland => color_u8!(148, 173, 110, 255),
+            Biome::Forest => color_u8!(95, 140, 90, 255),
+            Biome::Rainforest => color_u8!(55, 105, 75, 255),
+            Biome::Hills => color_u8!(140, 130, 115, 255),
+            Biome::Taiga => color_u8!(105, 135, 120, 255),
+            Biome::Tundra => color_u8!(180, 180, 175, 255),
+            Biome::Snow => color_u8!(240, 240, 245, 255),
         }
     }
 

@@ -19,15 +19,11 @@ async fn main() {
         moisture_scale: 600.0,
         min_max: (0.0, 1.0),
         warp_scale: 50.0,
-        warp_intensity: 15.0,
+        warp_intensity: 12.5,
         points_seed_option: Some(67),
         borders_seed_option: Some(69),
         elevation_seed_option: Some(420),
         moisture_seed_option: Some(2137),
-        // points_seed_option: None,
-        // borders_seed_option: None,
-        // elevation_seed_option: None,
-        // moisture_seed_option: None,
     };
 
     let elevation_tuning_fine_config: ElevationTuningFineConfig = ElevationTuningFineConfig {

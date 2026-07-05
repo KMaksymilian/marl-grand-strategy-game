@@ -7,11 +7,11 @@ pub enum Moisture {
 }
 impl Moisture {
     pub fn determine(value: f64) -> Moisture {
-        if value < 0.3 {
+        if value < 0.4 {
             Moisture::Dry
-        } else if value < 0.55 {
+        } else if value < 0.5 {
             Moisture::Normal
-        } else if value < 0.8 {
+        } else if value < 0.6 {
             Moisture::Humid
         } else {
             Moisture::Wet

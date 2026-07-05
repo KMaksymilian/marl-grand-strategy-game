@@ -38,16 +38,27 @@ impl MapView {
         //     Biome::Tundra => color_u8!(87, 87, 73, 255),
         //     Biome::Snow => color_u8!(97, 97, 97, 255),
         // }
+        // match biome {
+        //     Biome::Ocean => color_u8!(40, 90, 200, 255), // żywy niebieski
+        //     Biome::Desert => color_u8!(240, 210, 120, 255), // piaskowy, jasny
+        //     Biome::Grassland => color_u8!(80, 200, 90, 255), // soczysta zieleń
+        //     Biome::Forest => color_u8!(30, 140, 60, 255), // ciemniejsza, ale nadal żywa zieleń
+        //     Biome::Rainforest => color_u8!(20, 110, 70, 255), // głęboka tropikalna zieleń
+        //     Biome::Hills => color_u8!(170, 140, 90, 255), // ziemisty brąz
+        //     Biome::Taiga => color_u8!(90, 160, 140, 255), // chłodna zieleń/niebieski mix
+        //     Biome::Tundra => color_u8!(190, 200, 210, 255), // zimny szaro-błękit
+        //     Biome::Snow => color_u8!(245, 245, 250, 255), // prawie biały, lekko niebieski
+        // }
         match biome {
-            Biome::Ocean => color_u8!(40, 90, 200, 255),        // żywy niebieski
-            Biome::Desert => color_u8!(240, 210, 120, 255),     // piaskowy, jasny
-            Biome::Grassland => color_u8!(80, 200, 90, 255),    // soczysta zieleń
-            Biome::Forest => color_u8!(30, 140, 60, 255),       // ciemniejsza, ale nadal żywa zieleń
-            Biome::Rainforest => color_u8!(20, 110, 70, 255),   // głęboka tropikalna zieleń
-            Biome::Hills => color_u8!(170, 140, 90, 255),       // ziemisty brąz
-            Biome::Taiga => color_u8!(90, 160, 140, 255),       // chłodna zieleń/niebieski mix
-            Biome::Tundra => color_u8!(190, 200, 210, 255),     // zimny szaro-błękit
-            Biome::Snow => color_u8!(245, 245, 250, 255),       // prawie biały, lekko niebieski
+            Biome::Ocean => DARKBLUE,
+            Biome::Desert => YELLOW,
+            Biome::Grassland => PINK,
+            Biome::Forest => GREEN,
+            Biome::Rainforest => DARKGREEN,
+            Biome::Hills => GRAY,
+            Biome::Taiga => PURPLE,
+            Biome::Tundra => RED,
+            Biome::Snow => WHITE,
         }
     }
 

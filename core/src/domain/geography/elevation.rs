@@ -8,13 +8,13 @@ pub enum Elevation {
 }
 impl Elevation {
     pub fn determine(elevation_val: f64) -> Elevation {
-        if elevation_val < 0.20 {
+        if elevation_val < 0.2 {
             Elevation::Ocean
-        } else if elevation_val < 0.40 {
+        } else if elevation_val < 0.4 {
             Elevation::Lowland
-        } else if elevation_val < 0.60 {
+        } else if elevation_val < 0.6 {
             Elevation::Plains
-        } else if elevation_val < 0.80 {
+        } else if elevation_val < 0.8 {
             Elevation::Highland
         } else {
             Elevation::Mountain

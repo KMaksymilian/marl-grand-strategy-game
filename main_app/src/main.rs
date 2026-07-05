@@ -38,7 +38,7 @@ async fn main() {
 
     let map_view: MapView = MapView::generate_from_world(&world);
     let map_camera: MapCamera =
-        MapCamera::new(0.02, world.map.width as f32, world.map.height as f32);
+        MapCamera::new(0.5, world.map.width as f32, world.map.height as f32);
     let mut game_screen: GameScreen = GameScreen::new(map_view, map_camera);
 
     loop {

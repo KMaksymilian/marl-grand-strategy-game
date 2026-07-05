@@ -19,7 +19,8 @@ impl MapCamera {
     }
 
     pub fn update(&mut self) {
-        let current_speed: f32 = self.speed / self.camera.zoom.x.abs();
+        let dt: f32 = get_frame_time();
+        let current_speed: f32 = (self.speed / self.camera.zoom.x.abs()) * dt;
 
         if is_key_down(KeyCode::W) {
             self.camera.target.y += current_speed;

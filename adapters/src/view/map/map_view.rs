@@ -16,19 +16,23 @@ impl MapView {
         let mut map_image: Image = Image::gen_image_color(width as u16, height as u16, BLANK);
         let mut rng: ThreadRng = ::rand::rng();
 
+        let image_data: &mut [[u8; 4]] = map_image.get_image_data_mut();
+
         for y in 0..height {
             for x in 0..width {
                 let base_color: Color =
                     MapView::determine_color(&world.map.terrain[y * width + x].determine_biome());
                 let noise: f32 = rng.random_range(-0.04..=0.04);
                 let lightning: f32 = MapView::calculate_light(&world.map, x, y, width, height);
+
                 let final_color: Color = Color::new(
                     (base_color.r + noise + lightning).clamp(0.0, 1.0),
                     (base_color.g + noise + lightning).clamp(0.0, 1.0),
                     (base_color.b + noise + lightning).clamp(0.0, 1.0),
                     1.0,
                 );
-                map_image.set_pixel(x as u32, y as u32, final_color);
+
+                image_data[y * width + x] = final_color.into();
             }
         }
 

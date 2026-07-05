@@ -6,39 +6,39 @@ use crate::{
     services::world_generation::procedural_generator::ElevationTuningFineConfig,
 };
 use noise::{Fbm, NoiseFn, Perlin};
+use rayon::prelude::*;
 
 pub fn apply_voronoi(
-    border_perlin: &Fbm<Perlin>,
-    warp_scale: f64,
-    warp_intensity: f64,
+    warp_field: &[(usize, usize)],
     map: &mut Map,
     provinces: &mut [Province],
     points: &[Point],
 ) {
+    map.territory
+        .par_chunks_mut(map.width)
+        .enumerate()
+        .for_each(|(y, row)| {
+            for x in 0..map.width {
+                let (warped_x, warped_y) = warp_field[y * map.width + x];
+                let province_idx = points
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|(_, point)| {
+                        let dx = warped_x.abs_diff(point.0);
+                        let dy = warped_y.abs_diff(point.1);
+                        dx * dx + dy * dy
+                    })
+                    .map(|(idx, _)| idx)
+                    .unwrap_or(0);
+                row[x] = province_idx;
+            }
+        });
     for province in provinces.iter_mut() {
         province.territory.clear();
     }
-
     for y in 0..map.height {
         for x in 0..map.width {
-            let mut min_val: usize = usize::MAX;
-            let mut min_idx: usize = 0;
-
-            let (warped_x, warped_y) =
-                get_warp_value(border_perlin, warp_scale, warp_intensity, (x, y));
-
-            for (idx, point) in points.iter().enumerate() {
-                let dx: usize = warped_x.abs_diff(point.0);
-                let dy: usize = warped_y.abs_diff(point.1);
-                let cur_val: usize = dx * dx + dy * dy;
-                if cur_val < min_val {
-                    min_val = cur_val;
-                    min_idx = idx;
-                }
-            }
-
-            let province_idx: usize = min_idx;
-            map.territory[y * map.width + x] = province_idx;
+            let province_idx: usize = map.territory[y * map.width + x];
             provinces[province_idx].territory.push(Point(x, y));
         }
     }

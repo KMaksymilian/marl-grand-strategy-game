@@ -8,6 +8,7 @@ use noise::{Fbm, MultiFractal, Perlin};
 use rand::prelude::ThreadRng;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
+use rayon::prelude::*;
 
 pub struct WorldGenerationConfig {
     pub width: usize,
@@ -47,42 +48,44 @@ impl ProceduralWorldGenerator {
     fn build_map(config: &WorldGenerationConfig, fine_config: &ElevationTuningFineConfig) -> Map {
         let elevation_perlin: Fbm<Perlin> = Self::generate_fbm(config.elevation_seed_option);
         let moisture_perlin: Fbm<Perlin> = Self::generate_fbm(config.moisture_seed_option);
-
         let warp_perlin: Fbm<Perlin> = Self::generate_fbm(config.borders_seed_option);
 
-        let mut terrain: Vec<Area> = Vec::with_capacity(config.height * config.width);
+        let terrain: Vec<Area> = (0..config.height)
+            .into_par_iter()
+            .flat_map(|y| {
+                let mut row = Vec::with_capacity(config.width);
+                for x in 0..config.width {
+                    let (warped_x, warped_y) = get_warp_value(
+                        &warp_perlin,
+                        config.warp_scale,
+                        config.warp_intensity,
+                        (x, y),
+                    );
+
+                    let elevation_val: f32 = get_island_elevation_noise_value(
+                        &elevation_perlin,
+                        config.elevation_scale,
+                        config.min_max,
+                        (warped_x, warped_y),
+                        config.width,
+                        config.height,
+                        fine_config,
+                    );
+
+                    let moisture_val: f32 = get_noise_value(
+                        &moisture_perlin,
+                        config.moisture_scale,
+                        config.min_max,
+                        (warped_x, warped_y),
+                    );
+
+                    row.push(Area::new(elevation_val, moisture_val));
+                }
+                row
+            })
+            .collect();
+
         let territory: Vec<usize> = vec![0; config.height * config.width];
-
-        for y in 0..config.height {
-            for x in 0..config.width {
-                let (warped_x, warped_y) = get_warp_value(
-                    &warp_perlin,
-                    config.warp_scale,
-                    config.warp_intensity,
-                    (x, y),
-                );
-
-                let elevation_val: f32 = get_island_elevation_noise_value(
-                    &elevation_perlin,
-                    config.elevation_scale,
-                    config.min_max,
-                    (warped_x, warped_y),
-                    config.width,
-                    config.height,
-                    fine_config,
-                );
-
-                let moisture_val: f32 = get_noise_value(
-                    &moisture_perlin,
-                    config.moisture_scale,
-                    config.min_max,
-                    (warped_x, warped_y),
-                );
-
-                // Bezpośredni push, bez tymczasowego wiersza!
-                terrain.push(Area::new(elevation_val, moisture_val));
-            }
-        }
 
         Map::new(config.width, config.height, terrain, territory)
     }
@@ -103,15 +106,24 @@ impl ProceduralWorldGenerator {
             .map(|(idx, _)| Province::new(idx))
             .collect();
 
+        let warp_field: Vec<(usize, usize)> = (0..config.height)
+            .into_par_iter()
+            .flat_map(|y| {
+                let mut row = Vec::with_capacity(config.width);
+                for x in 0..config.width {
+                    row.push(get_warp_value(
+                        &border_perlin,
+                        config.warp_scale,
+                        config.warp_intensity,
+                        (x, y),
+                    ));
+                }
+                row
+            })
+            .collect();
+
         for _ in 0..config.iteration_count {
-            apply_voronoi(
-                &border_perlin,
-                config.warp_scale,
-                config.warp_intensity,
-                map,
-                &mut provinces,
-                &points,
-            );
+            apply_voronoi(&warp_field, map, &mut provinces, &points);
             points = calculate_centroids(&provinces);
         }
 

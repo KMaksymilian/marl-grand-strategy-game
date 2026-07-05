@@ -4,18 +4,17 @@ pub struct Area {
     pub moisture_val: f32,
 }
 impl Area {
-    pub fn new(
-
-        elevation_val: f32,
-        moisture_val: f32,
-    ) -> Area {
+    pub fn new(elevation_val: f32, moisture_val: f32) -> Area {
         Area {
             elevation_val,
             moisture_val,
         }
     }
     pub fn determine_biome(&self) -> Biome {
-        Biome::determine(&Self::determine_elevation(&self), &Self::determine_moisture(&self))
+        Biome::determine(
+            &Self::determine_elevation(&self),
+            &Self::determine_moisture(&self),
+        )
     }
     pub fn determine_elevation(&self) -> Elevation {
         Elevation::determine(self.elevation_val)

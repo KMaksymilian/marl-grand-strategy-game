@@ -22,5 +22,5 @@ impl Elevation {
     }
     pub fn determine_ocean_elevation_level() -> f32 {
         0.2
-    } 
+    }
 }

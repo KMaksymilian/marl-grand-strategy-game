@@ -1,7 +1,8 @@
 use ::rand::RngExt;
 use ::rand::prelude::ThreadRng;
 use core::domain::{
-    geography::{biome::Biome, elevation::Elevation}, world_data::{map::Map, world::World},
+    geography::{biome::Biome, elevation::Elevation},
+    world_data::{map::Map, world::World},
 };
 use macroquad::prelude::*;
 pub struct MapView {
@@ -17,7 +18,6 @@ impl MapView {
 
         for y in 0..height {
             for x in 0..width {
-
                 let base_color: Color =
                     MapView::determine_color(&world.map.terrain[y * width + x].determine_biome());
                 let noise: f32 = rng.random_range(-0.04..=0.04);

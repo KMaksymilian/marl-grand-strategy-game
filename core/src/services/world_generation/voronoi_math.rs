@@ -1,7 +1,9 @@
 use crate::{
     domain::{
-        geography::{elevation::Elevation}, world_data::{map::Map, point::Point, province::Province},
-    }, services::world_generation::procedural_generator::ElevationTuningFineConfig,
+        geography::elevation::Elevation,
+        world_data::{map::Map, point::Point, province::Province},
+    },
+    services::world_generation::procedural_generator::ElevationTuningFineConfig,
 };
 use noise::{Fbm, NoiseFn, Perlin};
 

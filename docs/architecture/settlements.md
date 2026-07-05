@@ -113,7 +113,8 @@ classDiagram
         +Arc~BuildingDefinition~ definition
         +u32 current_workers
         +bool is_active
-        +process_tick(inventory: &mut ResourceInventory)
+		+calculate_demand() HashMap~ResourceType, f32~
+		+execute_production(main_inventory, ratios) HashMap~ResourceType, f32~
         +upgrade(new_definition: Arc~BuildingDefinition~)
     }
 
@@ -127,6 +128,8 @@ classDiagram
     class Settlement {
         <<Context / Hub>>
         +ResourceInventory resource_inventory
+        +ResourceInventory pending_production 
+        +HashMap~ResourceType, f32~ total_demand
         +Vec~Building~ hub_buildings 
         +Vec~Building~ spoke_buildings
         +process_turn()
@@ -148,9 +151,49 @@ classDiagram
     
     Building --> BuildingDefinition : ref by Arc (Zero-Cost)
     
-    Settlement *-- ResourceInventory : has
+	Settlement *-- ResourceInventory : 1 main_inventory (available NOW)
+	Settlement *-- ResourceInventory : 2 pending_production (available TOMORROW)
     Settlement *-- Building : has
 ```
+### 5. Turn procedure for building production
+The production engine uses a deterministic, two-pass buffered architecture to eliminate race conditions. Buildings cannot instantly consume goods produced in the same turn. Instead, total demand is aggregated, resources are proportionally allocated, and all new products are temporarily buffered until the next turn.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as Settlement (Manager)
+    participant I as main_inventory
+    participant B as Buildings (List)
+    participant P as pending_production
+
+    Note over S, B: PHASE 1: Demand Gathering (No inventory modification)
+    loop For each building
+        S->>B: calculate_demand()
+        B-->>S: Returns: "I need X wood, Y iron"
+    end
+    S->>S: Sums up total demand (total_demand)
+
+    Note over S, I: PHASE 2: Allocation Calculation
+    S->>I: How many resources do we actually have?
+    I-->>S: Returns inventory state
+    S->>S: Calculates Allocation Ratio (min(1.0, Inventory / Demand))
+
+    Note over S, P: PHASE 3: Execution (Consumption & Buffering)
+    loop For each building
+        S->>B: execute_production(allocation_ratios)
+        Note right of B: Building operates at e.g., 40% efficiency
+        B->>I: Consumes allocated resources
+        B-->>S: Returns: "I produced Z stone"
+        S->>P: Puts produced stone into Buffer
+    end
+
+    Note over S, I: PHASE 4: Accounting (End of turn)
+    S->>P: Extract everything from Buffer
+    P-->>S: Finished goods
+    S->>I: Add products to main inventory
+    Note over I: Resources are ready to use in the NEXT turn
+```
+
 
 # Population & Needs Management
 

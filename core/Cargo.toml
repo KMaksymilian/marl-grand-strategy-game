@@ -1,6 +1,9 @@
 [package]
-name = "core_engine"
+name = "core"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+noise = "0.9.0"
+rand = "0.10.2"
+rayon = "1.12.0"

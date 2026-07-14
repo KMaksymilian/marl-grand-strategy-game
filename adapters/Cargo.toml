@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-core_engine = { path = "../core" }
+core = { path = "../core" }
+macroquad = "0.4.15"
+rand = "0.10.2"
 
 [build-dependencies]

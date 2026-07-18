@@ -1,4 +1,5 @@
 use crate::domain::geography::{biome::Biome, elevation::Elevation, moisture::Moisture};
+#[derive(Copy, Clone)]
 pub struct Area {
     pub elevation_val: f32,
     pub moisture_val: f32,
@@ -10,7 +11,6 @@ impl Area {
             moisture_val,
         }
     }
-    // W area.rs
     pub fn determine_biome(&self) -> Biome {
         Biome::determine(&self.determine_elevation(), &self.determine_moisture())
     }
@@ -19,5 +19,13 @@ impl Area {
     }
     pub fn determine_moisture(&self) -> Moisture {
         Moisture::determine(self.moisture_val)
+    }
+}
+impl Default for Area {
+    fn default() -> Area {
+        Area {
+            elevation_val: 0.0,
+            moisture_val: 0.0,
+        }
     }
 }

@@ -1,6 +1,6 @@
 use crate::domain::buildings::core::{Building, BuildingLocation};
 use crate::domain::economy::resource::ResourceInventory;
-use crate::domain::economy::resource_allocation::{AllocationEngine, DemandRequest, Priority};
+use crate::domain::economy::resource_allocation::{AllocationEngine, DemandRequest};
 use crate::domain::settlement::demographics::{ConsumptionResult, NeedRegistry, PopulationManager};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -9,7 +9,7 @@ use std::sync::Arc;
 pub struct Settlement {
     pub id: u32,
     pub resource_inventory: ResourceInventory,
-    pub pending_production: ResourceInventory, // Buffer
+    pub pending_production: ResourceInventory, // Buffer for delayed output
     pub hub_buildings: Vec<Building>,
     pub spoke_buildings: Vec<Building>,
     pub population_manager: PopulationManager,
@@ -18,7 +18,7 @@ pub struct Settlement {
 impl Settlement {
     pub fn new(
         id: u32,
-        initial_capacity: f32,
+        initial_capacity: u32,
         initial_population: u32,
         need_registry: Arc<NeedRegistry>,
     ) -> Self {
@@ -46,50 +46,60 @@ impl Settlement {
     pub fn process_turn(&mut self) -> ConsumptionResult {
         let mut all_requests: Vec<DemandRequest> = Vec::new();
 
+        // 1. Demographics demands
         all_requests.extend(self.population_manager.generate_requests());
 
+        // 2. Building demands (immutable iteration)
         for building in self.hub_buildings.iter().chain(self.spoke_buildings.iter()) {
             let demand = building.calculate_demand();
             if !demand.is_empty() {
                 all_requests.push(DemandRequest {
                     entity_id: building.instance_id,
-                    priority: Priority::Industry,
                     demand,
                 });
             }
         }
 
+        // 3. Global Allocation
         let allocations = AllocationEngine::execute(&mut self.resource_inventory, all_requests);
 
+        // 4. Process demographic consumption
         let pop_grants = allocations.get(&0);
         let consumption_result = self.population_manager.process_allocation(pop_grants);
 
         let mut all_produced = HashMap::new();
         let mut all_returned = HashMap::new();
 
-        for building in self.hub_buildings.iter().chain(self.spoke_buildings.iter()) {
+        // 5. Process building production (MUTABLE iteration needed for resolve_allocation)
+        for building in self.hub_buildings.iter_mut().chain(self.spoke_buildings.iter_mut()) {
             let grants = allocations.get(&building.instance_id);
-            let prod_result = building.execute_production(grants);
+
+            // resolve_allocation handles labor assignment and calls execute_production
+            let update_result = building.resolve_allocation(grants);
+            let prod_result = update_result.production;
 
             for (res, amount) in prod_result.produced {
-                *all_produced.entry(res).or_insert(0.0) += amount;
+                *all_produced.entry(res).or_insert(0) += amount;
             }
 
             for (res, amount) in prod_result.unused {
-                if amount > 0.0 {
-                    *all_returned.entry(res).or_insert(0.0) += amount;
+                if amount > 0 {
+                    *all_returned.entry(res).or_insert(0) += amount;
                 }
             }
         }
 
+        // 6. Return unused resources to inventory
         for (res, amount) in all_returned {
             self.resource_inventory.add(res, amount);
         }
 
+        // 7. Store new production in buffer
         for (res, amount) in all_produced {
             self.pending_production.add(res, amount);
         }
 
+        // 8. Move buffer to actual inventory for the next turn
         for (res, amount) in self.pending_production.resources.drain() {
             self.resource_inventory.add(res, amount);
         }
@@ -125,10 +135,13 @@ mod tests {
             tier: 1,
             max_workers: 10,
             behaviors,
+            construction_cost: Default::default(),
         });
 
         let mut building = Building::new(instance_id, Position { x: 0, y: 0 }, location, def);
-        building.current_workers = 10;
+        // We set target efficiency instead of hardcoding workers,
+        // AllocationEngine will provide the actual workers.
+        building.target_efficiency = 1.0;
         building
     }
 
@@ -140,11 +153,10 @@ mod tests {
     #[test]
     fn test_settlement_initialization() {
         let registry = create_test_registry();
-        // Updated to include initial population (0) and the registry
-        let settlement = Settlement::new(42, 500.0, 0, registry);
+        let settlement = Settlement::new(42, 500, 0, registry);
 
         assert_eq!(settlement.id, 42);
-        assert_eq!(settlement.resource_inventory.max_capacity, 500.0);
+        assert_eq!(settlement.resource_inventory.max_capacity, 500); // Check as u32
         assert!(settlement.hub_buildings.is_empty());
         assert!(settlement.spoke_buildings.is_empty());
         assert_eq!(settlement.population_manager.population, 0);
@@ -153,7 +165,7 @@ mod tests {
     #[test]
     fn test_construct_building_routing() {
         let registry = create_test_registry();
-        let mut settlement = Settlement::new(1, 100.0, 0, registry);
+        let mut settlement = Settlement::new(1, 100, 0, registry); // Changed to u32
 
         let hub_building = create_dummy_building(100, BuildingLocation::Hub, None);
         let spoke_building = create_dummy_building(101, BuildingLocation::Spoke, None);
@@ -174,25 +186,28 @@ mod tests {
     #[test]
     fn test_process_turn_delayed_production_no_race_conditions() {
         let registry = create_test_registry();
-        let mut settlement = Settlement::new(1, 1000.0, 0, registry);
+        let mut settlement = Settlement::new(1, 1000, 0, registry); // Changed to u32
 
         let spoke_behavior = BuildingBehavior::Production {
             inputs: vec![],
-            outputs: vec![(ResourceType::Wood, 10.0)],
+            outputs: vec![(ResourceType::Wood, 10)], // Changed to u32
         };
         let spoke_building =
             create_dummy_building(10, BuildingLocation::Spoke, Some(spoke_behavior));
 
         let hub_behavior = BuildingBehavior::Production {
-            inputs: vec![(ResourceType::Wood, 10.0)],
-            outputs: vec![(ResourceType::Stone, 5.0)],
+            inputs: vec![(ResourceType::Wood, 10)], // Changed to u32
+            outputs: vec![(ResourceType::Stone, 5)], // Changed to u32
         };
         let hub_building = create_dummy_building(11, BuildingLocation::Hub, Some(hub_behavior));
 
         settlement.construct_building(spoke_building).unwrap();
         settlement.construct_building(hub_building).unwrap();
 
-        assert_eq!(settlement.resource_inventory.total_amount(), 0.0);
+        assert_eq!(settlement.resource_inventory.total_amount(), 0);
+
+        // Inject Labour so dummy buildings can acquire workers
+        settlement.resource_inventory.add(ResourceType::Labour, 100);
 
         // --- TURN 1 ---
         let _ = settlement.process_turn(); // Ignoring ConsumptionResult as population is 0
@@ -200,16 +215,19 @@ mod tests {
         {
             let inv = &settlement.resource_inventory.resources;
             assert_eq!(
-                *inv.get(&ResourceType::Wood).unwrap_or(&0.0),
-                10.0,
+                *inv.get(&ResourceType::Wood).unwrap_or(&0),
+                10,
                 "Produced wood is available at the turn end."
             );
             assert_eq!(
-                *inv.get(&ResourceType::Stone).unwrap_or(&0.0),
-                0.0,
+                *inv.get(&ResourceType::Stone).unwrap_or(&0),
+                0,
                 "Hub didn't have wood."
             );
         }
+
+        // Re-inject Labour for Turn 2 as it gets consumed each turn
+        settlement.resource_inventory.add(ResourceType::Labour, 100);
 
         // --- TURN 2 ---
         let _ = settlement.process_turn();
@@ -217,13 +235,13 @@ mod tests {
         {
             let inv = &settlement.resource_inventory.resources;
             assert_eq!(
-                *inv.get(&ResourceType::Wood).unwrap_or(&0.0),
-                10.0,
+                *inv.get(&ResourceType::Wood).unwrap_or(&0),
+                10,
                 "Hub consumed old wood, but Spoke produced a new batch of 10."
             );
             assert_eq!(
-                *inv.get(&ResourceType::Stone).unwrap_or(&0.0),
-                5.0,
+                *inv.get(&ResourceType::Stone).unwrap_or(&0),
+                5,
                 "Hub used wood produced in T1"
             );
         }

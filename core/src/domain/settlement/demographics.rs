@@ -1,5 +1,5 @@
 use crate::domain::economy::resource::ResourceType;
-use crate::domain::economy::resource_allocation::{DemandRequest, Priority};
+use crate::domain::economy::resource_allocation::DemandRequest;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -12,7 +12,6 @@ pub struct ConsumptionResult {
 #[derive(Debug, Clone)]
 pub struct NeedTier {
     pub min_population: u32,
-    pub priority: Priority,
     pub needs_per_capita: HashMap<ResourceType, f32>,
 }
 
@@ -59,12 +58,11 @@ impl PopulationManager {
             let mut tier_demand = HashMap::new();
 
             for (res, amount) in &tier.needs_per_capita {
-                tier_demand.insert(*res, amount * (self.population as f32));
+                tier_demand.insert(*res, (amount * (self.population as f32)).ceil() as u32);
             }
 
             requests.push(DemandRequest {
                 entity_id: 0,
-                priority: tier.priority,
                 demand: tier_demand,
             });
         }
@@ -74,7 +72,7 @@ impl PopulationManager {
 
     pub fn process_allocation(
         &self,
-        granted_resources: Option<&HashMap<ResourceType, f32>>,
+        granted_resources: Option<&HashMap<ResourceType, u32>>, // Zmieniono na u32
     ) -> ConsumptionResult {
         let mut total_demanded = 0.0;
         let mut total_consumed = 0.0;
@@ -93,7 +91,8 @@ impl PopulationManager {
         for (res, required) in expected_demand {
             total_demanded += required;
 
-            let consumed = granted.get(&res).copied().unwrap_or(0.0);
+            // Surowce przychodzą jako u32, rzutujemy na f32 do obliczenia procentu zadowolenia
+            let consumed = granted.get(&res).copied().unwrap_or(0) as f32;
             total_consumed += consumed;
 
             if consumed < required - 0.0001 {
@@ -118,7 +117,6 @@ impl PopulationManager {
 mod tests {
     use super::*;
     use crate::domain::economy::resource::ResourceType;
-    use crate::domain::economy::resource_allocation::Priority;
     use std::collections::HashMap;
     use std::sync::Arc;
 
@@ -129,16 +127,13 @@ mod tests {
         let mut t2_needs = HashMap::new();
         t2_needs.insert(ResourceType::Wood, 0.5);
 
-        // We now assign a Priority to each NeedTier
         let tiers = vec![
             NeedTier {
                 min_population: 1,
-                priority: Priority::Survival,
                 needs_per_capita: t1_needs,
             },
             NeedTier {
                 min_population: 50,
-                priority: Priority::Comfort,
                 needs_per_capita: t2_needs,
             },
         ];
@@ -163,7 +158,6 @@ mod tests {
         let registry = create_test_registry();
         let manager = PopulationManager::new(100, registry);
 
-        // In the new architecture, we generate requests instead of a flat demand map
         let requests = manager.generate_requests();
 
         assert_eq!(
@@ -172,26 +166,26 @@ mod tests {
             "Should generate two separate requests based on tiers."
         );
 
-        // Verify the Survival tier request
-        let survival_req = requests
+        // Verify the Grain request
+        let grain_req = requests
             .iter()
-            .find(|r| r.priority == Priority::Survival)
+            .find(|r| r.demand.contains_key(&ResourceType::Grain))
             .unwrap();
         assert_eq!(
-            *survival_req.demand.get(&ResourceType::Grain).unwrap(),
-            100.0,
-            "Grain should be requested for Survival."
+            *grain_req.demand.get(&ResourceType::Grain).unwrap(),
+            100, // Zmieniono na u32
+            "Grain should be requested for first tier."
         );
 
-        // Verify the Comfort tier request
-        let comfort_req = requests
+        // Verify the Wood request
+        let wood_req = requests
             .iter()
-            .find(|r| r.priority == Priority::Comfort)
+            .find(|r| r.demand.contains_key(&ResourceType::Wood))
             .unwrap();
         assert_eq!(
-            *comfort_req.demand.get(&ResourceType::Wood).unwrap(),
-            50.0,
-            "Wood should be requested for Comfort."
+            *wood_req.demand.get(&ResourceType::Wood).unwrap(),
+            50, // Zmieniono na u32
+            "Wood should be requested for second tier."
         );
     }
 
@@ -200,9 +194,9 @@ mod tests {
         let registry = create_test_registry();
         let manager = PopulationManager::new(10, registry); // Needs 10 Grain
 
-        // Mock the AllocationEngine granting exactly what was requested
+        // Mock the AllocationEngine granting exactly what was requested as u32
         let mut granted = HashMap::new();
-        granted.insert(ResourceType::Grain, 10.0);
+        granted.insert(ResourceType::Grain, 10);
 
         let result = manager.process_allocation(Some(&granted));
 
@@ -216,10 +210,10 @@ mod tests {
         let manager = PopulationManager::new(100, registry);
         // Total needs across all tiers: 100 Grain + 50 Wood = 150 units
 
-        // Mock the AllocationEngine granting partial resources (bottleneck)
+        // Mock the AllocationEngine granting partial resources
         let mut granted = HashMap::new();
-        granted.insert(ResourceType::Grain, 75.0);
-        // Wood is completely missing (0.0 granted)
+        granted.insert(ResourceType::Grain, 75); // u32
+        // Wood is completely missing (0 granted)
 
         let result = manager.process_allocation(Some(&granted));
 

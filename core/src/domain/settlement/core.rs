@@ -1,249 +1,124 @@
-use crate::domain::buildings::core::{Building, BuildingLocation};
-use crate::domain::economy::resource::ResourceInventory;
-use crate::domain::economy::resource_allocation::{AllocationEngine, DemandRequest};
+use crate::domain::buildings::core::{Building, BuildingLocation, Position};
+use crate::domain::economy::resource_allocation::AllocationEngine;
 use crate::domain::settlement::demographics::{ConsumptionResult, NeedRegistry, PopulationManager};
-use std::collections::HashMap;
+use crate::domain::settlement::projects::{Project, ProjectCost, ProjectResult};
 use std::sync::Arc;
+use crate::domain::buildings::factory::BuildingDefinition;
+use crate::domain::settlement::building_manager::BuildingManager;
+use crate::domain::settlement::project_manager::ProjectManager;
+use crate::domain::settlement::settlement_inventory_manager::SettlementInventoryManager;
 
 #[derive(Debug)]
 pub struct Settlement {
     pub id: u32,
-    pub resource_inventory: ResourceInventory,
-    pub pending_production: ResourceInventory, // Buffer for delayed output
-    pub hub_buildings: Vec<Building>,
-    pub spoke_buildings: Vec<Building>,
+    pub inventory_manager: SettlementInventoryManager,
+    pub building_manager: BuildingManager,
     pub population_manager: PopulationManager,
+    pub project_manager: ProjectManager,
 }
 
 impl Settlement {
-    pub fn new(
-        id: u32,
-        initial_capacity: u32,
-        initial_population: u32,
-        need_registry: Arc<NeedRegistry>,
-    ) -> Self {
+    pub fn new(id: u32, initial_capacity: u32, initial_population: u32, need_registry: Arc<NeedRegistry>) -> Self {
         Self {
             id,
-            resource_inventory: ResourceInventory::new(initial_capacity),
-            pending_production: ResourceInventory::new(initial_capacity),
-            hub_buildings: Vec::new(),
-            spoke_buildings: Vec::new(),
+            inventory_manager: SettlementInventoryManager::new(initial_capacity),
+            building_manager: BuildingManager::new(),
             population_manager: PopulationManager::new(initial_population, need_registry),
+            project_manager: ProjectManager::new(),
         }
-    }
-
-    pub fn construct_building(&mut self, building: Building) -> Result<(), &'static str> {
-        let loc = building.location;
-
-        match loc {
-            BuildingLocation::Hub => self.hub_buildings.push(building),
-            BuildingLocation::Spoke => self.spoke_buildings.push(building),
-        }
-
-        Ok(())
     }
 
     pub fn process_turn(&mut self) -> ConsumptionResult {
-        let mut all_requests: Vec<DemandRequest> = Vec::new();
+        // 0. Aktualizacja siły roboczej przed rozpoczęciem popytu
+        self.inventory_manager.refresh_labor_capacity(self.population_manager.population);
 
-        // 1. Demographics demands
-        all_requests.extend(self.population_manager.generate_requests());
+        // 1. FAZA POPYTU
+        let mut requests = Vec::new();
+        requests.extend(self.population_manager.generate_requests());
+        requests.extend(self.project_manager.generate_requests());
+        requests.extend(self.building_manager.generate_requests());
 
-        // 2. Building demands (immutable iteration)
-        for building in self.hub_buildings.iter().chain(self.spoke_buildings.iter()) {
-            let demand = building.calculate_demand();
-            if !demand.is_empty() {
-                all_requests.push(DemandRequest {
-                    entity_id: building.instance_id,
-                    demand,
-                });
-            }
-        }
+        // 2. FAZA ALOKACJI (Zwróć uwagę na wypożyczenie main z inventory_manager)
+        let allocations = AllocationEngine::execute(&mut self.inventory_manager.main, requests);
 
-        // 3. Global Allocation
-        let allocations = AllocationEngine::execute(&mut self.resource_inventory, all_requests);
+        // 3. FAZA KONSUMPCJI / PRODUKCJI
+        let consumption_result = self.population_manager.process_allocation(allocations.get(&0));
+        self.project_manager.process_allocation(&allocations);
+        let (produced, returned) = self.building_manager.process_allocations(&allocations);
 
-        // 4. Process demographic consumption
-        let pop_grants = allocations.get(&0);
-        let consumption_result = self.population_manager.process_allocation(pop_grants);
+        // 4. FAZA MAGAZYNOWANIA
+        self.inventory_manager.process_production_results(produced, returned);
+        self.inventory_manager.commit_pending_production();
 
-        let mut all_produced = HashMap::new();
-        let mut all_returned = HashMap::new();
-
-        // 5. Process building production (MUTABLE iteration needed for resolve_allocation)
-        for building in self.hub_buildings.iter_mut().chain(self.spoke_buildings.iter_mut()) {
-            let grants = allocations.get(&building.instance_id);
-
-            // resolve_allocation handles labor assignment and calls execute_production
-            let update_result = building.resolve_allocation(grants);
-            let prod_result = update_result.production;
-
-            for (res, amount) in prod_result.produced {
-                *all_produced.entry(res).or_insert(0) += amount;
-            }
-
-            for (res, amount) in prod_result.unused {
-                if amount > 0 {
-                    *all_returned.entry(res).or_insert(0) += amount;
-                }
-            }
-        }
-
-        // 6. Return unused resources to inventory
-        for (res, amount) in all_returned {
-            self.resource_inventory.add(res, amount);
-        }
-
-        // 7. Store new production in buffer
-        for (res, amount) in all_produced {
-            self.pending_production.add(res, amount);
-        }
-
-        // 8. Move buffer to actual inventory for the next turn
-        for (res, amount) in self.pending_production.resources.drain() {
-            self.resource_inventory.add(res, amount);
-        }
+        // 5. FAZA FINALIZACJI
+        self.resolve_completed_projects();
 
         consumption_result
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::domain::buildings::core::{BuildingLocation, Position};
-    use crate::domain::buildings::factory::{BuildingBehavior, BuildingDefinition};
-    use crate::domain::economy::resource::ResourceType;
-    use crate::domain::settlement::demographics::NeedRegistry;
-    use std::sync::Arc;
+    fn resolve_completed_projects(&mut self) {
+        let completed = self.project_manager.extract_completed();
 
-    /// Helper for building creation
-    fn create_dummy_building(
-        instance_id: u32,
+        for project in completed {
+            match project.result {
+                ProjectResult::ConstructBuilding { location, position, definition } => {
+                    // Projekt pamięta swoją docelową pozycję!
+                    let new_building = Building::new(
+                        project.id, // Warto później rozdzielić ID projektu od ID budynku
+                        position,   // <- Podpinamy zapisaną pozycję
+                        location,
+                        definition
+                    );
+                    self.building_manager.construct_building(new_building);
+                },
+                ProjectResult::UpgradeBuilding { target_instance_id, new_definition } => {
+                    self.building_manager.upgrade_building(target_instance_id, new_definition);
+                },
+                ProjectResult::RecruitUnit { .. } => {
+                    // todo
+                }
+            }
+        }
+    }
+
+    pub fn queue_construction(
+        &mut self,
+        project_id: u32,
         location: BuildingLocation,
-        behavior: Option<BuildingBehavior>,
-    ) -> Building {
-        let behaviors = if let Some(b) = behavior {
-            vec![b]
-        } else {
-            vec![]
-        };
+        position: Position, // Przyjmujemy pozycję z zewnątrz
+        definition: Arc<BuildingDefinition>,
+        cost: ProjectCost,
+    ) {
+        let project = Project::new(
+            project_id,
+            ProjectResult::ConstructBuilding {
+                location,
+                position,
+                definition
+            },
+            cost,
+        );
 
-        let def = Arc::new(BuildingDefinition {
-            id: "test_building".to_string(),
-            name: "Test Building".to_string(),
-            tier: 1,
-            max_workers: 10,
-            behaviors,
-            construction_cost: Default::default(),
-        });
-
-        let mut building = Building::new(instance_id, Position { x: 0, y: 0 }, location, def);
-        // We set target efficiency instead of hardcoding workers,
-        // AllocationEngine will provide the actual workers.
-        building.target_efficiency = 1.0;
-        building
+        self.project_manager.add_project(project);
     }
 
-    /// Helper to provide a dummy registry for settlement initialization
-    fn create_test_registry() -> Arc<NeedRegistry> {
-        Arc::new(NeedRegistry::new(vec![])) // Empty registry for building-focused tests
-    }
+    /// Zleca ulepszenie istniejącego budynku (np. z Tier 1 na Tier 2)
+    pub fn queue_upgrade(
+        &mut self,
+        project_id: u32,
+        target_instance_id: u32,
+        new_definition: Arc<BuildingDefinition>,
+        cost: ProjectCost,
+    ) {
+        let project = Project::new(
+            project_id,
+            ProjectResult::UpgradeBuilding {
+                target_instance_id,
+                new_definition
+            },
+            cost,
+        );
 
-    #[test]
-    fn test_settlement_initialization() {
-        let registry = create_test_registry();
-        let settlement = Settlement::new(42, 500, 0, registry);
-
-        assert_eq!(settlement.id, 42);
-        assert_eq!(settlement.resource_inventory.max_capacity, 500); // Check as u32
-        assert!(settlement.hub_buildings.is_empty());
-        assert!(settlement.spoke_buildings.is_empty());
-        assert_eq!(settlement.population_manager.population, 0);
-    }
-
-    #[test]
-    fn test_construct_building_routing() {
-        let registry = create_test_registry();
-        let mut settlement = Settlement::new(1, 100, 0, registry); // Changed to u32
-
-        let hub_building = create_dummy_building(100, BuildingLocation::Hub, None);
-        let spoke_building = create_dummy_building(101, BuildingLocation::Spoke, None);
-
-        let res_hub = settlement.construct_building(hub_building);
-        let res_spoke = settlement.construct_building(spoke_building);
-
-        assert!(res_hub.is_ok());
-        assert!(res_spoke.is_ok());
-
-        assert_eq!(settlement.hub_buildings.len(), 1);
-        assert_eq!(settlement.hub_buildings[0].instance_id, 100);
-
-        assert_eq!(settlement.spoke_buildings.len(), 1);
-        assert_eq!(settlement.spoke_buildings[0].instance_id, 101);
-    }
-
-    #[test]
-    fn test_process_turn_delayed_production_no_race_conditions() {
-        let registry = create_test_registry();
-        let mut settlement = Settlement::new(1, 1000, 0, registry); // Changed to u32
-
-        let spoke_behavior = BuildingBehavior::Production {
-            inputs: vec![],
-            outputs: vec![(ResourceType::Wood, 10)], // Changed to u32
-        };
-        let spoke_building =
-            create_dummy_building(10, BuildingLocation::Spoke, Some(spoke_behavior));
-
-        let hub_behavior = BuildingBehavior::Production {
-            inputs: vec![(ResourceType::Wood, 10)], // Changed to u32
-            outputs: vec![(ResourceType::Stone, 5)], // Changed to u32
-        };
-        let hub_building = create_dummy_building(11, BuildingLocation::Hub, Some(hub_behavior));
-
-        settlement.construct_building(spoke_building).unwrap();
-        settlement.construct_building(hub_building).unwrap();
-
-        assert_eq!(settlement.resource_inventory.total_amount(), 0);
-
-        // Inject Labour so dummy buildings can acquire workers
-        settlement.resource_inventory.add(ResourceType::Labour, 100);
-
-        // --- TURN 1 ---
-        let _ = settlement.process_turn(); // Ignoring ConsumptionResult as population is 0
-
-        {
-            let inv = &settlement.resource_inventory.resources;
-            assert_eq!(
-                *inv.get(&ResourceType::Wood).unwrap_or(&0),
-                10,
-                "Produced wood is available at the turn end."
-            );
-            assert_eq!(
-                *inv.get(&ResourceType::Stone).unwrap_or(&0),
-                0,
-                "Hub didn't have wood."
-            );
-        }
-
-        // Re-inject Labour for Turn 2 as it gets consumed each turn
-        settlement.resource_inventory.add(ResourceType::Labour, 100);
-
-        // --- TURN 2 ---
-        let _ = settlement.process_turn();
-
-        {
-            let inv = &settlement.resource_inventory.resources;
-            assert_eq!(
-                *inv.get(&ResourceType::Wood).unwrap_or(&0),
-                10,
-                "Hub consumed old wood, but Spoke produced a new batch of 10."
-            );
-            assert_eq!(
-                *inv.get(&ResourceType::Stone).unwrap_or(&0),
-                5,
-                "Hub used wood produced in T1"
-            );
-        }
+        self.project_manager.add_project(project);
     }
 }

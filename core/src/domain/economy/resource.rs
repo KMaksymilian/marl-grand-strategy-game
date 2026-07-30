@@ -23,9 +23,11 @@ impl ResourceInventory {
         }
     }
     pub fn total_amount(&self) -> u32 {
-        self.resources.values().sum()
+        self.resources.iter()
+            .filter(|&(&res, _)| res != ResourceType::Labour)
+            .map(|(_, &amount)| amount)
+            .sum()
     }
-
     pub fn add(&mut self, res_type: ResourceType, amount: u32) {
         let available_space = self.max_capacity - self.total_amount();
 

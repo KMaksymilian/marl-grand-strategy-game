@@ -1,8 +1,8 @@
 use crate::domain::economy::resource::ResourceType;
+use crate::domain::settlement::projects::ProjectCost;
 use crate::domain::settlement::stat::StatType;
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::domain::settlement::projects::ProjectCost;
 
 #[derive(Debug, Clone)]
 pub enum BuildingBehavior {

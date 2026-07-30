@@ -5,8 +5,7 @@ pub enum ResourceType {
     Wood,
     Stone,
     Grain,
-    Labour
-    // work in progress
+    Labour, // work in progress
 }
 
 #[derive(Debug, Default)]
@@ -23,7 +22,8 @@ impl ResourceInventory {
         }
     }
     pub fn total_amount(&self) -> u32 {
-        self.resources.iter()
+        self.resources
+            .iter()
             .filter(|&(&res, _)| res != ResourceType::Labour)
             .map(|(_, &amount)| amount)
             .sum()
@@ -31,7 +31,7 @@ impl ResourceInventory {
     pub fn add(&mut self, res_type: ResourceType, amount: u32) {
         let available_space = self.max_capacity - self.total_amount();
 
-        if available_space <= 0 {
+        if available_space == 0 {
             return;
         }
 

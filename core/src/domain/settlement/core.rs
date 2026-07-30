@@ -1,12 +1,12 @@
 use crate::domain::buildings::core::{Building, BuildingLocation, Position};
-use crate::domain::economy::resource_allocation::AllocationEngine;
-use crate::domain::settlement::demographics::{ConsumptionResult, NeedRegistry, PopulationManager};
-use crate::domain::settlement::projects::{Project, ProjectCost, ProjectResult};
-use std::sync::Arc;
 use crate::domain::buildings::factory::BuildingDefinition;
+use crate::domain::economy::resource_allocation::AllocationEngine;
 use crate::domain::settlement::building_manager::BuildingManager;
+use crate::domain::settlement::demographics::{ConsumptionResult, NeedRegistry, PopulationManager};
 use crate::domain::settlement::project_manager::ProjectManager;
+use crate::domain::settlement::projects::{Project, ProjectCost, ProjectResult};
 use crate::domain::settlement::settlement_inventory_manager::SettlementInventoryManager;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Settlement {
@@ -18,7 +18,12 @@ pub struct Settlement {
 }
 
 impl Settlement {
-    pub fn new(id: u32, initial_capacity: u32, initial_population: u32, need_registry: Arc<NeedRegistry>) -> Self {
+    pub fn new(
+        id: u32,
+        initial_capacity: u32,
+        initial_population: u32,
+        need_registry: Arc<NeedRegistry>,
+    ) -> Self {
         Self {
             id,
             inventory_manager: SettlementInventoryManager::new(initial_capacity),
@@ -29,28 +34,32 @@ impl Settlement {
     }
 
     pub fn process_turn(&mut self) -> ConsumptionResult {
-        // 0. Aktualizacja siły roboczej przed rozpoczęciem popytu
-        self.inventory_manager.refresh_labor_capacity(self.population_manager.population);
+        // Labour update
+        self.inventory_manager
+            .refresh_labor_capacity(self.population_manager.population);
 
-        // 1. FAZA POPYTU
+        // 1. Demand phase
         let mut requests = Vec::new();
         requests.extend(self.population_manager.generate_requests());
         requests.extend(self.project_manager.generate_requests());
         requests.extend(self.building_manager.generate_requests());
 
-        // 2. FAZA ALOKACJI (Zwróć uwagę na wypożyczenie main z inventory_manager)
+        // 2. Allocation phase
         let allocations = AllocationEngine::execute(&mut self.inventory_manager.main, requests);
 
-        // 3. FAZA KONSUMPCJI / PRODUKCJI
-        let consumption_result = self.population_manager.process_allocation(allocations.get(&0));
+        // 3. Consumption and production phase
+        let consumption_result = self
+            .population_manager
+            .process_allocation(allocations.get(&0));
         self.project_manager.process_allocation(&allocations);
         let (produced, returned) = self.building_manager.process_allocations(&allocations);
 
-        // 4. FAZA MAGAZYNOWANIA
-        self.inventory_manager.process_production_results(produced, returned);
+        // 4. Collecting phase
+        self.inventory_manager
+            .process_production_results(produced, returned);
         self.inventory_manager.commit_pending_production();
 
-        // 5. FAZA FINALIZACJI
+        // 5. Project finalization phase
         self.resolve_completed_projects();
 
         consumption_result
@@ -61,19 +70,21 @@ impl Settlement {
 
         for project in completed {
             match project.result {
-                ProjectResult::ConstructBuilding { location, position, definition } => {
-                    // Projekt pamięta swoją docelową pozycję!
-                    let new_building = Building::new(
-                        project.id, // Warto później rozdzielić ID projektu od ID budynku
-                        position,   // <- Podpinamy zapisaną pozycję
-                        location,
-                        definition
-                    );
+                ProjectResult::ConstructBuilding {
+                    location,
+                    position,
+                    definition,
+                } => {
+                    let new_building = Building::new(project.id, position, location, definition);
                     self.building_manager.construct_building(new_building);
-                },
-                ProjectResult::UpgradeBuilding { target_instance_id, new_definition } => {
-                    self.building_manager.upgrade_building(target_instance_id, new_definition);
-                },
+                }
+                ProjectResult::UpgradeBuilding {
+                    target_instance_id,
+                    new_definition,
+                } => {
+                    self.building_manager
+                        .upgrade_building(target_instance_id, new_definition);
+                }
                 ProjectResult::RecruitUnit { .. } => {
                     // todo
                 }
@@ -81,11 +92,12 @@ impl Settlement {
         }
     }
 
+    // Request new building
     pub fn queue_construction(
         &mut self,
         project_id: u32,
         location: BuildingLocation,
-        position: Position, // Przyjmujemy pozycję z zewnątrz
+        position: Position,
         definition: Arc<BuildingDefinition>,
         cost: ProjectCost,
     ) {
@@ -94,7 +106,7 @@ impl Settlement {
             ProjectResult::ConstructBuilding {
                 location,
                 position,
-                definition
+                definition,
             },
             cost,
         );
@@ -102,7 +114,7 @@ impl Settlement {
         self.project_manager.add_project(project);
     }
 
-    /// Zleca ulepszenie istniejącego budynku (np. z Tier 1 na Tier 2)
+    // Request upgrading existing building
     pub fn queue_upgrade(
         &mut self,
         project_id: u32,
@@ -114,7 +126,7 @@ impl Settlement {
             project_id,
             ProjectResult::UpgradeBuilding {
                 target_instance_id,
-                new_definition
+                new_definition,
             },
             cost,
         );

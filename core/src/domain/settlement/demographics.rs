@@ -72,7 +72,7 @@ impl PopulationManager {
 
     pub fn process_allocation(
         &self,
-        granted_resources: Option<&HashMap<ResourceType, u32>>, // Zmieniono na u32
+        granted_resources: Option<&HashMap<ResourceType, u32>>,
     ) -> ConsumptionResult {
         let mut total_demanded = 0.0;
         let mut total_consumed = 0.0;
@@ -91,7 +91,6 @@ impl PopulationManager {
         for (res, required) in expected_demand {
             total_demanded += required;
 
-            // Surowce przychodzą jako u32, rzutujemy na f32 do obliczenia procentu zadowolenia
             let consumed = granted.get(&res).copied().unwrap_or(0) as f32;
             total_consumed += consumed;
 
@@ -173,7 +172,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             *grain_req.demand.get(&ResourceType::Grain).unwrap(),
-            100, // Zmieniono na u32
+            100,
             "Grain should be requested for first tier."
         );
 
@@ -184,7 +183,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             *wood_req.demand.get(&ResourceType::Wood).unwrap(),
-            50, // Zmieniono na u32
+            50,
             "Wood should be requested for second tier."
         );
     }

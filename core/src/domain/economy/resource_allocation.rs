@@ -2,78 +2,84 @@ use crate::domain::economy::resource::{ResourceInventory, ResourceType};
 use std::collections::HashMap;
 
 /// Sequence define strength of priority (descending)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Priority {
-    Luxury,
-    Comfort,
-    Industry,
-    Military,
-    Survival,
-    CriticalOverride,
-}
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+// pub enum Priority {
+//     Luxury,
+//     Comfort,
+//     Industry,
+//     Military,
+//     Survival,
+//     CriticalOverride,
+// }
 
 #[derive(Debug, Clone)]
 pub struct DemandRequest {
     pub entity_id: u32, // 0 for population
-    pub priority: Priority,
-    pub demand: HashMap<ResourceType, f32>,
+    pub demand: HashMap<ResourceType, u32>,
 }
 
-pub type AllocationResult = HashMap<u32, HashMap<ResourceType, f32>>;
+pub type AllocationResult = HashMap<u32, HashMap<ResourceType, u32>>;
 
 pub struct AllocationEngine;
 
 impl AllocationEngine {
     pub fn execute(
         inventory: &mut ResourceInventory,
-        mut requests: Vec<DemandRequest>,
+        requests: Vec<DemandRequest>,
+    ) -> AllocationResult {
+        let total_demand = Self::calculate_global_demand(&requests);
+        let global_ratios = Self::calculate_fulfillment_ratios(inventory, &total_demand);
+
+        Self::distribute_resources(inventory, requests, &global_ratios)
+    }
+
+    fn calculate_global_demand(requests: &[DemandRequest]) -> HashMap<ResourceType, u32> {
+        let mut total_demand = HashMap::new();
+        for req in requests {
+            for (res, amount) in &req.demand {
+                *total_demand.entry(*res).or_insert(0) += amount;
+            }
+        }
+        total_demand
+    }
+
+    fn calculate_fulfillment_ratios(
+        inventory: &ResourceInventory,
+        total_demand: &HashMap<ResourceType, u32>,
+    ) -> HashMap<ResourceType, f32> {
+        let mut global_ratios = HashMap::new();
+        for (res, total_needed) in total_demand {
+            if *total_needed > 0 {
+                let available = inventory.resources.get(res).copied().unwrap_or(0);
+                let ratio = (available as f32 / *total_needed as f32).min(1.0);
+                global_ratios.insert(*res, ratio);
+            }
+        }
+        global_ratios
+    }
+
+    fn distribute_resources(
+        inventory: &mut ResourceInventory,
+        requests: Vec<DemandRequest>,
+        global_ratios: &HashMap<ResourceType, f32>,
     ) -> AllocationResult {
         let mut final_allocations: AllocationResult = HashMap::new();
 
-        requests.sort_by_key(|b| std::cmp::Reverse(b.priority));
-
-        let mut grouped_requests: Vec<Vec<DemandRequest>> = Vec::new();
         for req in requests {
-            if let Some(last_group) = grouped_requests.last_mut()
-                && last_group.first().unwrap().priority == req.priority
-            {
-                last_group.push(req);
-                continue;
-            }
-            grouped_requests.push(vec![req]);
-        }
+            for (res, needed) in req.demand {
+                let ratio = global_ratios.get(&res).copied().unwrap_or(0.0);
+                let allocated_amount = (needed as f32 * ratio).floor() as u32;
 
-        for group in grouped_requests {
-            let mut group_demand: HashMap<ResourceType, f32> = HashMap::new();
-            for req in &group {
-                for (res, amount) in &req.demand {
-                    *group_demand.entry(*res).or_insert(0.0) += amount;
-                }
-            }
-
-            let mut group_ratios: HashMap<ResourceType, f32> = HashMap::new();
-            for (res, total_needed) in group_demand {
-                if total_needed > 0.0 {
-                    let available = inventory.resources.get(&res).copied().unwrap_or(0.0);
-                    let ratio = (available / total_needed).min(1.0);
-                    group_ratios.insert(res, ratio);
-                }
-            }
-
-            for req in group {
-                for (res, needed) in req.demand {
-                    let ratio = group_ratios.get(&res).copied().unwrap_or(0.0);
-                    let allocated_amount = needed * ratio;
-
-                    if allocated_amount > 0.0 {
+                if allocated_amount > 0 {
+                    if res != ResourceType::Labour {
                         inventory.consume(res, allocated_amount);
-
-                        *final_allocations
-                            .entry(req.entity_id)
-                            .or_default()
-                            .entry(res)
-                            .or_insert(0.0) += allocated_amount;
                     }
+
+                    *final_allocations
+                        .entry(req.entity_id)
+                        .or_default()
+                        .entry(res)
+                        .or_insert(0) += allocated_amount;
                 }
             }
         }
@@ -85,193 +91,208 @@ impl AllocationEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::economy::resource::{ResourceInventory, ResourceType};
+    use std::collections::HashMap;
 
-    /// Helper function to quickly create single-resource demand requests
-    fn create_request(
-        entity_id: u32,
-        priority: Priority,
-        resource: ResourceType,
-        amount: f32,
-    ) -> DemandRequest {
+    // Helper method to quickly build requests
+    fn create_request(entity_id: u32, demands: &[(ResourceType, u32)]) -> DemandRequest {
         let mut demand = HashMap::new();
-        demand.insert(resource, amount);
-        DemandRequest {
-            entity_id,
-            priority,
-            demand,
+        for &(res, amount) in demands {
+            demand.insert(res, amount);
         }
+        DemandRequest { entity_id, demand }
     }
 
     #[test]
-    fn test_allocation_full_satisfaction() {
-        let mut inventory = ResourceInventory::new(100.0);
-        inventory.add(ResourceType::Wood, 50.0);
+    fn test_execute_full_allocation() {
+        // Arrange
+        let mut inventory = ResourceInventory::new(1000);
+        inventory.add(ResourceType::Wood, 100);
+        inventory.add(ResourceType::Stone, 50);
 
-        let req1 = create_request(1, Priority::Industry, ResourceType::Wood, 20.0);
-        let req2 = create_request(2, Priority::Survival, ResourceType::Wood, 10.0);
+        let requests = vec![
+            create_request(1, &[(ResourceType::Wood, 40), (ResourceType::Stone, 20)]),
+            create_request(2, &[(ResourceType::Wood, 50)]),
+        ];
 
-        let requests = vec![req1, req2];
+        // Act
         let result = AllocationEngine::execute(&mut inventory, requests);
 
-        // Both entities should get exactly what they asked for (100% satisfaction)
+        // Assert
+        // Entity 1 received exactly what it asked for
         assert_eq!(
             *result.get(&1).unwrap().get(&ResourceType::Wood).unwrap(),
-            20.0
+            40
         );
         assert_eq!(
-            *result.get(&2).unwrap().get(&ResourceType::Wood).unwrap(),
-            10.0
+            *result.get(&1).unwrap().get(&ResourceType::Stone).unwrap(),
+            20
         );
 
-        // 30 wood was consumed, 20 should be left in the inventory
+        // Entity 2 received exactly what it asked for
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Wood).unwrap_or(&0.0),
-            20.0
+            *result.get(&2).unwrap().get(&ResourceType::Wood).unwrap(),
+            50
+        );
+
+        // Inventory is properly depleted
+        assert_eq!(
+            *inventory.resources.get(&ResourceType::Wood).unwrap(),
+            10,
+            "100 - (40 + 50) = 10"
+        );
+        assert_eq!(
+            *inventory.resources.get(&ResourceType::Stone).unwrap(),
+            30,
+            "50 - 20 = 30"
         );
     }
 
     #[test]
-    fn test_allocation_strict_priority_enforcement() {
-        let mut inventory = ResourceInventory::new(100.0);
-        inventory.add(ResourceType::Wood, 10.0); // Only 10 wood available
+    fn test_execute_partial_allocation_with_ratios() {
+        // Arrange
+        let mut inventory = ResourceInventory::new(1000);
+        inventory.add(ResourceType::Wood, 100);
 
-        // Industry wants 10, but Survival also wants 10.
-        let req_industry = create_request(1, Priority::Industry, ResourceType::Wood, 10.0);
-        let req_survival = create_request(2, Priority::Survival, ResourceType::Wood, 10.0);
+        // Total demand: 200 (E1 wants 150, E2 wants 50)
+        // Ratio = 100 / 200 = 0.5 (everyone gets 50% of their request)
+        let requests = vec![
+            create_request(1, &[(ResourceType::Wood, 150)]),
+            create_request(2, &[(ResourceType::Wood, 50)]),
+        ];
 
-        // Order in the vector shouldn't matter; the engine must sort them by priority
-        let requests = vec![req_industry, req_survival];
+        // Act
         let result = AllocationEngine::execute(&mut inventory, requests);
 
-        // Survival (higher priority) takes everything
-        assert_eq!(
-            *result.get(&2).unwrap().get(&ResourceType::Wood).unwrap(),
-            10.0
-        );
-
-        // Industry gets absolutely nothing
-        let industry_allocation = result.get(&1).cloned().unwrap_or_default();
-        assert_eq!(
-            *industry_allocation.get(&ResourceType::Wood).unwrap_or(&0.0),
-            0.0
-        );
-
-        // Inventory should be empty
-        assert_eq!(
-            *inventory.resources.get(&ResourceType::Wood).unwrap_or(&0.0),
-            0.0
-        );
-    }
-
-    #[test]
-    fn test_allocation_proportional_sharing_within_same_priority() {
-        let mut inventory = ResourceInventory::new(100.0);
-        inventory.add(ResourceType::Wood, 10.0); // Only 10 wood available
-
-        // Two factories (same priority), each wants 10 wood (20 total demand)
-        let req_factory_a = create_request(1, Priority::Industry, ResourceType::Wood, 10.0);
-        let req_factory_b = create_request(2, Priority::Industry, ResourceType::Wood, 10.0);
-
-        let requests = vec![req_factory_a, req_factory_b];
-        let result = AllocationEngine::execute(&mut inventory, requests);
-
-        // The fulfillment ratio for this priority group is 10/20 = 0.5 (50%)
-        // Both factories should receive exactly 5 wood
+        // Assert
         assert_eq!(
             *result.get(&1).unwrap().get(&ResourceType::Wood).unwrap(),
-            5.0
+            75,
+            "150 * 0.5 = 75"
         );
         assert_eq!(
             *result.get(&2).unwrap().get(&ResourceType::Wood).unwrap(),
-            5.0
+            25,
+            "50 * 0.5 = 25"
         );
 
-        // Inventory should be empty
-        assert_eq!(
-            *inventory.resources.get(&ResourceType::Wood).unwrap_or(&0.0),
-            0.0
-        );
+        // Inventory is completely empty
+        assert_eq!(*inventory.resources.get(&ResourceType::Wood).unwrap(), 0);
     }
 
     #[test]
-    fn test_allocation_weighted_proportional_sharing() {
-        let mut inventory = ResourceInventory::new(100.0);
-        inventory.add(ResourceType::Wood, 15.0);
+    fn test_execute_missing_resource() {
+        // Arrange
+        let mut inventory = ResourceInventory::new(1000);
+        inventory.add(ResourceType::Wood, 50);
+        // Stone is missing entirely from the inventory
 
-        // Big factory wants 20, small factory wants 10. Total demand = 30.
-        // Available is 15, so the ratio is 15/30 = 0.5.
-        let req_big = create_request(1, Priority::Industry, ResourceType::Wood, 20.0);
-        let req_small = create_request(2, Priority::Industry, ResourceType::Wood, 10.0);
+        let requests = vec![create_request(
+            1,
+            &[(ResourceType::Wood, 20), (ResourceType::Stone, 50)],
+        )];
 
-        let requests = vec![req_big, req_small];
+        // Act
         let result = AllocationEngine::execute(&mut inventory, requests);
 
-        // Big factory gets 50% of 20 = 10
+        // Assert
+        // Wood is allocated normally
         assert_eq!(
             *result.get(&1).unwrap().get(&ResourceType::Wood).unwrap(),
-            10.0
+            20
         );
-        // Small factory gets 50% of 10 = 5
-        assert_eq!(
-            *result.get(&2).unwrap().get(&ResourceType::Wood).unwrap(),
-            5.0
-        );
+
+        // Stone was completely ignored and not added to the result
+        assert!(result.get(&1).unwrap().get(&ResourceType::Stone).is_none());
     }
 
     #[test]
-    fn test_allocation_aggregation_for_same_entity() {
-        let mut inventory = ResourceInventory::new(100.0);
-        inventory.add(ResourceType::Grain, 15.0);
+    fn test_execute_labour_is_allocated_but_not_consumed() {
+        // Arrange
+        let mut inventory = ResourceInventory::new(1000);
+        inventory.add(ResourceType::Wood, 50);
+        inventory.add(ResourceType::Labour, 100); // We have 100 available workers
 
-        // Population (entity_id = 0) sends two requests from different Need Tiers
-        let req_survival = create_request(0, Priority::Survival, ResourceType::Grain, 10.0);
-        let req_comfort = create_request(0, Priority::Comfort, ResourceType::Grain, 10.0);
+        let requests = vec![
+            create_request(1, &[(ResourceType::Wood, 10), (ResourceType::Labour, 40)]),
+            create_request(2, &[(ResourceType::Labour, 80)]), // Total labour demand: 120
+        ];
 
-        // A brewery (Industry) sits between the population's priorities and wants 10 Grain
-        let req_industry = create_request(1, Priority::Industry, ResourceType::Grain, 10.0);
-
-        let requests = vec![req_survival, req_comfort, req_industry];
+        // Act
         let result = AllocationEngine::execute(&mut inventory, requests);
 
-        // The Waterfall execution order:
-        // 1. Survival (id=0) takes 10. (5 remaining)
-        // 2. Industry (id=1) takes 5. (0 remaining)
-        // 3. Comfort (id=0) takes 0.
-
-        // Population (id=0) should have its results AGGREGATED into one HashMap: 10 (from survival) + 0 (from comfort)
+        // Assert
+        // Ratio for Labour = 100 / 120 = ~0.833
         assert_eq!(
-            *result.get(&0).unwrap().get(&ResourceType::Grain).unwrap(),
-            10.0
+            *result.get(&1).unwrap().get(&ResourceType::Labour).unwrap(),
+            33,
+            "40 * 0.833 rounded down"
+        );
+        assert_eq!(
+            *result.get(&2).unwrap().get(&ResourceType::Labour).unwrap(),
+            66,
+            "80 * 0.833 rounded down"
         );
 
-        // Industry gets the leftovers (5)
+        // Wood was consumed as it is a material resource
         assert_eq!(
-            *result.get(&1).unwrap().get(&ResourceType::Grain).unwrap(),
-            5.0
+            *inventory.resources.get(&ResourceType::Wood).unwrap(),
+            40,
+            "50 - 10 = 40"
+        );
+
+        // Labour remains untouched in the inventory (renewable resource)
+        assert_eq!(
+            *inventory.resources.get(&ResourceType::Labour).unwrap(),
+            100
         );
     }
 
     #[test]
-    fn test_allocation_multiple_resources_in_single_request() {
-        let mut inventory = ResourceInventory::new(100.0);
-        inventory.add(ResourceType::Wood, 10.0);
-        inventory.add(ResourceType::Stone, 5.0);
+    fn test_execute_empty_requests() {
+        // Arrange
+        let mut inventory = ResourceInventory::new(1000);
+        inventory.add(ResourceType::Wood, 50);
 
-        let mut demand = HashMap::new();
-        demand.insert(ResourceType::Wood, 10.0);
-        demand.insert(ResourceType::Stone, 10.0); // Stone is scarce
+        let requests: Vec<DemandRequest> = vec![];
 
-        let req = DemandRequest {
-            entity_id: 1,
-            priority: Priority::Industry,
-            demand,
-        };
+        // Act
+        let result = AllocationEngine::execute(&mut inventory, requests);
 
-        let result = AllocationEngine::execute(&mut inventory, vec![req]);
+        // Assert
+        assert!(
+            result.is_empty(),
+            "Result should be empty when no requests are provided"
+        );
+        assert_eq!(
+            *inventory.resources.get(&ResourceType::Wood).unwrap(),
+            50,
+            "Inventory should remain untouched"
+        );
+    }
 
-        // One resource is fully satisfied, the other only reaches 50%
-        let allocated = result.get(&1).unwrap();
-        assert_eq!(*allocated.get(&ResourceType::Wood).unwrap_or(&0.0), 10.0);
-        assert_eq!(*allocated.get(&ResourceType::Stone).unwrap_or(&0.0), 5.0);
+    #[test]
+    fn test_execute_fractional_floor_rounding() {
+        // Arrange
+        let mut inventory = ResourceInventory::new(1000);
+        inventory.add(ResourceType::Wood, 10);
+
+        // Demand is 15, inventory is 10. Ratio: 10 / 15 = 0.666...
+        let requests = vec![create_request(1, &[(ResourceType::Wood, 15)])];
+
+        // Act
+        let result = AllocationEngine::execute(&mut inventory, requests);
+
+        // Assert
+        // 15 * 0.666... = 10. Floating point math can be tricky, this ensures we correctly floor to 10.
+        assert_eq!(
+            *result.get(&1).unwrap().get(&ResourceType::Wood).unwrap(),
+            10
+        );
+        assert_eq!(
+            *inventory.resources.get(&ResourceType::Wood).unwrap(),
+            0,
+            "Inventory should be fully depleted"
+        );
     }
 }

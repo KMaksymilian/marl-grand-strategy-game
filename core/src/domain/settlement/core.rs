@@ -1,23 +1,38 @@
-use crate::domain::buildings::core::{Building, BuildingLocation};
+use std::collections::HashMap;
+use crate::domain::buildings::core::{BuildingLocation};
 use crate::domain::buildings::factory::BuildingDefinition;
-use crate::domain::economy::resource_allocation::AllocationEngine;
-use crate::domain::settlement::building_manager::BuildingManager;
+use crate::domain::economy::resource_allocation::{AllocationEngine, AllocationResult, DemandRequest};
 use crate::domain::settlement::demographics::{ConsumptionResult, NeedRegistry, PopulationManager};
 use crate::domain::settlement::project_manager::ProjectManager;
 use crate::domain::settlement::projects::{Project, ProjectCost, ProjectResult};
 use crate::domain::settlement::settlement_inventory_manager::SettlementInventoryManager;
 use std::sync::Arc;
+use crate::domain::economy::resource::ResourceType;
 use crate::domain::world_data::point::Point;
 
 
 pub enum  SettlementCommand{
-    ClaimTile { settlement_id: u32, target_position: Point },
+    ClaimTile {
+        settlement_id: u32,
+        target_position: Point
+    },
+    ConstructBuilding {
+        settlement_id: u32,
+        instance_id: u32,
+        location: BuildingLocation,
+        position: Point,
+        definition: Arc<BuildingDefinition>,
+    },
+    UpgradeBuilding {
+        settlement_id: u32,
+        target_instance_id: u32,
+        new_definition: Arc<BuildingDefinition>,
+    }
 }
 #[derive(Debug)]
 pub struct Settlement {
     pub id: u32,
     pub inventory_manager: SettlementInventoryManager,
-    pub building_manager: BuildingManager,
     pub population_manager: PopulationManager,
     pub project_manager: ProjectManager,
 }
@@ -32,42 +47,43 @@ impl Settlement {
         Self {
             id,
             inventory_manager: SettlementInventoryManager::new(initial_capacity),
-            building_manager: BuildingManager::new(),
             population_manager: PopulationManager::new(initial_population, need_registry),
             project_manager: ProjectManager::new(),
         }
     }
 
-    pub fn process_turn(&mut self) -> (ConsumptionResult, Vec<SettlementCommand>) {
-        // Labour update
-        self.inventory_manager
-            .refresh_labor_capacity(self.population_manager.population);
 
-        // 1. Demand phase
+    /// Phase 2: Collecting Demands and allocating resources
+    pub fn prepare_allocations(&mut self, building_requests: Vec<DemandRequest>) -> AllocationResult {
+        self.inventory_manager.refresh_labor_capacity(self.population_manager.population);
+
         let mut requests = Vec::new();
         requests.extend(self.population_manager.generate_requests());
         requests.extend(self.project_manager.generate_requests());
-        requests.extend(self.building_manager.generate_requests());
+        requests.extend(building_requests);
 
-        // 2. Allocation phase
-        let allocations = AllocationEngine::execute(&mut self.inventory_manager.main, requests);
+        AllocationEngine::execute(&mut self.inventory_manager.main, requests)
+    }
 
-        // 3. Consumption and production phase
-        let consumption_result = self
-            .population_manager
-            .process_allocation(allocations.get(&0));
-        self.project_manager.process_allocation(&allocations);
-        let (produced, returned) = self.building_manager.process_allocations(&allocations);
+    /// Phase 3 : Applying allocation to internal systems
+    pub fn apply_internal_allocations(&mut self, allocations: &AllocationResult) -> ConsumptionResult {
+        let consumption_result = self.population_manager.process_allocation(allocations.get(&0));
+        self.project_manager.process_allocation(allocations);
 
-        // 4. Collecting phase
-        self.inventory_manager
-            .process_production_results(produced, returned);
+        consumption_result
+    }
+
+    /// Phase 4 & 5: Collecting resources and project finalization
+    pub fn finalize_turn(
+        &mut self,
+        buildings_produced: HashMap<ResourceType, u32>,
+        buildings_returned: HashMap<ResourceType, u32>,
+    ) -> Vec<SettlementCommand> {
+
+        self.inventory_manager.process_production_results(buildings_produced, buildings_returned);
         self.inventory_manager.commit_pending_production();
 
-        // 5. Project finalization phase
-        let commands = self.resolve_completed_projects();
-
-        (consumption_result, commands)
+        self.resolve_completed_projects()
     }
 
     fn resolve_completed_projects(&mut self) -> Vec<SettlementCommand> {
@@ -76,29 +92,30 @@ impl Settlement {
 
         for project in completed {
             match project.result {
-                ProjectResult::ConstructBuilding {
-                    location,
-                    position,
-                    definition,
-                } => {
-                    let new_building = Building::new(project.id, position, location, definition);
-                    self.building_manager.construct_building(new_building);
+                ProjectResult::ConstructBuilding { location, position, definition } => {
+                    commands.push(SettlementCommand::ConstructBuilding {
+                        settlement_id: self.id,
+                        instance_id: project.id,
+                        location,
+                        position,
+                        definition,
+                    });
                 }
-                ProjectResult::UpgradeBuilding {
-                    target_instance_id,
-                    new_definition,
-                } => {
-                    self.building_manager
-                        .upgrade_building(target_instance_id, new_definition);
-                }
-                ProjectResult::RecruitUnit { .. } => {
-                    // todo
+                ProjectResult::UpgradeBuilding { target_instance_id, new_definition } => {
+                    commands.push(SettlementCommand::UpgradeBuilding {
+                        settlement_id: self.id,
+                        target_instance_id,
+                        new_definition,
+                    });
                 }
                 ProjectResult::ClaimTile { target_position } => {
                     commands.push(SettlementCommand::ClaimTile {
                         settlement_id: self.id,
                         target_position,
                     });
+                }
+                ProjectResult::RecruitUnit { .. } => {
+                    // TODO
                 }
             }
         }

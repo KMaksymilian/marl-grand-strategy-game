@@ -21,13 +21,14 @@ pub struct ProductionResult {
     pub unused: HashMap<ResourceType, u32>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Building {
     pub instance_id: u32,
     pub position: Point,
     pub location: BuildingLocation,
     pub definition: Arc<BuildingDefinition>,
     pub target_efficiency: f32,
+    pub owner_id: u32,
     pub is_active: bool,
     pub current_workers: u32,
 }
@@ -38,6 +39,7 @@ impl Building {
         position: Point,
         location: BuildingLocation,
         definition: Arc<BuildingDefinition>,
+        owner_id: u32,
     ) -> Self {
         Self {
             instance_id,
@@ -45,6 +47,7 @@ impl Building {
             location,
             definition,
             target_efficiency: 0.0,
+            owner_id,
             is_active: true,
             current_workers: 0,
         }
@@ -208,6 +211,7 @@ mod tests {
             Point(10,15),
             BuildingLocation::Hub,
             def.clone(),
+            0
         );
 
         assert_eq!(building.instance_id, 1);
@@ -231,6 +235,7 @@ mod tests {
             Point(0,0),
             BuildingLocation::Spoke,
             def_t1.clone(),
+            0
         );
 
         building.upgrade(def_t2.clone());
@@ -249,7 +254,7 @@ mod tests {
             outputs: vec![(ResourceType::Wood, 10)],
         };
         let def = create_test_def("free_wood", 5, vec![behavior]);
-        let mut building = Building::new(1, Point(0,0), BuildingLocation::Hub, def);
+        let mut building = Building::new(1, Point(0,0), BuildingLocation::Hub, def, 0);
 
         // We do not grant Labour, only raw materials
         let mut granted = HashMap::new();
@@ -280,7 +285,7 @@ mod tests {
             outputs: vec![(ResourceType::Wood, 10)],
         };
         let def = create_test_def("free_wood", 5, vec![behavior]);
-        let mut building = Building::new(1, Point(0,0), BuildingLocation::Hub, def);
+        let mut building = Building::new(1, Point(0,0), BuildingLocation::Hub, def, 0);
         building.is_active = false;
 
         let mut granted = HashMap::new();
@@ -319,7 +324,7 @@ mod tests {
             outputs: vec![(ResourceType::Stone, 20)],
         };
         let def = create_test_def("stone_maker", 10, vec![behavior]);
-        let mut building = Building::new(1, Point(0,0), BuildingLocation::Spoke, def);
+        let mut building = Building::new(1, Point(0,0), BuildingLocation::Spoke, def, 0);
 
         // AllocationEngine provides full labor and resources
         let mut granted = HashMap::new();
@@ -355,7 +360,7 @@ mod tests {
             outputs: vec![(ResourceType::Stone, 40)],
         };
         let def = create_test_def("stone_maker", 10, vec![behavior]);
-        let mut building = Building::new(1, Point(0,0), BuildingLocation::Spoke, def);
+        let mut building = Building::new(1, Point(0,0), BuildingLocation::Spoke, def,0);
 
         // Grant only 50% of required workforce (5/10) and more wood than needed for 50% efficiency
         let mut granted = HashMap::new();
@@ -401,7 +406,7 @@ mod tests {
             construction_cost: Default::default(),
         });
 
-        let mut building = Building::new(1, Point(0,0), BuildingLocation::Spoke, def);
+        let mut building = Building::new(1, Point(0,0), BuildingLocation::Spoke, def,0);
 
         // Workers = 100%
         // Wood = 100% (10 granted / 10 needed)

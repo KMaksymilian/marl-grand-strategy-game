@@ -1,15 +1,16 @@
-use crate::domain::buildings::core::{BuildingLocation, Position};
+use crate::domain::buildings::core::{BuildingLocation};
 use crate::domain::buildings::factory::BuildingDefinition;
 use crate::domain::economy::resource::ResourceType;
 use crate::domain::economy::resource_allocation::DemandRequest;
 use std::collections::HashMap;
 use std::sync::Arc;
+use crate::domain::world_data::point::Point;
 
 #[derive(Debug, Clone)]
 pub enum ProjectResult {
     ConstructBuilding {
         location: BuildingLocation,
-        position: Position,
+        position: Point,
         definition: Arc<BuildingDefinition>,
     },
     UpgradeBuilding {
@@ -18,6 +19,9 @@ pub enum ProjectResult {
     },
     RecruitUnit {
         // unit_definition: Arc<UnitDefinition>
+    },
+    ClaimTile {
+        target_position: Point,
     },
 }
 

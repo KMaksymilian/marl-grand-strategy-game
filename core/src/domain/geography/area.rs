@@ -1,5 +1,5 @@
 use crate::domain::geography::{biome::Biome, elevation::Elevation, moisture::Moisture};
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Area {
     pub elevation_val: f32,
     pub moisture_val: f32,

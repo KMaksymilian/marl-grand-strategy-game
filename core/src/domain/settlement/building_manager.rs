@@ -90,12 +90,12 @@ impl BuildingManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::buildings::core::{Building, BuildingLocation, Position};
+    use crate::domain::buildings::core::{Building, BuildingLocation};
     use crate::domain::buildings::factory::{BuildingBehavior, BuildingDefinition};
     use crate::domain::economy::resource::ResourceType;
     use std::collections::HashMap;
     use std::sync::Arc;
-
+    use crate::domain::world_data::point::Point;
     // --- Helpers ---
 
     fn create_test_definition(
@@ -118,9 +118,7 @@ mod tests {
         location: BuildingLocation,
         def: Arc<BuildingDefinition>,
     ) -> Building {
-        let mut building = Building::new(instance_id, Position { x: 0, y: 0 }, location, def);
-        // Important: default is 0.0, which means no demand and no production.
-        // We set it to 1.0 to simulate a fully functioning building.
+        let mut building = Building::new(instance_id, Point(0,0), location, def);
         building.target_efficiency = 1.0;
         building
     }

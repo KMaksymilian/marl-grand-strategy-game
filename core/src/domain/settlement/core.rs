@@ -1,4 +1,4 @@
-use crate::domain::buildings::core::{Building, BuildingLocation, Position};
+use crate::domain::buildings::core::{Building, BuildingLocation};
 use crate::domain::buildings::factory::BuildingDefinition;
 use crate::domain::economy::resource_allocation::AllocationEngine;
 use crate::domain::settlement::building_manager::BuildingManager;
@@ -7,7 +7,12 @@ use crate::domain::settlement::project_manager::ProjectManager;
 use crate::domain::settlement::projects::{Project, ProjectCost, ProjectResult};
 use crate::domain::settlement::settlement_inventory_manager::SettlementInventoryManager;
 use std::sync::Arc;
+use crate::domain::world_data::point::Point;
 
+
+pub enum  SettlementCommand{
+    ClaimTile { settlement_id: u32, target_position: Point },
+}
 #[derive(Debug)]
 pub struct Settlement {
     pub id: u32,
@@ -33,7 +38,7 @@ impl Settlement {
         }
     }
 
-    pub fn process_turn(&mut self) -> ConsumptionResult {
+    pub fn process_turn(&mut self) -> (ConsumptionResult, Vec<SettlementCommand>) {
         // Labour update
         self.inventory_manager
             .refresh_labor_capacity(self.population_manager.population);
@@ -60,13 +65,14 @@ impl Settlement {
         self.inventory_manager.commit_pending_production();
 
         // 5. Project finalization phase
-        self.resolve_completed_projects();
+        let commands = self.resolve_completed_projects();
 
-        consumption_result
+        (consumption_result, commands)
     }
 
-    fn resolve_completed_projects(&mut self) {
+    fn resolve_completed_projects(&mut self) -> Vec<SettlementCommand> {
         let completed = self.project_manager.extract_completed();
+        let mut commands = Vec::new();
 
         for project in completed {
             match project.result {
@@ -88,8 +94,16 @@ impl Settlement {
                 ProjectResult::RecruitUnit { .. } => {
                     // todo
                 }
+                ProjectResult::ClaimTile { target_position } => {
+                    commands.push(SettlementCommand::ClaimTile {
+                        settlement_id: self.id,
+                        target_position,
+                    });
+                }
             }
         }
+
+        commands
     }
 
     // Request new building
@@ -97,7 +111,7 @@ impl Settlement {
         &mut self,
         project_id: u32,
         location: BuildingLocation,
-        position: Position,
+        position: Point,
         definition: Arc<BuildingDefinition>,
         cost: ProjectCost,
     ) {
@@ -133,4 +147,21 @@ impl Settlement {
 
         self.project_manager.add_project(project);
     }
+
+    pub fn queue_claim_tile(
+        &mut self,
+        project_id: u32,
+        target_position: Point,
+        cost: ProjectCost,
+    ) {
+        let project = Project::new(
+            project_id,
+            ProjectResult::ClaimTile { target_position },
+            cost,
+        );
+
+        self.project_manager.add_project(project);
+    }
 }
+
+

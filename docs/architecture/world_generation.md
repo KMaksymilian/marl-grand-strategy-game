@@ -77,6 +77,7 @@ classDiagram
         +usize x
         +usize y
     }
+```
 
 ## 3. Modele Konfiguracyjne Generacji Mapy
 Proces generacji proceduralnej jest sterowany przez zestaw konfiguracji, które pozwalają na dokładne dostrojenie kształtu i zachowania algorytmów na każdym etapie.
@@ -117,6 +118,7 @@ classDiagram
         +f64 dropoff_multiplyer
         +f64 final_val_addition
     }
+```
 
 ## 4. Generacja Proceduralna Danych Geograficznych
 Generacja podstawowych danych oparta jest na mapach szumów z wykorzystaniem biblioteki *Noise*. W celu zapewnienia wysokiej wydajności, obliczenia niezależnych punktów wykonywane są współbieżnie z pomocą biblioteki *Rayon*.

@@ -22,4 +22,4 @@ Struktura pomocnicza, odostępniająca metodę `draw(...)` rysująca teksturę m
 
 ### Struktura GameScreen
 Struktura ogólna, posiadająca struktury ***MapView*** oraz ***MapCamera***. Odpowiada za obsługę całej funkcjonalności w najwyższej możliwej abstrakcji poprzez metodę `run(...)`.
-W ogólności mapa jest rysowana w nieskończonej abstrakcyjnej przestrzeni (klasyczny układ współrzędnych z zamienionymi zwrotami osi pionowej), a obiekt ***Camera2D*** z biblioteki *macroquad* odpowiada za wycięcie odpowiedniej części tej przestrzeni i narysowanie jej wprost na monitorze (metody `set_camera(...) oraz camera_default(...)`).
+W ogólności mapa jest rysowana w nieskończonej abstrakcyjnej przestrzeni (klasyczny układ współrzędnych z zamienionymi zwrotami osi pionowej), a obiekt ***Camera2D*** z biblioteki *macroquad* odpowiada za wycięcie odpowiedniej części tej przestrzeni i narysowanie jej wprost na monitorze (metody `set_camera(...)` oraz `camera_default(...)`).

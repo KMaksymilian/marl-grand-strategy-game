@@ -1,75 +1,87 @@
-use crate::{
-    domain::{geography::elevation::Elevation, world_data::map::Map},
-    services::algorithms::path_finder::{
-        PENALTY_WEIGHT, PathFinder, STEP_COST, get_neighbors, h_function, point_to_idx,
-        retrieve_path,
-    },
-};
-use ordered_float::OrderedFloat;
-use priority_queue::PriorityQueue;
+use crate::domain::world_data::map::Map;
+use crate::services::algorithms::path_finder::PathFinder;
 use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 
-pub fn a_star(
-    map: &Map,
-    path_finder: &mut PathFinder,
-    start: (usize, usize),
-    end: (usize, usize),
-) -> Vec<usize> {
-    let width: usize = map.width;
-    let height: usize = map.height;
+const PENALTY: f32 = 100.0;
+const MOVE_COST: u32 = 10;
 
-    path_finder.current_generation += 1;
+pub struct AStar;
 
-    // Reset
-    if path_finder.current_generation == 0 {
-        path_finder.generation.fill(0);
-        path_finder.current_generation = 1;
-    }
+impl AStar {
+    pub fn a_star(
+        map: &Map,
+        path_finder: &mut PathFinder,
+        start: (usize, usize),
+        end: (usize, usize),
+    ) -> Option<Vec<usize>> {
+        let mut open_set: BinaryHeap<Reverse<(u32, (usize, usize))>> = BinaryHeap::new();
 
-    let mut open_set: PriorityQueue<(usize, usize), Reverse<OrderedFloat<f32>>> =
-        PriorityQueue::new();
+        path_finder.new_generation(start, map.width);
+        let start_idx: usize = PathFinder::point_to_idx(start, map.width);
+        path_finder.f_score[start_idx] = Self::heuristic(start, end);
+        open_set.push(Reverse((path_finder.f_score[start_idx], start)));
 
-    let start_idx: usize = point_to_idx(start, width);
+        while let Some(current_tuple) = open_set.pop() {
+            let current: (usize, usize) = current_tuple.0.1;
+            if current == end {
+                return Some(Self::reconstruct_path(
+                    &path_finder.came_from,
+                    end,
+                    map.width,
+                ));
+            }
 
-    path_finder.ensure_current(start_idx);
-    path_finder.g_score[start_idx] = 0.0;
-    path_finder.f_score[start_idx] = h_function(start, end);
-
-    open_set.push(start, Reverse(OrderedFloat(path_finder.f_score[start_idx])));
-
-    while let Some((current, _)) = open_set.pop() {
-        if current == end {
-            return retrieve_path(&path_finder.came_from, point_to_idx(current, width));
-        }
-
-        let current_idx: usize = point_to_idx(current, width);
-
-        for neighbor in get_neighbors(current, width, height) {
-            let neighbor_idx: usize = point_to_idx(neighbor, width);
-
-            if map.terrain[neighbor_idx].elevation_val < Elevation::OCEAN_LEVEL {
+            let current_idx: usize = PathFinder::point_to_idx(current, map.width);
+            if path_finder.visited[current_idx] {
                 continue;
             }
 
-            let delta_elevation: f32 =
-                map.terrain[current_idx].elevation_val - map.terrain[neighbor_idx].elevation_val;
-            let cost: f32 = STEP_COST + delta_elevation.abs() * PENALTY_WEIGHT;
+            path_finder.visited[current_idx] = true;
 
-            path_finder.ensure_current(neighbor_idx);
+            for neighbor in PathFinder::neighbors(current, map.width, map.height) {
+                let neighbor_idx: usize = PathFinder::point_to_idx(neighbor, map.width);
 
-            let suggested_g_score: f32 = path_finder.g_score[current_idx] + cost;
+                if path_finder.visited[neighbor_idx] {
+                    continue;
+                }
 
-            if suggested_g_score < path_finder.g_score[neighbor_idx] {
-                path_finder.came_from[neighbor_idx] = current_idx;
-                path_finder.g_score[neighbor_idx] = suggested_g_score;
+                let delta_elevation: f32 = map.terrain[current_idx].elevation_val
+                    - map.terrain[neighbor_idx].elevation_val;
+                let move_cost: u32 = MOVE_COST + (delta_elevation.abs() * PENALTY) as u32;
+                let tentative_g_score: u32 =
+                    path_finder.g_score[current_idx].saturating_add(move_cost);
 
-                let new_f_score: f32 = suggested_g_score + h_function(neighbor, end);
-                path_finder.f_score[neighbor_idx] = new_f_score;
-
-                open_set.push(neighbor, Reverse(OrderedFloat(new_f_score)));
+                if tentative_g_score < path_finder.g_score[neighbor_idx] {
+                    path_finder.came_from[neighbor_idx] = Some(current);
+                    path_finder.g_score[neighbor_idx] = tentative_g_score;
+                    let h_score: u32 = Self::heuristic(neighbor, end);
+                    let f_score: u32 = tentative_g_score.saturating_add(h_score);
+                    path_finder.f_score[neighbor_idx] = f_score;
+                    open_set.push(Reverse((f_score, neighbor)));
+                }
             }
         }
+        None
     }
 
-    Vec::new()
+    fn heuristic(a: (usize, usize), b: (usize, usize)) -> u32 {
+        let dx = a.0.abs_diff(b.0) as u32;
+        let dy = a.1.abs_diff(b.1) as u32;
+        (dx + dy) * MOVE_COST
+    }
+
+    fn reconstruct_path(
+        came_from: &[Option<(usize, usize)>],
+        mut current: (usize, usize),
+        width: usize,
+    ) -> Vec<usize> {
+        let mut path: Vec<usize> = vec![PathFinder::point_to_idx(current, width)];
+        while let Some(prev) = came_from[PathFinder::point_to_idx(current, width)] {
+            current = prev;
+            path.push(PathFinder::point_to_idx(current, width));
+        }
+        path.reverse();
+        path
+    }
 }

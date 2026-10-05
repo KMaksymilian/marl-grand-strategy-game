@@ -1,70 +1,58 @@
-use ordered_float::OrderedFloat;
-use priority_queue::PriorityQueue;
+use crate::domain::geography::elevation::Elevation;
+use crate::domain::world_data::map::Map;
+use crate::services::algorithms::path_finder::PathFinder;
 use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 
-use crate::{
-    domain::{geography::elevation::Elevation, world_data::map::Map},
-    services::algorithms::path_finder::{
-        PENALTY_WEIGHT, PathFinder, STEP_COST, get_neighbors, point_to_idx,
-    },
-};
+const PENALTY: f32 = 100.0;
+const MOVE_COST: u32 = 10;
 
-pub fn dijkstra_flood(
-    map: &Map,
-    path_finder: &mut PathFinder,
-    start: (usize, usize),
-    budget: f32,
-) -> Vec<usize> {
-    let width: usize = map.width;
-    let height: usize = map.height;
+pub struct DijkstraFlood;
 
-    path_finder.current_generation += 1;
+impl DijkstraFlood {
+    pub fn dijkstra_flood(
+        map: &Map,
+        path_finder: &mut PathFinder,
+        start: (usize, usize),
+        budget: u32,
+    ) -> Vec<usize> {
+        let mut zone: Vec<usize> = Vec::new();
+        let mut open_set: BinaryHeap<Reverse<(u32, (usize, usize))>> = BinaryHeap::new();
 
-    if path_finder.current_generation == 0 {
-        path_finder.generation.fill(0);
-        path_finder.current_generation = 1;
-    }
+        path_finder.new_generation(start, map.width);
+        open_set.push(Reverse((0, start)));
 
-    let mut open_set: PriorityQueue<(usize, usize), Reverse<OrderedFloat<f32>>> =
-        PriorityQueue::new();
-    let mut zone: Vec<usize> = Vec::new();
-
-    let start_idx: usize = point_to_idx(start, width);
-
-    path_finder.ensure_current(start_idx);
-    path_finder.g_score[start_idx] = 0.0;
-
-    open_set.push(start, Reverse(OrderedFloat(0.0)));
-
-    while let Some((current, _)) = open_set.pop() {
-        let current_idx: usize = point_to_idx(current, width);
-        zone.push(current_idx);
-
-        for neighbor in get_neighbors(current, width, height) {
-            let neighbor_idx: usize = point_to_idx(neighbor, width);
-
-            if map.terrain[neighbor_idx].elevation_val < Elevation::OCEAN_LEVEL {
+        while let Some(Reverse((current_cost, current))) = open_set.pop() {
+            let current_idx: usize = PathFinder::point_to_idx(current, map.width);
+            if path_finder.visited[current_idx] {
                 continue;
             }
+            path_finder.visited[current_idx] = true;
+            zone.push(current_idx);
 
-            let delta_elevation: f32 =
-                map.terrain[current_idx].elevation_val - map.terrain[neighbor_idx].elevation_val;
-            let cost: f32 = STEP_COST + delta_elevation.abs() * PENALTY_WEIGHT;
+            for neighbor in PathFinder::neighbors(current, map.width, map.height) {
+                let neighbor_idx: usize = PathFinder::point_to_idx(neighbor, map.width);
+                if path_finder.visited[neighbor_idx]
+                    || map.terrain[neighbor_idx].elevation_val < Elevation::OCEAN_LEVEL
+                {
+                    continue;
+                }
 
-            path_finder.ensure_current(neighbor_idx);
+                let delta_elevation: f32 = map.terrain[current_idx].elevation_val
+                    - map.terrain[neighbor_idx].elevation_val;
+                let move_cost: u32 = MOVE_COST + (delta_elevation.abs() * PENALTY) as u32;
+                let tentative_g_score: u32 = current_cost.saturating_add(move_cost);
+                if tentative_g_score > budget {
+                    continue;
+                }
 
-            let suggested_score: f32 = path_finder.g_score[current_idx] + cost;
-
-            if budget < suggested_score {
-                continue;
-            }
-
-            if suggested_score < path_finder.g_score[neighbor_idx] {
-                path_finder.g_score[neighbor_idx] = suggested_score;
-                open_set.push(neighbor, Reverse(OrderedFloat(suggested_score)));
+                if tentative_g_score < path_finder.g_score[neighbor_idx] {
+                    path_finder.g_score[neighbor_idx] = tentative_g_score;
+                    open_set.push(Reverse((tentative_g_score, neighbor)));
+                }
             }
         }
-    }
 
-    zone
+        zone
+    }
 }

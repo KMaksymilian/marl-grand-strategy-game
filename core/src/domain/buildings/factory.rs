@@ -1,4 +1,5 @@
 use crate::domain::economy::resource::ResourceType;
+use crate::domain::settlement::projects::ProjectCost;
 use crate::domain::settlement::stat::StatType;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -6,13 +7,13 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub enum BuildingBehavior {
     Production {
-        inputs: Vec<(ResourceType, f32)>,
-        outputs: Vec<(ResourceType, f32)>,
+        inputs: Vec<(ResourceType, u32)>,
+        outputs: Vec<(ResourceType, u32)>,
     },
     StatModifier {
         stat: StatType,
-        base_amount: f32,
-        per_worker_amount: f32,
+        base_amount: u32,
+        per_worker_amount: u32,
     },
 }
 
@@ -23,6 +24,7 @@ pub struct BuildingDefinition {
     pub tier: u8,
     pub max_workers: u32,
     pub behaviors: Vec<BuildingBehavior>,
+    pub construction_cost: ProjectCost,
 }
 
 #[derive(Default)]
@@ -53,9 +55,10 @@ mod tests {
             max_workers: 5,
             behaviors: vec![BuildingBehavior::StatModifier {
                 stat: StatType::HousingCapacity,
-                base_amount: 10.0,
-                per_worker_amount: 2.0,
+                base_amount: 10,
+                per_worker_amount: 2,
             }],
+            construction_cost: Default::default(),
         }
     }
 

@@ -1,16 +1,20 @@
-use crate::view::map::{map_camera::MapCamera, map_renderer::MapRenderer, map_view::MapView};
+use crate::view::map::{map_camera::MapCamera, map_texture::MapTexture};
+use macroquad::prelude::*;
 pub struct GameScreen {
-    map_view: MapView,
+    map_texture: MapTexture,
     camera: MapCamera,
 }
 impl GameScreen {
-    pub fn new(map_view: MapView, camera: MapCamera) -> GameScreen {
-        GameScreen { map_view, camera }
+    pub fn new(map_texture: MapTexture, camera: MapCamera) -> GameScreen {
+        GameScreen {
+            map_texture,
+            camera,
+        }
     }
     pub fn run(&mut self) {
         self.camera.update();
         self.camera.begin();
-        MapRenderer::draw(&self.map_view);
+        draw_texture(&self.map_texture.inner, 0.0, 0.0, WHITE);
         self.camera.end();
     }
 }

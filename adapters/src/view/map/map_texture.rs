@@ -5,11 +5,11 @@ use core::domain::{
     world_data::{map::Map, world::World},
 };
 use macroquad::prelude::*;
-pub struct MapView {
-    pub map_texture: Texture2D,
+pub struct MapTexture {
+    pub inner: Texture2D,
 }
-impl MapView {
-    pub fn generate_from_world(world: &World) -> MapView {
+impl MapTexture {
+    pub fn generate_from_world(world: &World) -> MapTexture {
         let width: usize = world.map.width;
         let height: usize = world.map.height;
         let mut map_image: Image = Image::gen_image_color(width as u16, height as u16, BLANK);
@@ -19,11 +19,12 @@ impl MapView {
 
         for y in 0..height {
             for x in 0..width {
-                let base_color: Color =
-                    MapView::determine_color(&world.map.terrain[y * width + x].determine_biome());
+                let base_color: Color = MapTexture::determine_color(
+                    &world.map.terrain[y * width + x].determine_biome(),
+                );
                 let noise: f32 = rng.random_range(-0.04..=0.04);
                 let lightning_multiplier: f32 =
-                    MapView::calculate_light(&world.map, x, y, width, height, ocean_level);
+                    MapTexture::calculate_light(&world.map, x, y, width, height, ocean_level);
                 let final_color: Color = Color::new(
                     (base_color.r * lightning_multiplier + noise).clamp(0.0, 1.0),
                     (base_color.g * lightning_multiplier + noise).clamp(0.0, 1.0),
@@ -34,13 +35,13 @@ impl MapView {
             }
         }
 
-        MapView::extract_map_borders(&mut map_image, width, height);
-        MapView::extract_province_borders(world, &mut map_image, width, height);
+        MapTexture::extract_map_borders(&mut map_image, width, height);
+        MapTexture::extract_province_borders(world, &mut map_image, width, height);
 
-        let map_texture: Texture2D = Texture2D::from_image(&map_image);
-        map_texture.set_filter(FilterMode::Nearest);
+        let inner: Texture2D = Texture2D::from_image(&map_image);
+        inner.set_filter(FilterMode::Nearest);
 
-        MapView { map_texture }
+        MapTexture { inner }
     }
 
     fn calculate_light(

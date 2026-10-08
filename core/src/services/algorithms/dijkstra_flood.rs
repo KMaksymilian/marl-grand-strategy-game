@@ -1,11 +1,7 @@
-use crate::domain::geography::elevation::Elevation;
 use crate::domain::world_data::map::Map;
 use crate::services::algorithms::path_finder::PathFinder;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
-
-const PENALTY: f32 = 100.0;
-const MOVE_COST: u32 = 10;
 
 pub struct DijkstraFlood;
 
@@ -16,6 +12,11 @@ impl DijkstraFlood {
         start: (usize, usize),
         budget: u32,
     ) -> Vec<usize> {
+        let start_idx: usize = PathFinder::point_to_idx(start, map.width);
+        if PathFinder::is_ocean(map, start_idx) {
+            return Vec::new();
+        }
+
         let mut zone: Vec<usize> = Vec::new();
         let mut open_set: BinaryHeap<Reverse<(u32, (usize, usize))>> = BinaryHeap::new();
 
@@ -30,18 +31,18 @@ impl DijkstraFlood {
             path_finder.visited[current_idx] = true;
             zone.push(current_idx);
 
-            for neighbor in PathFinder::neighbors(current, map.width, map.height) {
-                let neighbor_idx: usize = PathFinder::point_to_idx(neighbor, map.width);
-                if path_finder.visited[neighbor_idx]
-                    || map.terrain[neighbor_idx].elevation_val < Elevation::OCEAN_LEVEL
-                {
+            for (neighbor, step) in PathFinder::neighbors8(current, map.width, map.height) {
+                let neighbor_idx = PathFinder::point_to_idx(neighbor, map.width);
+                if path_finder.visited[neighbor_idx] || PathFinder::is_ocean(map, neighbor_idx) {
                     continue;
                 }
 
-                let delta_elevation: f32 = map.terrain[current_idx].elevation_val
-                    - map.terrain[neighbor_idx].elevation_val;
-                let move_cost: u32 = MOVE_COST + (delta_elevation.abs() * PENALTY) as u32;
-                let tentative_g_score: u32 = current_cost.saturating_add(move_cost);
+                let tentative_g_score = current_cost.saturating_add(PathFinder::move_cost(
+                    map,
+                    current_idx,
+                    neighbor_idx,
+                    step,
+                ));
                 if tentative_g_score > budget {
                     continue;
                 }

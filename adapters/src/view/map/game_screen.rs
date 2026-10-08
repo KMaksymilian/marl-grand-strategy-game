@@ -1,8 +1,8 @@
 use crate::view::map::{map_camera::MapCamera, map_texture::MapTexture};
 use macroquad::prelude::*;
 pub struct GameScreen {
-    map_texture: MapTexture,
-    camera: MapCamera,
+    pub map_texture: MapTexture,
+    pub camera: MapCamera,
 }
 impl GameScreen {
     pub fn new(map_texture: MapTexture, camera: MapCamera) -> GameScreen {

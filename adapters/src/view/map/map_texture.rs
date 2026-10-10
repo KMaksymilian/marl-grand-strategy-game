@@ -5,42 +5,55 @@ use core::domain::{
     world_data::{map::Map, world::World},
 };
 use macroquad::prelude::*;
-pub struct MapView {
-    pub map_texture: Texture2D,
+pub struct MapTextureData {
+    pub images: Vec<Image>,
+    pub textures: Vec<Texture2D>,
 }
-impl MapView {
-    pub fn generate_from_world(world: &World) -> MapView {
+impl MapTextureData {
+    pub fn generate_from_world(world: &World) -> MapTextureData {
         let width: usize = world.map.width;
         let height: usize = world.map.height;
-        let mut map_image: Image = Image::gen_image_color(width as u16, height as u16, BLANK);
+        let mut image_geo: Image = Image::gen_image_color(width as u16, height as u16, BLANK);
+        let mut image_ele: Image = image_geo.clone();
         let mut rng: ThreadRng = ::rand::rng();
-        let image_data: &mut [[u8; 4]] = map_image.get_image_data_mut();
+        let image_geo_data: &mut [[u8; 4]] = image_geo.get_image_data_mut();
+        let image_ele_data: &mut [[u8; 4]] = image_ele.get_image_data_mut();
         let ocean_level: f32 = Elevation::OCEAN_LEVEL;
 
         for y in 0..height {
             for x in 0..width {
-                let base_color: Color =
-                    MapView::determine_color(&world.map.terrain[y * width + x].determine_biome());
+                let elevation_color: Color = MapTextureData::determine_elevation_color(
+                    world.map.terrain[y * width + x].elevation_val,
+                );
+                let base_color: Color = MapTextureData::determine_biome_color(
+                    &world.map.terrain[y * width + x].determine_biome(),
+                );
                 let noise: f32 = rng.random_range(-0.04..=0.04);
                 let lightning_multiplier: f32 =
-                    MapView::calculate_light(&world.map, x, y, width, height, ocean_level);
+                    MapTextureData::calculate_light(&world.map, x, y, width, height, ocean_level);
                 let final_color: Color = Color::new(
                     (base_color.r * lightning_multiplier + noise).clamp(0.0, 1.0),
                     (base_color.g * lightning_multiplier + noise).clamp(0.0, 1.0),
                     (base_color.b * lightning_multiplier + noise).clamp(0.0, 1.0),
                     1.0,
                 );
-                image_data[y * width + x] = final_color.into();
+                image_geo_data[y * width + x] = final_color.into();
+                image_ele_data[y * width + x] = elevation_color.into();
             }
         }
 
-        MapView::extract_map_borders(&mut map_image, width, height);
-        MapView::extract_province_borders(world, &mut map_image, width, height);
+        MapTextureData::extract_map_borders(&mut image_geo, width, height);
+        MapTextureData::extract_province_borders(world, &mut image_geo, width, height);
 
-        let map_texture: Texture2D = Texture2D::from_image(&map_image);
-        map_texture.set_filter(FilterMode::Nearest);
+        let texture_geo: Texture2D = Texture2D::from_image(&image_geo);
+        texture_geo.set_filter(FilterMode::Nearest);
+        let texture_ele: Texture2D = Texture2D::from_image(&image_ele);
+        texture_ele.set_filter(FilterMode::Nearest);
 
-        MapView { map_texture }
+        MapTextureData {
+            images: vec![image_geo, image_ele],
+            textures: vec![texture_geo, texture_ele],
+        }
     }
 
     fn calculate_light(
@@ -86,7 +99,7 @@ impl MapView {
         ambient + (diffuse * dot)
     }
 
-    fn determine_color(biome: &Biome) -> Color {
+    fn determine_biome_color(biome: &Biome) -> Color {
         match biome {
             Biome::Ocean => color_u8!(68, 75, 115, 255),
             Biome::Desert => color_u8!(198, 185, 155, 255),
@@ -98,6 +111,15 @@ impl MapView {
             Biome::Tundra => color_u8!(180, 180, 175, 255),
             Biome::Snow => color_u8!(240, 240, 245, 255),
         }
+    }
+
+    fn determine_elevation_color(elevation_val: f32) -> Color {
+        Color::new(
+            1.0 - elevation_val,
+            1.0 - 0.4 * elevation_val,
+            1.0 - elevation_val,
+            1.0,
+        )
     }
 
     fn extract_map_borders(map_image: &mut Image, width: usize, height: usize) {

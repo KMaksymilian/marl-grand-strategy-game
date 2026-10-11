@@ -5,10 +5,12 @@ use core::domain::{
     world_data::{map::Map, world::World},
 };
 use macroquad::prelude::*;
+
 pub struct MapTextureData {
     pub images: Vec<Image>,
     pub textures: Vec<Texture2D>,
 }
+
 impl MapTextureData {
     pub fn generate_from_world(world: &World) -> MapTextureData {
         let width: usize = world.map.width;

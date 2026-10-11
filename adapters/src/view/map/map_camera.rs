@@ -1,8 +1,11 @@
+use crate::view::map::game_screen::CameraType;
 use macroquad::prelude::*;
+
 pub struct MapCamera {
     pub speed: f32,
     pub camera: Camera2D,
 }
+
 impl MapCamera {
     pub fn new(speed: f32, map_width: f32, map_height: f32) -> MapCamera {
         let camera: Camera2D =
@@ -44,5 +47,15 @@ impl MapCamera {
                 self.camera.zoom *= 1.0 / zoom_factor;
             }
         }
+    }
+
+    pub fn select_camera_type(&self) -> Option<CameraType> {
+        if is_key_pressed(KeyCode::Key1) || is_key_pressed(KeyCode::Kp1) {
+            return Some(CameraType::Geography);
+        }
+        if is_key_pressed(KeyCode::Key2) || is_key_pressed(KeyCode::Kp2) {
+            return Some(CameraType::Eleavation);
+        }
+        None
     }
 }

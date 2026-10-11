@@ -18,22 +18,24 @@ impl DijkstraFlood {
         }
 
         let mut zone: Vec<usize> = Vec::new();
-        let mut open_set: BinaryHeap<Reverse<(u32, (usize, usize))>> = BinaryHeap::new();
+        let mut open_set: BinaryHeap<Reverse<(u32, usize, usize)>> = BinaryHeap::new();
 
         path_finder.new_generation(start, map.width);
-        open_set.push(Reverse((0, start)));
+        open_set.push(Reverse((0, start.0, start.1)));
 
-        while let Some(Reverse((current_cost, current))) = open_set.pop() {
+        while let Some(Reverse((current_cost, cx, cy))) = open_set.pop() {
+            let current = (cx, cy);
             let current_idx: usize = PathFinder::point_to_idx(current, map.width);
-            if path_finder.visited[current_idx] {
+
+            if path_finder.is_visited(current_idx) {
                 continue;
             }
-            path_finder.visited[current_idx] = true;
+            path_finder.set_visited(current_idx);
             zone.push(current_idx);
 
             for (neighbor, step) in PathFinder::neighbors8(current, map.width, map.height) {
                 let neighbor_idx = PathFinder::point_to_idx(neighbor, map.width);
-                if path_finder.visited[neighbor_idx] || PathFinder::is_ocean(map, neighbor_idx) {
+                if path_finder.is_visited(neighbor_idx) || PathFinder::is_ocean(map, neighbor_idx) {
                     continue;
                 }
 
@@ -47,9 +49,9 @@ impl DijkstraFlood {
                     continue;
                 }
 
-                if tentative_g_score < path_finder.g_score[neighbor_idx] {
-                    path_finder.g_score[neighbor_idx] = tentative_g_score;
-                    open_set.push(Reverse((tentative_g_score, neighbor)));
+                if tentative_g_score < path_finder.get_g_score(neighbor_idx) {
+                    path_finder.set_g_score(neighbor_idx, tentative_g_score);
+                    open_set.push(Reverse((tentative_g_score, neighbor.0, neighbor.1)));
                 }
             }
         }

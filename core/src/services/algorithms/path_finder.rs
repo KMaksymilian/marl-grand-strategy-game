@@ -40,7 +40,7 @@ impl PathFinder {
         self.generation += 1;
         let start_idx: usize = PathFinder::point_to_idx(start, width);
         self.set_g_score(start_idx, 0);
-        self.came_from[start_idx] = None; 
+        self.came_from[start_idx] = None;
     }
 
     pub fn get_g_score(&self, idx: usize) -> u32 {

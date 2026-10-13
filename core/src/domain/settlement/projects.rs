@@ -12,6 +12,7 @@ pub enum ProjectError {
     MissingBuilding(BuildingId),
     DuplicateBuilding(BuildingId),
     UnsupportedRecruitment,
+    InvalidDefinition(crate::domain::buildings::factory::DefinitionError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,12 +60,22 @@ impl ProjectCost {
 }
 #[derive(Debug, Clone)]
 pub struct Project {
-    pub id: ProjectId,
-    pub result: ProjectResult,
-    pub remaining_cost: ProjectCost,
+    pub(super) id: ProjectId,
+    pub(super) result: ProjectResult,
+    pub(super) remaining_cost: ProjectCost,
 }
 
 impl Project {
+    pub fn id(&self) -> ProjectId {
+        self.id
+    }
+    pub fn result(&self) -> &ProjectResult {
+        &self.result
+    }
+    pub fn remaining_cost(&self) -> &ProjectCost {
+        &self.remaining_cost
+    }
+
     pub fn new(id: ProjectId, result: ProjectResult, mut initial_cost: ProjectCost) -> Self {
         initial_cost.normalize();
         Self {

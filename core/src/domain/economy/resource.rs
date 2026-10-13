@@ -8,9 +8,20 @@ pub enum ResourceType {
     Labour, // work in progress
 }
 
+impl ResourceType {
+    /// The material catalogue used to validate complete storage orders.
+    pub const MATERIALS: &'static [Self] = &[Self::Wood, Self::Stone, Self::Grain];
+}
+
+/// Resource counters can only be changed through capacity-aware commands.
+/// ```compile_fail
+/// use core::domain::economy::resource::{ResourceInventory, ResourceType};
+/// let mut inventory = ResourceInventory::new(1);
+/// inventory.resources.insert(ResourceType::Wood, 100);
+/// ```
 #[derive(Debug, Default)]
 pub struct ResourceInventory {
-    pub resources: HashMap<ResourceType, u32>,
+    resources: HashMap<ResourceType, u32>,
     max_capacity: u32,
 }
 
@@ -27,6 +38,19 @@ pub struct CapacityError {
 }
 
 impl ResourceInventory {
+    pub fn resources(&self) -> &HashMap<ResourceType, u32> {
+        &self.resources
+    }
+    pub fn amount(&self, resource: ResourceType) -> u32 {
+        self.resources.get(&resource).copied().unwrap_or(0)
+    }
+    pub(crate) fn reset_labour(&mut self, population: u32) {
+        self.resources.insert(ResourceType::Labour, population);
+    }
+    pub(crate) fn take_all(&mut self) -> HashMap<ResourceType, u32> {
+        std::mem::take(&mut self.resources)
+    }
+
     pub fn new(max_capacity: u32) -> Self {
         Self {
             resources: HashMap::new(),

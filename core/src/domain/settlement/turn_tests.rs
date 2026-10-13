@@ -29,8 +29,9 @@ fn add_building(settlement: &mut Settlement, id: u32, definition: Arc<BuildingDe
         Position { x: 0, y: 0 },
         BuildingLocation::Hub,
         definition,
-    );
-    building.target_efficiency = 1.0;
+    )
+    .unwrap();
+    building.set_target_efficiency(1.0).unwrap();
     settlement
         .building_manager
         .construct_building(building)
@@ -41,7 +42,7 @@ fn stock(settlement: &Settlement, resource: ResourceType) -> u32 {
     settlement
         .inventory_manager
         .main
-        .resources
+        .resources()
         .get(&resource)
         .copied()
         .unwrap_or(0)
@@ -52,10 +53,10 @@ fn storage_priorities_are_local_to_each_settlement() {
     let mut food_first = Settlement::new(1, 3, 1, Arc::default());
     let mut wood_first = Settlement::new(2, 3, 1, Arc::default());
     food_first
-        .set_storage_priority(ResourceType::Grain, 10)
+        .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
         .unwrap();
     wood_first
-        .set_storage_priority(ResourceType::Wood, 10)
+        .set_storage_order([ResourceType::Wood, ResourceType::Stone, ResourceType::Grain])
         .unwrap();
     let blueprint = definition(vec![BuildingBehavior::Production {
         inputs: vec![],
@@ -65,8 +66,8 @@ fn storage_priorities_are_local_to_each_settlement() {
     add_building(&mut wood_first, 1, blueprint);
     let food_report = food_first.process_turn();
     let wood_report = wood_first.process_turn();
-    assert_eq!(food_first.storage_priority(ResourceType::Wood), 0);
-    assert_eq!(wood_first.storage_priority(ResourceType::Grain), 0);
+    assert_eq!(food_first.storage_order()[0], ResourceType::Grain);
+    assert_eq!(wood_first.storage_order()[0], ResourceType::Wood);
     assert_eq!(stock(&food_first, ResourceType::Grain), 3);
     assert_eq!(stock(&food_first, ResourceType::Wood), 0);
     assert_eq!(stock(&wood_first, ResourceType::Wood), 3);
@@ -79,7 +80,7 @@ fn storage_priorities_are_local_to_each_settlement() {
 fn changing_storage_priority_affects_future_admissions_without_eviction() {
     let mut settlement = Settlement::new(1, 3, 1, Arc::default());
     settlement
-        .set_storage_priority(ResourceType::Grain, 10)
+        .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
         .unwrap();
     add_building(
         &mut settlement,
@@ -93,7 +94,7 @@ fn changing_storage_priority_affects_future_admissions_without_eviction() {
     assert_eq!(stock(&settlement, ResourceType::Grain), 3);
 
     settlement
-        .set_storage_priority(ResourceType::Wood, 20)
+        .set_storage_order([ResourceType::Wood, ResourceType::Stone, ResourceType::Grain])
         .unwrap();
     let report = settlement.process_turn();
     assert_eq!(stock(&settlement, ResourceType::Grain), 3);
@@ -229,7 +230,7 @@ fn opening_balance_includes_preexisting_buffer_stock() {
         settlement
             .inventory_manager
             .pending_production
-            .resources
+            .resources()
             .is_empty()
     );
     assert!(report.inventory.is_balanced());
@@ -324,12 +325,15 @@ fn upgrade_completion_reports_the_existing_building_id() {
     let upgraded = definition(vec![]);
     settlement
         .building_manager
-        .construct_building(Building::new(
-            BuildingId(8),
-            Position { x: 2, y: 3 },
-            BuildingLocation::Spoke,
-            old,
-        ))
+        .construct_building(
+            Building::new(
+                BuildingId(8),
+                Position { x: 2, y: 3 },
+                BuildingLocation::Spoke,
+                old,
+            )
+            .unwrap(),
+        )
         .unwrap();
     settlement
         .queue_upgrade(
@@ -357,9 +361,9 @@ fn upgrade_completion_reports_the_existing_building_id() {
         }]
     );
     let building = &settlement.building_manager.spoke_buildings[0];
-    assert_eq!(building.instance_id, BuildingId(8));
-    assert_eq!(building.position, Position { x: 2, y: 3 });
-    assert!(Arc::ptr_eq(&building.definition, &upgraded));
+    assert_eq!(building.instance_id(), BuildingId(8));
+    assert_eq!(building.position(), Position { x: 2, y: 3 });
+    assert!(std::ptr::eq(building.definition(), upgraded.as_ref()));
     assert_eq!(stock(&settlement, ResourceType::Wood), 0);
     assert!(settlement.project_manager.active_projects.is_empty());
     assert!(settlement.process_turn().projects.is_empty());
@@ -686,7 +690,7 @@ fn building_and_project_with_same_number_have_separate_allocations() {
     assert!(settlement.project_manager.active_projects.is_empty());
     let buildings = &settlement.building_manager.hub_buildings;
     assert_eq!(buildings.len(), 2);
-    assert_ne!(buildings[0].instance_id, buildings[1].instance_id);
+    assert_ne!(buildings[0].instance_id(), buildings[1].instance_id());
 }
 
 #[test]
@@ -829,7 +833,7 @@ fn production_is_available_for_consumption_in_the_next_turn() {
         settlement
             .inventory_manager
             .pending_production
-            .resources
+            .resources()
             .is_empty()
     );
 }

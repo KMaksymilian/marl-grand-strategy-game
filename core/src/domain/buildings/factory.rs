@@ -27,15 +27,67 @@ pub struct BuildingDefinition {
     pub construction_cost: ProjectCost,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DefinitionError {
+    InputOverflow(ResourceType),
+    OutputOverflow(ResourceType),
+    LabourInRecipe,
+    StatOverflow,
+}
+impl BuildingDefinition {
+    pub fn validate(&self) -> Result<(), DefinitionError> {
+        let mut inputs = HashMap::<ResourceType, u32>::new();
+        let mut outputs = HashMap::<ResourceType, u32>::new();
+        for behavior in &self.behaviors {
+            match behavior {
+                BuildingBehavior::Production {
+                    inputs: recipe_inputs,
+                    outputs: recipe_outputs,
+                } => {
+                    for (entries, totals, input) in [
+                        (recipe_inputs, &mut inputs, true),
+                        (recipe_outputs, &mut outputs, false),
+                    ] {
+                        for &(resource, amount) in entries {
+                            if resource == ResourceType::Labour {
+                                return Err(DefinitionError::LabourInRecipe);
+                            }
+                            let total = totals.entry(resource).or_default();
+                            *total = total.checked_add(amount).ok_or(if input {
+                                DefinitionError::InputOverflow(resource)
+                            } else {
+                                DefinitionError::OutputOverflow(resource)
+                            })?;
+                        }
+                    }
+                }
+                BuildingBehavior::StatModifier {
+                    base_amount,
+                    per_worker_amount,
+                    ..
+                } => {
+                    per_worker_amount
+                        .checked_mul(self.max_workers)
+                        .and_then(|value| value.checked_add(*base_amount))
+                        .ok_or(DefinitionError::StatOverflow)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Default)]
 pub struct BuildingFactory {
     registry: HashMap<String, Arc<BuildingDefinition>>,
 }
 
 impl BuildingFactory {
-    pub fn register(&mut self, definition: BuildingDefinition) {
+    pub fn register(&mut self, definition: BuildingDefinition) -> Result<(), DefinitionError> {
+        definition.validate()?;
         self.registry
             .insert(definition.id.clone(), Arc::new(definition));
+        Ok(())
     }
 
     pub fn get_blueprint(&self, id: &str) -> Option<Arc<BuildingDefinition>> {
@@ -76,7 +128,7 @@ mod tests {
         let mut factory = BuildingFactory::default();
         let def = create_dummy_definition("house_t1");
 
-        factory.register(def);
+        factory.register(def).unwrap();
 
         let blueprint = factory.get_blueprint("house_t1");
         assert!(blueprint.is_some(), "Blueprint should be initialized");
@@ -102,7 +154,7 @@ mod tests {
     fn test_flyweight_pattern_arc_cloning() {
         let mut factory = BuildingFactory::default();
         let def = create_dummy_definition("lumber_mill");
-        factory.register(def);
+        factory.register(def).unwrap();
 
         let bp1 = factory.get_blueprint("lumber_mill").unwrap();
         let bp2 = factory.get_blueprint("lumber_mill").unwrap();
@@ -119,11 +171,11 @@ mod tests {
 
         let mut def1 = create_dummy_definition("forge");
         def1.max_workers = 3;
-        factory.register(def1);
+        factory.register(def1).unwrap();
 
         let mut def2 = create_dummy_definition("forge");
         def2.max_workers = 10;
-        factory.register(def2);
+        factory.register(def2).unwrap();
 
         let blueprint = factory.get_blueprint("forge").unwrap();
 

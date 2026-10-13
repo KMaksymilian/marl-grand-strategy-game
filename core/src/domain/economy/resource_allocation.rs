@@ -42,7 +42,7 @@ impl AllocationEngine {
         }
         let mut final_allocations: AllocationResult = HashMap::new();
         for (resource, recipients) in demands {
-            let available = inventory.resources.get(&resource).copied().unwrap_or(0);
+            let available = inventory.resources().get(&resource).copied().unwrap_or(0);
             let total: u128 = recipients.values().sum();
             let budget = u128::from(available).min(total);
             if budget == 0 {
@@ -110,7 +110,7 @@ mod tests {
                                 })
                                 .collect();
                             let mut inventory = ResourceInventory::new(100);
-                            inventory.resources.insert(resource, available);
+                            inventory.add(resource, available);
                             let result =
                                 AllocationEngine::execute(&mut inventory, requests.clone());
                             let mut total_allocated = 0;
@@ -125,7 +125,7 @@ mod tests {
                             }
                             assert_eq!(total_allocated, available.min(first + second + third));
                             assert_eq!(
-                                inventory.resources[&resource],
+                                inventory.amount(resource),
                                 if resource == ResourceType::Labour {
                                     available
                                 } else {
@@ -134,7 +134,7 @@ mod tests {
                             );
 
                             let mut reversed_inventory = ResourceInventory::new(100);
-                            reversed_inventory.resources.insert(resource, available);
+                            reversed_inventory.add(resource, available);
                             let reversed = AllocationEngine::execute(
                                 &mut reversed_inventory,
                                 requests.into_iter().rev().collect(),
@@ -166,7 +166,7 @@ mod tests {
             result[&AllocationRecipient::Building(BuildingId(2))][&ResourceType::Wood],
             2_147_483_647
         );
-        assert_eq!(inventory.resources[&ResourceType::Wood], 0);
+        assert_eq!(inventory.resources()[&ResourceType::Wood], 0);
     }
 
     #[test]
@@ -189,7 +189,7 @@ mod tests {
             result[&AllocationRecipient::Building(BuildingId(2))][&ResourceType::Wood],
             1
         );
-        assert_eq!(inventory.resources[&ResourceType::Wood], 0);
+        assert_eq!(inventory.resources()[&ResourceType::Wood], 0);
     }
 
     #[test]
@@ -207,7 +207,7 @@ mod tests {
             result[&AllocationRecipient::Building(BuildingId(1))][&ResourceType::Wood],
             u32::MAX
         );
-        assert_eq!(inventory.resources[&ResourceType::Wood], 0);
+        assert_eq!(inventory.resources()[&ResourceType::Wood], 0);
     }
 
     // Helper method to quickly build requests
@@ -268,12 +268,12 @@ mod tests {
 
         // Inventory is properly depleted
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Wood).unwrap(),
+            *inventory.resources().get(&ResourceType::Wood).unwrap(),
             10,
             "100 - (40 + 50) = 10"
         );
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Stone).unwrap(),
+            *inventory.resources().get(&ResourceType::Stone).unwrap(),
             30,
             "50 - 20 = 30"
         );
@@ -316,7 +316,7 @@ mod tests {
         );
 
         // Inventory is completely empty
-        assert_eq!(*inventory.resources.get(&ResourceType::Wood).unwrap(), 0);
+        assert_eq!(*inventory.resources().get(&ResourceType::Wood).unwrap(), 0);
     }
 
     #[test]
@@ -393,14 +393,14 @@ mod tests {
 
         // Wood was consumed as it is a material resource
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Wood).unwrap(),
+            *inventory.resources().get(&ResourceType::Wood).unwrap(),
             40,
             "50 - 10 = 40"
         );
 
         // Labour remains untouched in the inventory (renewable resource)
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Labour).unwrap(),
+            *inventory.resources().get(&ResourceType::Labour).unwrap(),
             100
         );
     }
@@ -422,7 +422,7 @@ mod tests {
             "Result should be empty when no requests are provided"
         );
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Wood).unwrap(),
+            *inventory.resources().get(&ResourceType::Wood).unwrap(),
             50,
             "Inventory should remain untouched"
         );
@@ -451,7 +451,7 @@ mod tests {
             10
         );
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Wood).unwrap(),
+            *inventory.resources().get(&ResourceType::Wood).unwrap(),
             0,
             "Inventory should be fully depleted"
         );

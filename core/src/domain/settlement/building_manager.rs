@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct BuildingManager {
-    pub hub_buildings: Vec<Building>,
-    pub spoke_buildings: Vec<Building>,
+    pub(super) hub_buildings: Vec<Building>,
+    pub(super) spoke_buildings: Vec<Building>,
 }
 
 impl BuildingManager {
@@ -23,10 +23,10 @@ impl BuildingManager {
     }
 
     pub fn construct_building(&mut self, building: Building) -> Result<(), BuildingId> {
-        if self.contains(building.instance_id) {
-            return Err(building.instance_id);
+        if self.contains(building.instance_id()) {
+            return Err(building.instance_id());
         }
-        match building.location {
+        match building.location() {
             BuildingLocation::Hub => self.hub_buildings.push(building),
             BuildingLocation::Spoke => self.spoke_buildings.push(building),
         }
@@ -37,7 +37,7 @@ impl BuildingManager {
         self.hub_buildings
             .iter()
             .chain(&self.spoke_buildings)
-            .any(|building| building.instance_id == id)
+            .any(|building| building.instance_id() == id)
     }
 
     /// A completed project receives a building ID independent of its project ID.
@@ -46,7 +46,7 @@ impl BuildingManager {
             .hub_buildings
             .iter()
             .chain(&self.spoke_buildings)
-            .map(|building| building.instance_id)
+            .map(|building| building.instance_id())
             .collect();
         (0..=u32::MAX)
             .map(BuildingId)
@@ -63,10 +63,9 @@ impl BuildingManager {
             .hub_buildings
             .iter_mut()
             .chain(self.spoke_buildings.iter_mut())
-            .find(|b| b.instance_id == target_id)
+            .find(|b| b.instance_id() == target_id)
         {
-            building.definition = new_def;
-            true
+            building.upgrade(new_def).is_ok()
         } else {
             false
         }
@@ -82,7 +81,7 @@ impl BuildingManager {
                     None
                 } else {
                     Some(DemandRequest {
-                        recipient: AllocationRecipient::Building(b.instance_id),
+                        recipient: AllocationRecipient::Building(b.instance_id()),
                         demand,
                     })
                 }
@@ -102,7 +101,7 @@ impl BuildingManager {
             .iter_mut()
             .chain(self.spoke_buildings.iter_mut())
         {
-            let grants = allocations.get(&AllocationRecipient::Building(building.instance_id));
+            let grants = allocations.get(&AllocationRecipient::Building(building.instance_id()));
             let update_result = building.resolve_allocation(grants);
 
             for (res, amount) in update_result.production.produced {
@@ -172,10 +171,11 @@ mod tests {
             Position { x: 0, y: 0 },
             location,
             def,
-        );
+        )
+        .unwrap();
         // Important: default is 0.0, which means no demand and no production.
         // We set it to 1.0 to simulate a fully functioning building.
-        building.target_efficiency = 1.0;
+        building.set_target_efficiency(1.0).unwrap();
         building
     }
 
@@ -200,14 +200,14 @@ mod tests {
             1,
             "Hub building should go to hub_buildings array"
         );
-        assert_eq!(manager.hub_buildings[0].instance_id, BuildingId(1));
+        assert_eq!(manager.hub_buildings[0].instance_id(), BuildingId(1));
 
         assert_eq!(
             manager.spoke_buildings.len(),
             1,
             "Spoke building should go to spoke_buildings array"
         );
-        assert_eq!(manager.spoke_buildings[0].instance_id, BuildingId(2));
+        assert_eq!(manager.spoke_buildings[0].instance_id(), BuildingId(2));
     }
 
     #[test]
@@ -227,7 +227,7 @@ mod tests {
         // Assert
         assert!(result, "Upgrade should return true for existing building");
         assert!(
-            Arc::ptr_eq(&manager.hub_buildings[0].definition, &new_def),
+            std::ptr::eq(manager.hub_buildings[0].definition(), new_def.as_ref()),
             "Building definition should be successfully replaced"
         );
     }

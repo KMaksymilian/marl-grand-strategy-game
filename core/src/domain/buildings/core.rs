@@ -1,4 +1,4 @@
-use crate::domain::buildings::factory::{BuildingBehavior, BuildingDefinition};
+use crate::domain::buildings::factory::{BuildingBehavior, BuildingDefinition, DefinitionError};
 use crate::domain::economy::resource::ResourceType;
 use crate::domain::ids::BuildingId;
 use std::collections::HashMap;
@@ -26,25 +26,68 @@ pub struct ProductionResult {
     pub unused: HashMap<ResourceType, u32>,
 }
 
+/// Identity and runtime state are protected by read accessors and validated commands.
+/// ```compile_fail
+/// use core::domain::buildings::core::Building;
+/// fn change_identity(building: &mut Building) {
+///     building.instance_id = core::domain::ids::BuildingId(10);
+/// }
+/// ```
 #[derive(Debug)]
 pub struct Building {
-    pub instance_id: BuildingId,
-    pub position: Position,
-    pub location: BuildingLocation,
-    pub definition: Arc<BuildingDefinition>,
-    pub target_efficiency: f32,
-    pub is_active: bool,
-    pub current_workers: u32,
+    instance_id: BuildingId,
+    position: Position,
+    location: BuildingLocation,
+    definition: Arc<BuildingDefinition>,
+    target_efficiency: f32,
+    is_active: bool,
+    current_workers: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EfficiencyError;
 impl Building {
+    pub fn instance_id(&self) -> BuildingId {
+        self.instance_id
+    }
+    pub fn position(&self) -> Position {
+        self.position
+    }
+    pub fn location(&self) -> BuildingLocation {
+        self.location
+    }
+    pub fn definition(&self) -> &BuildingDefinition {
+        &self.definition
+    }
+    pub fn target_efficiency(&self) -> f32 {
+        self.target_efficiency
+    }
+    pub fn is_active(&self) -> bool {
+        self.is_active
+    }
+    pub fn current_workers(&self) -> u32 {
+        self.current_workers
+    }
+    pub fn set_active(&mut self, active: bool) {
+        self.is_active = active;
+    }
+
+    pub fn set_target_efficiency(&mut self, value: f32) -> Result<(), EfficiencyError> {
+        if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+            return Err(EfficiencyError);
+        }
+        self.target_efficiency = value;
+        Ok(())
+    }
+
     pub fn new(
         instance_id: BuildingId,
         position: Position,
         location: BuildingLocation,
         definition: Arc<BuildingDefinition>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, DefinitionError> {
+        definition.validate()?;
+        Ok(Self {
             instance_id,
             position,
             location,
@@ -52,11 +95,17 @@ impl Building {
             target_efficiency: 0.0,
             is_active: true,
             current_workers: 0,
-        }
+        })
     }
 
-    pub fn upgrade(&mut self, new_definition: Arc<BuildingDefinition>) {
+    pub fn upgrade(
+        &mut self,
+        new_definition: Arc<BuildingDefinition>,
+    ) -> Result<(), DefinitionError> {
+        new_definition.validate()?;
+        self.current_workers = self.current_workers.min(new_definition.max_workers);
         self.definition = new_definition;
+        Ok(())
     }
 
     pub fn calculate_demand(&self) -> HashMap<ResourceType, u32> {
@@ -66,9 +115,8 @@ impl Building {
             return demand;
         }
 
-        let labor_needed = (self.definition.max_workers as f64
-            * f64::from(self.target_efficiency.clamp(0.0, 1.0)))
-        .floor() as u32;
+        let labor_needed =
+            (self.definition.max_workers as f64 * f64::from(self.target_efficiency)).floor() as u32;
         if labor_needed > 0 {
             demand.insert(ResourceType::Labour, labor_needed);
         }
@@ -76,9 +124,8 @@ impl Building {
         for behavior in &self.definition.behaviors {
             if let BuildingBehavior::Production { inputs, .. } = behavior {
                 for (res, amount) in inputs {
-                    *demand.entry(*res).or_insert(0) += (*amount as f64
-                        * f64::from(self.target_efficiency.clamp(0.0, 1.0)))
-                    .floor() as u32;
+                    *demand.entry(*res).or_insert(0) +=
+                        (*amount as f64 * f64::from(self.target_efficiency)).floor() as u32;
                 }
             }
         }
@@ -186,7 +233,8 @@ mod tests {
             Position { x: 0, y: 0 },
             BuildingLocation::Hub,
             def,
-        );
+        )
+        .unwrap();
         let grants = HashMap::from([(ResourceType::Labour, 1), (ResourceType::Wood, 1)]);
         let result = building.resolve_allocation(Some(&grants)).production;
         assert_eq!(result.produced[&ResourceType::Stone], 1);
@@ -208,7 +256,8 @@ mod tests {
             Position { x: 0, y: 0 },
             BuildingLocation::Hub,
             def,
-        );
+        )
+        .unwrap();
         let grants = HashMap::from([
             (ResourceType::Labour, 1),
             (ResourceType::Wood, 3),
@@ -236,7 +285,8 @@ mod tests {
             Position { x: 0, y: 0 },
             BuildingLocation::Hub,
             def,
-        );
+        )
+        .unwrap();
         let grants = HashMap::from([(ResourceType::Labour, 1), (ResourceType::Wood, amount)]);
         let result = building.resolve_allocation(Some(&grants)).production;
         assert_eq!(result.produced[&ResourceType::Stone], amount);
@@ -266,7 +316,8 @@ mod tests {
             Position { x: 10, y: 15 },
             BuildingLocation::Hub,
             def.clone(),
-        );
+        )
+        .unwrap();
 
         assert_eq!(building.instance_id, BuildingId(1));
         assert_eq!(building.position, Position { x: 10, y: 15 });
@@ -289,9 +340,10 @@ mod tests {
             Position { x: 0, y: 0 },
             BuildingLocation::Spoke,
             def_t1.clone(),
-        );
+        )
+        .unwrap();
 
-        building.upgrade(def_t2.clone());
+        building.upgrade(def_t2.clone()).unwrap();
 
         assert!(
             Arc::ptr_eq(&building.definition, &def_t2),
@@ -312,7 +364,8 @@ mod tests {
             Position { x: 0, y: 0 },
             BuildingLocation::Hub,
             def,
-        );
+        )
+        .unwrap();
 
         // We do not grant Labour, only raw materials
         let mut granted = HashMap::new();
@@ -348,7 +401,8 @@ mod tests {
             Position { x: 0, y: 0 },
             BuildingLocation::Hub,
             def,
-        );
+        )
+        .unwrap();
         building.is_active = false;
 
         let mut granted = HashMap::new();
@@ -392,7 +446,8 @@ mod tests {
             Position { x: 0, y: 0 },
             BuildingLocation::Spoke,
             def,
-        );
+        )
+        .unwrap();
 
         // AllocationEngine provides full labor and resources
         let mut granted = HashMap::new();
@@ -433,7 +488,8 @@ mod tests {
             Position { x: 0, y: 0 },
             BuildingLocation::Spoke,
             def,
-        );
+        )
+        .unwrap();
 
         // Grant only 50% of required workforce (5/10) and more wood than needed for 50% efficiency
         let mut granted = HashMap::new();
@@ -484,7 +540,8 @@ mod tests {
             Position { x: 0, y: 0 },
             BuildingLocation::Spoke,
             def,
-        );
+        )
+        .unwrap();
 
         // Workers = 100%
         // Wood = 100% (10 granted / 10 needed)

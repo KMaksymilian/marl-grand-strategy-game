@@ -1,13 +1,13 @@
 use crate::domain::economy::resource::{ResourceInventory, ResourceType};
-use crate::domain::economy::storage_priority::{StoragePriorities, StoragePriorityError};
+use crate::domain::economy::storage_order::{StorageOrder, StorageOrderError};
 use crate::domain::settlement::turn_report::{InventoryLoss, InventoryLossStage};
 use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct SettlementInventoryManager {
-    pub main: ResourceInventory,
-    pub pending_production: ResourceInventory,
-    priorities: StoragePriorities,
+    pub(super) main: ResourceInventory,
+    pub(super) pending_production: ResourceInventory,
+    priorities: StorageOrder,
 }
 
 impl SettlementInventoryManager {
@@ -15,25 +15,24 @@ impl SettlementInventoryManager {
         Self {
             main: ResourceInventory::new(capacity),
             pending_production: ResourceInventory::new(capacity),
-            priorities: StoragePriorities::default(),
+            priorities: StorageOrder::default(),
         }
     }
 
-    pub fn set_storage_priority(
+    pub fn set_storage_order(
         &mut self,
-        resource: ResourceType,
-        priority: u32,
-    ) -> Result<(), StoragePriorityError> {
-        self.priorities.set(resource, priority)
+        materials: impl AsRef<[ResourceType]>,
+    ) -> Result<(), StorageOrderError> {
+        self.priorities.set(materials)
     }
 
-    pub fn storage_priority(&self, resource: ResourceType) -> u32 {
-        self.priorities.get(resource)
+    pub fn storage_order(&self) -> &[ResourceType] {
+        self.priorities.get()
     }
 
     /// Reset Labour amount at the start of turn
     pub fn refresh_labor_capacity(&mut self, population: u32) {
-        self.main.resources.insert(ResourceType::Labour, population);
+        self.main.reset_labour(population);
     }
 
     /// Produced goods are stored in buffer
@@ -61,8 +60,8 @@ impl SettlementInventoryManager {
     pub fn commit_pending_production(&mut self) -> Vec<InventoryLoss> {
         let pending = self
             .pending_production
-            .resources
-            .drain()
+            .take_all()
+            .into_iter()
             .map(|(resource, amount)| (resource, u64::from(amount)))
             .collect();
         Self::add_in_order(
@@ -77,7 +76,7 @@ impl SettlementInventoryManager {
         inventory: &mut ResourceInventory,
         batch: HashMap<ResourceType, u64>,
         stage: InventoryLossStage,
-        priorities: &StoragePriorities,
+        priorities: &StorageOrder,
     ) -> Vec<InventoryLoss> {
         let mut entries: Vec<_> = batch.into_iter().collect();
         entries.sort_unstable_by(|a, b| priorities.compare(a.0, b.0));
@@ -107,15 +106,15 @@ mod tests {
     fn configured_priority_controls_buffer_overflow() {
         let mut manager = SettlementInventoryManager::new(3);
         manager
-            .set_storage_priority(ResourceType::Grain, 10)
+            .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
             .unwrap();
         let losses = manager.process_production_results(
             HashMap::from([(ResourceType::Wood, 3), (ResourceType::Grain, 3)]),
             HashMap::new(),
         );
         assert_eq!(
-            manager.pending_production.resources,
-            HashMap::from([(ResourceType::Grain, 3)])
+            manager.pending_production.resources(),
+            &HashMap::from([(ResourceType::Grain, 3)])
         );
         assert_eq!(
             losses,
@@ -131,15 +130,15 @@ mod tests {
     fn configured_priority_controls_return_overflow() {
         let mut manager = SettlementInventoryManager::new(3);
         manager
-            .set_storage_priority(ResourceType::Grain, 10)
+            .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
             .unwrap();
         let losses = manager.process_production_results(
             HashMap::new(),
             HashMap::from([(ResourceType::Wood, 3), (ResourceType::Grain, 3)]),
         );
         assert_eq!(
-            manager.main.resources,
-            HashMap::from([(ResourceType::Grain, 3)])
+            manager.main.resources(),
+            &HashMap::from([(ResourceType::Grain, 3)])
         );
         assert_eq!(
             losses,
@@ -156,7 +155,7 @@ mod tests {
         let mut manager = SettlementInventoryManager::new(6);
         manager.main.set_capacity(3).unwrap();
         manager
-            .set_storage_priority(ResourceType::Grain, 10)
+            .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
             .unwrap();
         assert!(
             manager
@@ -175,8 +174,8 @@ mod tests {
             }]
         );
         assert_eq!(
-            manager.main.resources,
-            HashMap::from([(ResourceType::Grain, 3)])
+            manager.main.resources(),
+            &HashMap::from([(ResourceType::Grain, 3)])
         );
     }
 
@@ -192,9 +191,7 @@ mod tests {
             [Grain, Stone, Wood],
         ] {
             let mut manager = SettlementInventoryManager::new(4);
-            manager.set_storage_priority(Grain, 2).unwrap();
-            manager.set_storage_priority(Stone, 2).unwrap();
-            manager.set_storage_priority(Wood, 1).unwrap();
+            manager.set_storage_order([Stone, Grain, Wood]).unwrap();
             let losses = manager.process_production_results(
                 order
                     .into_iter()
@@ -203,8 +200,8 @@ mod tests {
                 HashMap::new(),
             );
             assert_eq!(
-                manager.pending_production.resources,
-                HashMap::from([(Stone, 3), (Grain, 1)])
+                manager.pending_production.resources(),
+                &HashMap::from([(Stone, 3), (Grain, 1)])
             );
             assert_eq!(
                 losses,
@@ -228,7 +225,7 @@ mod tests {
     fn product_priority_does_not_override_returns_phase() {
         let mut manager = SettlementInventoryManager::new(1);
         manager
-            .set_storage_priority(ResourceType::Grain, 100)
+            .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
             .unwrap();
         assert!(
             manager
@@ -247,8 +244,8 @@ mod tests {
             }]
         );
         assert_eq!(
-            manager.main.resources,
-            HashMap::from([(ResourceType::Wood, 1)])
+            manager.main.resources(),
+            &HashMap::from([(ResourceType::Wood, 1)])
         );
     }
 
@@ -271,8 +268,8 @@ mod tests {
                 .collect();
             let losses = manager.process_production_results(produced, HashMap::new());
             assert_eq!(
-                manager.pending_production.resources,
-                HashMap::from([(Wood, 2)])
+                manager.pending_production.resources(),
+                &HashMap::from([(Wood, 2)])
             );
             assert_eq!(
                 losses,
@@ -295,7 +292,7 @@ mod tests {
                 ]
             );
             assert!(manager.commit_pending_production().is_empty());
-            assert_eq!(manager.main.resources, HashMap::from([(Wood, 2)]));
+            assert_eq!(manager.main.resources(), &HashMap::from([(Wood, 2)]));
         }
     }
 
@@ -319,8 +316,8 @@ mod tests {
                 stage: InventoryLossStage::Warehouse,
             }]
         );
-        assert_eq!(manager.main.resources[&ResourceType::Grain], 1);
-        assert!(!manager.main.resources.contains_key(&ResourceType::Wood));
+        assert_eq!(manager.main.resources()[&ResourceType::Grain], 1);
+        assert!(!manager.main.resources().contains_key(&ResourceType::Wood));
     }
 
     #[test]
@@ -370,7 +367,7 @@ mod tests {
 
         // Assert 1
         assert_eq!(
-            *manager.main.resources.get(&ResourceType::Labour).unwrap(),
+            *manager.main.resources().get(&ResourceType::Labour).unwrap(),
             50,
             "Labour should be set to 50"
         );
@@ -385,7 +382,7 @@ mod tests {
 
         // Assert 2
         assert_eq!(
-            *manager.main.resources.get(&ResourceType::Labour).unwrap(),
+            *manager.main.resources().get(&ResourceType::Labour).unwrap(),
             60,
             "Labour should be overwritten to 60, not added"
         );
@@ -409,7 +406,7 @@ mod tests {
         // Returned items go straight back to main
         assert_eq!(manager.main.total_amount(), 20);
         assert_eq!(
-            *manager.main.resources.get(&ResourceType::Stone).unwrap(),
+            *manager.main.resources().get(&ResourceType::Stone).unwrap(),
             20
         );
 
@@ -418,7 +415,7 @@ mod tests {
         assert_eq!(
             *manager
                 .pending_production
-                .resources
+                .resources()
                 .get(&ResourceType::Wood)
                 .unwrap(),
             30
@@ -443,7 +440,7 @@ mod tests {
 
         // Assert
         assert!(
-            manager.pending_production.resources.is_empty(),
+            manager.pending_production.resources().is_empty(),
             "Pending production should be drained completely"
         );
 
@@ -453,11 +450,11 @@ mod tests {
             "Main inventory should now contain both existing and committed resources"
         );
         assert_eq!(
-            *manager.main.resources.get(&ResourceType::Wood).unwrap(),
+            *manager.main.resources().get(&ResourceType::Wood).unwrap(),
             40
         );
         assert_eq!(
-            *manager.main.resources.get(&ResourceType::Stone).unwrap(),
+            *manager.main.resources().get(&ResourceType::Stone).unwrap(),
             10
         );
     }
@@ -480,7 +477,7 @@ mod tests {
 
         // Assert
         assert!(
-            manager.pending_production.resources.is_empty(),
+            manager.pending_production.resources().is_empty(),
             "Pending production is always drained, even if main can't fit everything"
         );
 
@@ -492,7 +489,7 @@ mod tests {
 
         // Only 10 wood should have made it in (50 max - 40 stone = 10 space left)
         assert_eq!(
-            *manager.main.resources.get(&ResourceType::Wood).unwrap(),
+            *manager.main.resources().get(&ResourceType::Wood).unwrap(),
             10,
             "Only the amount that fits should be transferred from pending"
         );

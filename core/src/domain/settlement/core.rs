@@ -2,7 +2,7 @@ use crate::domain::buildings::core::{Building, BuildingLocation, Position};
 use crate::domain::buildings::factory::BuildingDefinition;
 use crate::domain::economy::resource::ResourceType;
 use crate::domain::economy::resource_allocation::{AllocationEngine, AllocationRecipient};
-use crate::domain::economy::storage_priority::StoragePriorityError;
+use crate::domain::economy::storage_order::StorageOrderError;
 use crate::domain::ids::{BuildingId, ProjectId};
 use crate::domain::settlement::building_manager::BuildingManager;
 use crate::domain::settlement::demographics::{NeedRegistry, PopulationManager};
@@ -18,16 +18,97 @@ use std::sync::Arc;
 #[path = "turn_tests.rs"]
 mod turn_tests;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuildingCommandError {
+    MissingBuilding(BuildingId),
+    InvalidEfficiency,
+}
+
+/// Managers are implementation details; public views cannot mutate their collections.
+/// ```compile_fail
+/// use core::domain::settlement::core::Settlement;
+/// let mut settlement = Settlement::new(1, 10, 1, std::sync::Arc::default());
+/// settlement.project_manager.active_projects.clear();
+/// ```
 #[derive(Debug)]
 pub struct Settlement {
-    pub id: u32,
-    pub inventory_manager: SettlementInventoryManager,
-    pub building_manager: BuildingManager,
-    pub population_manager: PopulationManager,
-    pub project_manager: ProjectManager,
+    id: u32,
+    inventory_manager: SettlementInventoryManager,
+    building_manager: BuildingManager,
+    population_manager: PopulationManager,
+    project_manager: ProjectManager,
 }
 
 impl Settlement {
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+    pub fn population(&self) -> u32 {
+        self.population_manager.population
+    }
+    pub fn inventory(&self) -> &crate::domain::economy::resource::ResourceInventory {
+        &self.inventory_manager.main
+    }
+    pub fn pending_inventory(&self) -> &crate::domain::economy::resource::ResourceInventory {
+        &self.inventory_manager.pending_production
+    }
+    pub fn deposit(
+        &mut self,
+        resource: ResourceType,
+        amount: u32,
+    ) -> crate::domain::economy::resource::InventoryAddResult {
+        self.inventory_manager.main.add(resource, amount)
+    }
+    pub fn withdraw(&mut self, resource: ResourceType, amount: u32) -> bool {
+        self.inventory_manager.main.consume(resource, amount)
+    }
+    pub fn set_inventory_capacity(
+        &mut self,
+        capacity: u32,
+    ) -> Result<(), crate::domain::economy::resource::CapacityError> {
+        self.inventory_manager.main.set_capacity(capacity)
+    }
+    pub fn buildings(&self) -> impl Iterator<Item = &Building> {
+        self.building_manager
+            .hub_buildings
+            .iter()
+            .chain(&self.building_manager.spoke_buildings)
+    }
+    pub fn active_projects(&self) -> &[Project] {
+        &self.project_manager.active_projects
+    }
+    pub fn add_building(&mut self, building: Building) -> Result<(), BuildingId> {
+        self.building_manager.construct_building(building)
+    }
+    pub fn set_building_efficiency(
+        &mut self,
+        id: BuildingId,
+        value: f32,
+    ) -> Result<(), BuildingCommandError> {
+        self.building_manager
+            .hub_buildings
+            .iter_mut()
+            .chain(&mut self.building_manager.spoke_buildings)
+            .find(|building| building.instance_id() == id)
+            .ok_or(BuildingCommandError::MissingBuilding(id))?
+            .set_target_efficiency(value)
+            .map_err(|_| BuildingCommandError::InvalidEfficiency)
+    }
+    pub fn set_building_active(
+        &mut self,
+        id: BuildingId,
+        active: bool,
+    ) -> Result<(), BuildingCommandError> {
+        self.building_manager
+            .hub_buildings
+            .iter_mut()
+            .chain(&mut self.building_manager.spoke_buildings)
+            .find(|building| building.instance_id() == id)
+            .ok_or(BuildingCommandError::MissingBuilding(id))?
+            .set_active(active);
+        Ok(())
+    }
+
     pub fn new(
         id: u32,
         initial_capacity: u32,
@@ -95,17 +176,15 @@ impl Settlement {
     }
 
     /// Applies to incoming storage batches; does not evict existing stock.
-    pub fn set_storage_priority(
+    pub fn set_storage_order(
         &mut self,
-        resource: ResourceType,
-        priority: u32,
-    ) -> Result<(), StoragePriorityError> {
-        self.inventory_manager
-            .set_storage_priority(resource, priority)
+        materials: impl AsRef<[ResourceType]>,
+    ) -> Result<(), StorageOrderError> {
+        self.inventory_manager.set_storage_order(materials)
     }
 
-    pub fn storage_priority(&self, resource: ResourceType) -> u32 {
-        self.inventory_manager.storage_priority(resource)
+    pub fn storage_order(&self) -> &[ResourceType] {
+        self.inventory_manager.storage_order()
     }
 
     fn validate_project_result(
@@ -113,10 +192,16 @@ impl Settlement {
         buildings: &BuildingManager,
     ) -> Result<(), ProjectError> {
         match result {
-            ProjectResult::ConstructBuilding { .. } => Ok(()),
+            ProjectResult::ConstructBuilding { definition, .. } => definition
+                .validate()
+                .map_err(ProjectError::InvalidDefinition),
             ProjectResult::UpgradeBuilding {
-                target_instance_id, ..
+                target_instance_id,
+                new_definition,
             } => {
+                new_definition
+                    .validate()
+                    .map_err(ProjectError::InvalidDefinition)?;
                 if buildings.contains(*target_instance_id) {
                     Ok(())
                 } else {
@@ -172,7 +257,8 @@ impl Settlement {
                 definition,
             } => {
                 let id = self.building_manager.next_available_id();
-                let new_building = Building::new(id, position, location, definition);
+                let new_building = Building::new(id, position, location, definition)
+                    .map_err(ProjectError::InvalidDefinition)?;
                 self.building_manager
                     .construct_building(new_building)
                     .map_err(ProjectError::DuplicateBuilding)?;
@@ -214,6 +300,7 @@ impl Settlement {
             cost,
         );
 
+        Self::validate_project_result(&project.result, &self.building_manager)?;
         self.project_manager
             .add_project(project)
             .map_err(ProjectError::DuplicateProject)
@@ -234,6 +321,7 @@ impl Settlement {
         Self::validate_project_result(&result, &self.building_manager)?;
         let project = Project::new(project_id, result, cost);
 
+        Self::validate_project_result(&project.result, &self.building_manager)?;
         self.project_manager
             .add_project(project)
             .map_err(ProjectError::DuplicateProject)

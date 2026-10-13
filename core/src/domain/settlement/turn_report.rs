@@ -39,7 +39,7 @@ impl InventoryTurnReport {
         pending: &ResourceInventory,
     ) -> MaterialTotals {
         let mut stock = MaterialTotals::new();
-        for (&resource, &amount) in main.resources.iter().chain(&pending.resources) {
+        for (&resource, &amount) in main.resources().iter().chain(pending.resources()) {
             if resource != ResourceType::Labour && amount > 0 {
                 *stock.entry(resource).or_default() += u64::from(amount);
             }

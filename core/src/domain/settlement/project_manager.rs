@@ -6,7 +6,7 @@ use crate::domain::settlement::projects::Project;
 
 #[derive(Debug)]
 pub struct ProjectManager {
-    pub active_projects: Vec<Project>,
+    pub(super) active_projects: Vec<Project>,
 }
 
 impl ProjectManager {

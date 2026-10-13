@@ -168,7 +168,7 @@ Validation applies to manager methods. Collections and fields remain public, so 
 - Upgrade targets are not validated when queued. Finalization ignores `false`: a paid project can disappear without an effect or refund.
 - `RecruitUnit` can settle its cost without creating a unit.
 - There is no project cancellation, cost refund, position validation, population change or global turn integration.
-- Satisfaction may exceed 1.0, and warehouse overflow has no deterministic policy. Details are in [economic.md](economic.md).
+- Warehouse overflow has no deterministic policy. Population satisfaction now uses shared integer demand in the same units as building inputs and project costs, and caps each good's contribution; details are in [economic.md](economic.md).
 
 These limitations describe current code rather than approving final game rules. Policies requiring further decisions are collected in [0001-economy.md](../decisions/0001-economy.md).
 

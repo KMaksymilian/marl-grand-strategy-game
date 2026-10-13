@@ -47,6 +47,91 @@ fn stock(settlement: &Settlement, resource: ResourceType) -> u32 {
 }
 
 #[test]
+fn population_building_and_project_share_whole_resource_units() {
+    let registry = Arc::new(NeedRegistry::new(vec![NeedTier {
+        min_population: 1,
+        needs_per_capita: HashMap::from([(ResourceType::Wood, 1)]),
+    }]));
+    let mut settlement = Settlement::new(1, 100, 2, registry);
+    let blueprint = definition(vec![recipe(ResourceType::Wood, ResourceType::Stone)]);
+    add_building(&mut settlement, 1, blueprint.clone());
+    settlement
+        .queue_construction(
+            ProjectId(1),
+            BuildingLocation::Hub,
+            Position { x: 1, y: 0 },
+            blueprint,
+            ProjectCost {
+                needed_resources: HashMap::from([(ResourceType::Wood, 1)]),
+                turn_cost: 1,
+            },
+        )
+        .unwrap();
+    settlement.inventory_manager.main.add(ResourceType::Wood, 4);
+
+    let result = settlement.process_turn();
+
+    // Two residents consume 2, the recipe consumes 1, construction costs 1.
+    assert_eq!(stock(&settlement, ResourceType::Wood), 0);
+    assert_eq!(stock(&settlement, ResourceType::Stone), 1);
+    assert_eq!(result.satisfaction_percent, 1.0);
+    assert!(result.missing_resources.is_empty());
+    assert!(settlement.project_manager.active_projects.is_empty());
+    assert_eq!(settlement.building_manager.hub_buildings.len(), 2);
+}
+
+#[test]
+fn population_needs_use_the_same_units_as_inventory_in_a_full_turn() {
+    let registry = Arc::new(NeedRegistry::new(vec![
+        NeedTier {
+            min_population: 1,
+            needs_per_capita: HashMap::from([(ResourceType::Grain, 1)]),
+        },
+        NeedTier {
+            min_population: 1,
+            needs_per_capita: HashMap::from([(ResourceType::Grain, 1)]),
+        },
+    ]));
+    let mut settlement = Settlement::new(1, 100, 1, registry);
+    settlement
+        .inventory_manager
+        .main
+        .add(ResourceType::Grain, 3);
+
+    let result = settlement.process_turn();
+
+    assert_eq!(result.satisfaction_percent, 1.0);
+    assert!(result.missing_resources.is_empty());
+    assert_eq!(stock(&settlement, ResourceType::Grain), 1);
+}
+
+#[test]
+fn population_shortage_is_reported_across_turns() {
+    let registry = Arc::new(NeedRegistry::new(vec![NeedTier {
+        min_population: 1,
+        needs_per_capita: HashMap::from([(ResourceType::Grain, 1), (ResourceType::Wood, 1)]),
+    }]));
+    let mut settlement = Settlement::new(1, 100, 1, registry);
+    settlement
+        .inventory_manager
+        .main
+        .add(ResourceType::Grain, 3);
+
+    for remaining in [2, 1] {
+        let result = settlement.process_turn();
+        assert_eq!(result.satisfaction_percent, 0.5);
+        assert_eq!(result.missing_resources, vec![ResourceType::Wood]);
+        assert_eq!(stock(&settlement, ResourceType::Grain), remaining);
+    }
+    settlement.inventory_manager.main.add(ResourceType::Wood, 1);
+    let result = settlement.process_turn();
+    assert_eq!(result.satisfaction_percent, 1.0);
+    assert!(result.missing_resources.is_empty());
+    assert_eq!(stock(&settlement, ResourceType::Grain), 0);
+    assert_eq!(stock(&settlement, ResourceType::Wood), 0);
+}
+
+#[test]
 fn building_and_project_with_same_number_have_separate_allocations() {
     let mut settlement = Settlement::new(1, 100, 1, Arc::default());
     let blueprint = definition(vec![recipe(ResourceType::Wood, ResourceType::Stone)]);
@@ -79,7 +164,7 @@ fn building_and_project_with_same_number_have_separate_allocations() {
 fn population_and_building_zero_have_separate_allocations() {
     let registry = Arc::new(NeedRegistry::new(vec![NeedTier {
         min_population: 1,
-        needs_per_capita: HashMap::from([(ResourceType::Grain, 1.0)]),
+        needs_per_capita: HashMap::from([(ResourceType::Grain, 1)]),
     }]));
     let mut settlement = Settlement::new(1, 100, 1, registry);
     add_building(

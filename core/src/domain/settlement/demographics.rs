@@ -12,7 +12,7 @@ pub struct ConsumptionResult {
 #[derive(Debug, Clone)]
 pub struct NeedTier {
     pub min_population: u32,
-    pub needs_per_capita: HashMap<ResourceType, f32>,
+    pub needs_per_capita: HashMap<ResourceType, u32>,
 }
 
 #[derive(Debug, Default)]
@@ -48,59 +48,65 @@ impl PopulationManager {
     }
 
     pub fn generate_requests(&self) -> Vec<DemandRequest> {
-        let mut requests = Vec::new();
+        let demand = self.calculate_demand();
+        if demand.is_empty() {
+            return Vec::new();
+        }
+        vec![DemandRequest {
+            recipient: AllocationRecipient::Population,
+            demand,
+        }]
+    }
 
+    /// Use the same whole resource units as inventories, recipes and projects.
+    /// Request generation and satisfaction evaluation share this demand.
+    fn calculate_demand(&self) -> HashMap<ResourceType, u32> {
         if self.population == 0 {
-            return requests;
+            return HashMap::new();
         }
-
+        let mut per_capita = HashMap::new();
         for tier in self.registry.get_active_tiers(self.population) {
-            let mut tier_demand = HashMap::new();
-
-            for (res, amount) in &tier.needs_per_capita {
-                tier_demand.insert(*res, (amount * (self.population as f32)).ceil() as u32);
+            for (&resource, &amount) in &tier.needs_per_capita {
+                let total = per_capita.entry(resource).or_insert(0_u32);
+                *total = total
+                    .checked_add(amount)
+                    .expect("per-capita demand exceeds u32 capacity");
             }
-
-            requests.push(DemandRequest {
-                recipient: AllocationRecipient::Population,
-                demand: tier_demand,
-            });
         }
-
-        requests
+        per_capita
+            .into_iter()
+            .filter_map(|(resource, amount)| {
+                let required = amount
+                    .checked_mul(self.population)
+                    .expect("population demand exceeds u32 capacity");
+                (required > 0).then_some((resource, required))
+            })
+            .collect()
     }
 
     pub fn process_allocation(
         &self,
         granted_resources: Option<&HashMap<ResourceType, u32>>,
     ) -> ConsumptionResult {
-        let mut total_demanded = 0.0;
-        let mut total_consumed = 0.0;
+        let mut total_demanded = 0_u64;
+        let mut total_satisfied = 0_u64;
         let mut missing_resources = Vec::new();
 
         let empty_grants = HashMap::new();
         let granted = granted_resources.unwrap_or(&empty_grants);
 
-        let mut expected_demand = HashMap::new();
-        for tier in self.registry.get_active_tiers(self.population) {
-            for (res, amount) in &tier.needs_per_capita {
-                *expected_demand.entry(*res).or_insert(0.0) += amount * (self.population as f32);
-            }
-        }
-
-        for (res, required) in expected_demand {
-            total_demanded += required;
-
-            let consumed = granted.get(&res).copied().unwrap_or(0) as f32;
-            total_consumed += consumed;
-
-            if consumed < required - 0.0001 {
+        for (res, required) in self.calculate_demand() {
+            total_demanded += u64::from(required);
+            let received = granted.get(&res).copied().unwrap_or(0);
+            total_satisfied += u64::from(received.min(required));
+            if received < required {
                 missing_resources.push(res);
             }
         }
+        missing_resources.sort_unstable();
 
-        let satisfaction_percent = if total_demanded > 0.0 {
-            total_consumed / total_demanded
+        let satisfaction_percent = if total_demanded > 0 {
+            (total_satisfied as f64 / total_demanded as f64) as f32
         } else {
             1.0
         };
@@ -119,12 +125,142 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
+    fn manager_with_tiers(population: u32, needs: &[&[(ResourceType, u32)]]) -> PopulationManager {
+        let tiers = needs
+            .iter()
+            .map(|needs| NeedTier {
+                min_population: 0,
+                needs_per_capita: needs.iter().copied().collect(),
+            })
+            .collect();
+        PopulationManager::new(population, Arc::new(NeedRegistry::new(tiers)))
+    }
+
+    #[test]
+    fn integer_needs_use_the_same_demand_for_requests_and_evaluation() {
+        let manager = manager_with_tiers(4, &[&[(ResourceType::Grain, 3)]]);
+        let requests = manager.generate_requests();
+        assert_eq!(requests[0].demand[&ResourceType::Grain], 12);
+        let result = manager.process_allocation(Some(&requests[0].demand));
+        assert_eq!(result.satisfaction_percent, 1.0);
+        assert!(result.missing_resources.is_empty());
+    }
+
+    #[test]
+    fn repeated_resources_across_tiers_are_summed_in_the_same_units() {
+        let manager = manager_with_tiers(
+            3,
+            &[&[(ResourceType::Grain, 1)], &[(ResourceType::Grain, 2)]],
+        );
+        let requests = manager.generate_requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].demand[&ResourceType::Grain], 9);
+    }
+
+    #[test]
+    fn excess_of_one_good_cannot_compensate_for_another_missing_good() {
+        let manager =
+            manager_with_tiers(1, &[&[(ResourceType::Grain, 1), (ResourceType::Wood, 1)]]);
+        let result = manager.process_allocation(Some(&HashMap::from([
+            (ResourceType::Grain, 2),
+            (ResourceType::Stone, 100),
+        ])));
+        assert_eq!(result.satisfaction_percent, 0.5);
+        assert_eq!(result.missing_resources, vec![ResourceType::Wood]);
+    }
+
+    #[test]
+    fn one_unit_need_is_missing_without_its_grant() {
+        let manager = manager_with_tiers(1, &[&[(ResourceType::Grain, 1)]]);
+        let result = manager.process_allocation(None);
+        assert_eq!(result.satisfaction_percent, 0.0);
+        assert_eq!(result.missing_resources, vec![ResourceType::Grain]);
+    }
+
+    #[test]
+    fn zero_needs_generate_no_requests() {
+        let manager = manager_with_tiers(10, &[&[(ResourceType::Grain, 0)]]);
+        assert!(manager.generate_requests().is_empty());
+        assert_eq!(manager.process_allocation(None).satisfaction_percent, 1.0);
+    }
+
+    #[test]
+    fn zero_population_has_no_needs_even_when_tier_zero_is_active() {
+        let manager = manager_with_tiers(0, &[&[(ResourceType::Grain, 1)]]);
+        assert!(manager.generate_requests().is_empty());
+        let result = manager.process_allocation(Some(&HashMap::from([(ResourceType::Grain, 100)])));
+        assert_eq!(result.satisfaction_percent, 1.0);
+        assert!(result.missing_resources.is_empty());
+    }
+
+    #[test]
+    fn complete_and_excess_grants_always_produce_full_satisfaction() {
+        for population in 1..=5 {
+            for rate in 0..=5 {
+                let manager = manager_with_tiers(
+                    population,
+                    &[&[(ResourceType::Grain, rate), (ResourceType::Wood, 1)]],
+                );
+                let requests = manager.generate_requests();
+                let demand = &requests[0].demand;
+                let complete = manager.process_allocation(Some(demand));
+                assert_eq!(complete.satisfaction_percent, 1.0);
+                assert!(complete.missing_resources.is_empty());
+                let excess: HashMap<_, _> = demand
+                    .iter()
+                    .map(|(&resource, &amount)| (resource, amount + 1))
+                    .collect();
+                assert_eq!(
+                    manager
+                        .process_allocation(Some(&excess))
+                        .satisfaction_percent,
+                    1.0
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn integer_demands_keep_large_quantities_exact() {
+        for population in [16_777_219, u32::MAX] {
+            let manager = manager_with_tiers(
+                population,
+                &[&[(ResourceType::Grain, 1), (ResourceType::Wood, 1)]],
+            );
+            let requests = manager.generate_requests();
+            assert_eq!(requests[0].demand[&ResourceType::Grain], population);
+            assert_eq!(requests[0].demand[&ResourceType::Wood], population);
+            let result = manager.process_allocation(Some(&requests[0].demand));
+            assert_eq!(result.satisfaction_percent, 1.0);
+            assert!(result.missing_resources.is_empty());
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "per-capita demand exceeds u32 capacity")]
+    fn overflowing_per_capita_sum_is_rejected() {
+        manager_with_tiers(
+            1,
+            &[
+                &[(ResourceType::Grain, u32::MAX)],
+                &[(ResourceType::Grain, 1)],
+            ],
+        )
+        .generate_requests();
+    }
+
+    #[test]
+    #[should_panic(expected = "population demand exceeds u32 capacity")]
+    fn overflowing_population_demand_is_rejected() {
+        manager_with_tiers(2, &[&[(ResourceType::Grain, u32::MAX)]]).generate_requests();
+    }
+
     fn create_test_registry() -> Arc<NeedRegistry> {
         let mut t1_needs = HashMap::new();
-        t1_needs.insert(ResourceType::Grain, 1.0);
+        t1_needs.insert(ResourceType::Grain, 1);
 
         let mut t2_needs = HashMap::new();
-        t2_needs.insert(ResourceType::Wood, 0.5);
+        t2_needs.insert(ResourceType::Wood, 1);
 
         let tiers = vec![
             NeedTier {
@@ -161,8 +297,8 @@ mod tests {
 
         assert_eq!(
             requests.len(),
-            2,
-            "Should generate two separate requests based on tiers."
+            1,
+            "All active tiers should generate one combined population request."
         );
 
         // Verify the Grain request
@@ -183,7 +319,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             *wood_req.demand.get(&ResourceType::Wood).unwrap(),
-            50,
+            100,
             "Wood should be requested for second tier."
         );
     }
@@ -207,21 +343,20 @@ mod tests {
     fn test_process_allocation_partial_satisfaction_smooth_gradient() {
         let registry = create_test_registry();
         let manager = PopulationManager::new(100, registry);
-        // Total needs across all tiers: 100 Grain + 50 Wood = 150 units
+        // Total needs across all tiers: 100 Grain + 100 Wood = 200 units
 
         // Mock the AllocationEngine granting partial resources
         let mut granted = HashMap::new();
-        granted.insert(ResourceType::Grain, 75); // u32
+        granted.insert(ResourceType::Grain, 100);
         // Wood is completely missing (0 granted)
 
         let result = manager.process_allocation(Some(&granted));
 
-        // 75 units granted out of 150 units needed = 50% satisfaction
+        // 100 units granted out of 200 needed = 50% satisfaction
         assert_eq!(result.satisfaction_percent, 0.5);
-        assert_eq!(result.missing_resources.len(), 2);
+        assert_eq!(result.missing_resources, vec![ResourceType::Wood]);
 
-        // Both resources lacked their full expected amounts
-        assert!(result.missing_resources.contains(&ResourceType::Grain));
+        // Grain is fully satisfied, while wood is missing.
         assert!(result.missing_resources.contains(&ResourceType::Wood));
     }
 

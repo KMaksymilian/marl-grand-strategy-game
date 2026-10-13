@@ -1,6 +1,6 @@
 # Economy: Resources, Allocation and Production
 
-This document describes the implementation after the first economy fixes in `fix/economy` (`9d24d16`). Its scope is the local economy of one settlement. Trading, currency, transport and AI models remain in the [roadmap](economy_roadmap.md). The settlement structure and turn lifecycle are described in [settlements.md](settlements.md); the rationale is recorded in [decisions](../decisions/0001-economy.md).
+This document describes the implementation including the first economy fixes in `fix/economy` (`9d24d16`) and consistent population demand evaluation. Its scope is the local economy of one settlement. Trading, currency, transport and AI models remain in the [roadmap](economy_roadmap.md). The settlement structure and turn lifecycle are described in [settlements.md](settlements.md); the rationale is recorded in [decisions](../decisions/0001-economy.md).
 
 ## 1. Resources and Units
 
@@ -11,7 +11,7 @@ This document describes the implementation after the first economy fixes in `fix
 
 Material roles come from recipe definitions, population needs and project costs
 
-Inventories, grants, recipe inputs/outputs and material costs use `u32`. Quantities are integers. Per-capita needs and target building efficiency are stored as `f32`. Allocation uses `u128` for intermediate sums and products. Production combines repeated inputs using `u64` and computes its scale as a fraction using `u128`.
+Inventories, grants, recipe inputs/outputs, material costs and per-capita needs all use `u32` in the same whole resource units. A value of `1` means one unit everywhere. There is no fixed-point scale or conversion between these components. Target efficiency and satisfaction remain dimensionless `f32` coefficients, not resource amounts. Allocation uses `u128` for intermediate sums and products. Production combines repeated inputs using `u64` and computes its scale as a fraction using `u128`.
 
 ## 2. Warehouse and Production Buffer
 
@@ -118,18 +118,28 @@ Example: a building has 10 of 10 workers. A recipe requires 10 wood and 5 grain,
 
 ## 6. Population Needs
 
-`NeedTier` stores `min_population` and `needs_per_capita: HashMap<ResourceType, f32>`. `NeedRegistry` selects all tiers whose thresholds are reached. Needs accumulate; a higher tier does not replace a lower one. Thresholds and quantities are supplied through configuration, without a built-in game catalog.
+`NeedTier` stores `min_population` and `needs_per_capita: HashMap<ResourceType, u32>`. `NeedRegistry` selects all tiers whose thresholds are reached. Needs accumulate; a higher tier does not replace a lower one. Thresholds and quantities are supplied through configuration, without a built-in game catalog.
 
-`process_allocation()` evaluates grants and returns `ConsumptionResult`.
+Population uses one shared integer demand calculation for both requests and evaluation. Per-capita amounts for the same resource are summed across all active tiers and multiplied by population, using whole units without floating-point conversion or rounding:
 
 ```text
-satisfaction_percent = sum(granted units of required resources)
-                       / sum(unrounded needs)
+required_resource = population * sum(active per-capita needs for this resource)
 ```
 
-Zero total demand yields 1.0. Resources granted less than their required quantity, with a tolerance of 0.0001, enter `missing_resources`. The result is weighted by material quantity, rather than equally by need.
+`generate_requests()` produces one combined `Population` request. Zero quantities are omitted; zero population or no positive demand produces no requests. Checked integer addition and multiplication reject needs exceeding `u32` with an explicit panic instead of wrapping or silently truncating. A richer configuration error API remains future work.
 
-A known inconsistency remains: one resident requiring 0.5 grain and receiving 1 grain produces a result of 2.0. The code does not cap it at 1. The result must not be treated as normalized to 0–1 until a later repair addresses this.
+`process_allocation()` evaluates grants against that same integer demand and returns `ConsumptionResult`. The allocator has already withdrawn material grants. Evaluation performs no second withdrawal and caps each resource's contribution at its own demand:
+
+```text
+satisfaction_percent = sum(min(granted_resource, required_resource))
+                       / sum(required_resource)
+```
+
+Zero total demand yields 1.0. Resources granted less than their integer demand enter `missing_resources`, sorted by `ResourceType` order. There is no floating-point tolerance for shortages. Satisfaction totals use `u64`, and the final ratio is returned as `f32` in the range 0–1. The result remains weighted by material quantities, rather than equally by need.
+
+Examples: three residents requiring 2 grain each request 6 grain, and receiving it yields 1.0. Two active tiers requiring 1 and 2 grain per resident yield 9 grain for three residents. If demand is 1 grain and 1 wood, receiving 2 grain but no wood yields 0.5: excess of one good cannot compensate for another missing good. Unrequested resources do not contribute to satisfaction.
+
+Per-capita needs must currently be whole numbers; fractional rates such as 0.5 are not supported. Any future finer unit scale must apply consistently to all quantities. Population remains unchanged by evaluation. This change does not introduce growth, survival priorities or a new need-weighting policy.
 
 ## 7. Sources and Verification
 

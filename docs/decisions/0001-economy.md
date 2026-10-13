@@ -1,6 +1,6 @@
 # 0001 — Local Economy and Turn Accounting
 
-Date: October 13, 2026. Status: record of implemented solutions, including `fix/economy` (`9d24d16`). Open questions are listed separately and are not presented as approved game rules.
+Date: October 13, 2026. Status: record of implemented solutions, including `fix/economy` (`9d24d16`) and the subsequent population needs repair. Open questions are listed separately and are not presented as approved game rules.
 
 Related documents: [economy](../architecture/economic.md), [settlements](../architecture/settlements.md), [roadmap](../architecture/economy_roadmap.md).
 
@@ -54,11 +54,20 @@ The first implementation used a shared `u32` recipient ID and `f32` ratios. This
 
 **Consequences:** products and new buildings affect future allocation. The buffer and warehouse have limits; phase separation does not determine a fair or repeatable choice of materials under overflow. The buffer is drained at turn end rather than retained until the next turn begins.
 
+## D6. Shared Integer Resource Units and Population Demand
+
+**Implemented:** per-capita needs use `u32`, matching inventory quantities, recipe inputs/outputs and project costs. One represents one whole resource unit throughout the economy. Combine needs across active tiers and multiply by population with checked integer arithmetic. Request generation and evaluation use the same calculation. Population generates one combined request, omitting zero demands. Each resource contributes at most its required quantity to satisfaction; shortages are detected by integer comparison.
+
+**Rationale:** population needs previously used `f32` while buildings and projects used integers. This required conversions and could produce satisfaction above 100%. Using the existing resource unit throughout removes these conversions at minimal implementation cost. Uncapped grants could also conceal a shortage of another good.
+
+**Consequences:** full grants yield 1.0; excess of one material cannot replace another. Zero demand yields 1.0 without requests. The score retains quantity weighting, and its aggregate totals use `u64`. Missing resources have a stable order. Fractional per-capita rates are not supported. No fixed-point scale, display conversion or quantity wrapper is introduced. Needs above the `u32` range are rejected by checked arithmetic with an explicit panic. Efficiency and satisfaction remain dimensionless coefficients; no growth, demographic penalties or alternative need weights are introduced.
+
+**Example:** three residents with grain needs of 1 and 2 across active tiers request 9 grain. Warehouse stock, project costs and recipe inputs use the same unit. Demand of 1 grain and 1 wood with a grant of 2 grain and no wood yields 0.5.
+
 ## Open Questions
 
 | Topic | Current behavior | Decision needed |
 | --- | --- | --- |
-| Fractional needs | Requests are rounded but the evaluation denominator is not; satisfaction may exceed 1 | A shared rounding rule and evaluation range |
 | Need weights | Evaluation is weighted by material quantities | Whether to add weights per need or survival priority |
 | Ties across turns | Fixed recipient order | Whether to rotate precedence |
 | Warehouse overflow | Excess is discarded; `HashMap` order affects selection | Loss policy and reporting of discarded quantities |
@@ -73,6 +82,7 @@ The first implementation used a shared `u32` recipient ID and `f32` ratios. This
 - [ids.rs](../../core/src/domain/ids.rs) and [resource_allocation.rs](../../core/src/domain/economy/resource_allocation.rs): D1–D3.
 - [buildings/core.rs](../../core/src/domain/buildings/core.rs): D4.
 - [settlement/core.rs](../../core/src/domain/settlement/core.rs) and [settlement_inventory_manager.rs](../../core/src/domain/settlement/settlement_inventory_manager.rs): D5.
+- [demographics.rs](../../core/src/domain/settlement/demographics.rs): D6, including integer needs, tier aggregation, large quantities and excess-grant tests.
 - [turn_tests.rs](../../core/src/domain/settlement/turn_tests.rs): ID collisions, single-material allocation, large costs, shared inputs and products becoming usable in the next turn.
 
 Update this record and the architecture documents when the code changes, especially tie rules, recipe order or project duration semantics.

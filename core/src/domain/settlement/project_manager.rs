@@ -1,4 +1,7 @@
-use crate::domain::economy::resource_allocation::{AllocationResult, DemandRequest};
+use crate::domain::economy::resource_allocation::{
+    AllocationRecipient, AllocationResult, DemandRequest,
+};
+use crate::domain::ids::ProjectId;
 use crate::domain::settlement::projects::Project;
 
 #[derive(Debug)]
@@ -13,8 +16,16 @@ impl ProjectManager {
         }
     }
 
-    pub fn add_project(&mut self, project: Project) {
+    pub fn add_project(&mut self, project: Project) -> Result<(), ProjectId> {
+        if self
+            .active_projects
+            .iter()
+            .any(|existing| existing.id == project.id)
+        {
+            return Err(project.id);
+        }
         self.active_projects.push(project);
+        Ok(())
     }
 
     /// 1.Demand Phase
@@ -35,7 +46,7 @@ impl ProjectManager {
     /// 2. Progress phase
     pub fn process_allocation(&mut self, allocations: &AllocationResult) {
         for project in &mut self.active_projects {
-            let grants = allocations.get(&project.id);
+            let grants = allocations.get(&AllocationRecipient::Project(project.id));
             project.resolve_allocation(grants);
         }
     }
@@ -65,6 +76,21 @@ mod tests {
     use crate::domain::settlement::projects::{Project, ProjectCost, ProjectResult};
     use std::collections::HashMap;
 
+    #[test]
+    fn duplicate_project_ids_are_rejected() {
+        let mut manager = ProjectManager::new();
+        manager.add_project(create_test_project(7, 1, 1)).unwrap();
+        assert_eq!(
+            manager.add_project(create_test_project(7, 2, 2)),
+            Err(ProjectId(7))
+        );
+        assert_eq!(manager.active_projects.len(), 1);
+        assert_eq!(
+            manager.active_projects[0].remaining_cost.needed_resources[&ResourceType::Wood],
+            1
+        );
+    }
+
     // --- Helpers ---
 
     fn create_dummy_result() -> ProjectResult {
@@ -78,7 +104,7 @@ mod tests {
         }
 
         Project::new(
-            id,
+            ProjectId(id),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: resources,
@@ -96,7 +122,7 @@ mod tests {
         let project = create_test_project(1, 100, 5);
 
         // Act
-        manager.add_project(project);
+        manager.add_project(project).unwrap();
 
         // Assert
         assert_eq!(
@@ -105,7 +131,8 @@ mod tests {
             "Project should be added to the active list"
         );
         assert_eq!(
-            manager.active_projects[0].id, 1,
+            manager.active_projects[0].id,
+            ProjectId(1),
             "The added project should retain its ID"
         );
     }
@@ -116,11 +143,11 @@ mod tests {
         let mut manager = ProjectManager::new();
 
         // Project 1 needs 50 Wood
-        manager.add_project(create_test_project(1, 50, 2));
+        manager.add_project(create_test_project(1, 50, 2)).unwrap();
         // Project 2 needs NO resources (0 Wood), only 2 turns to finish
-        manager.add_project(create_test_project(2, 0, 2));
+        manager.add_project(create_test_project(2, 0, 2)).unwrap();
         // Project 3 needs 10 Wood
-        manager.add_project(create_test_project(3, 10, 1));
+        manager.add_project(create_test_project(3, 10, 1)).unwrap();
 
         // Act
         let requests = manager.generate_requests();
@@ -132,7 +159,13 @@ mod tests {
             "Should only generate requests for projects that actually need resources"
         );
 
-        let request_ids: Vec<u32> = requests.iter().map(|req| req.entity_id).collect();
+        let request_ids: Vec<u32> = requests
+            .iter()
+            .map(|req| match req.recipient {
+                AllocationRecipient::Project(id) => id.0,
+                _ => unreachable!(),
+            })
+            .collect();
         assert!(
             request_ids.contains(&1),
             "Project 1 should generate a request"
@@ -153,15 +186,15 @@ mod tests {
         let mut manager = ProjectManager::new();
 
         // P1 needs 100 Wood, P2 needs 50 Wood
-        manager.add_project(create_test_project(1, 100, 2));
-        manager.add_project(create_test_project(2, 50, 2));
+        manager.add_project(create_test_project(1, 100, 2)).unwrap();
+        manager.add_project(create_test_project(2, 50, 2)).unwrap();
 
         let mut allocations: AllocationResult = HashMap::new();
 
         // Grant 40 Wood to Project 1
         let mut p1_grants = HashMap::new();
         p1_grants.insert(ResourceType::Wood, 40);
-        allocations.insert(1, p1_grants);
+        allocations.insert(AllocationRecipient::Project(ProjectId(1)), p1_grants);
 
         // Act
         manager.process_allocation(&allocations);
@@ -196,16 +229,16 @@ mod tests {
         let mut manager = ProjectManager::new();
 
         // Setup 3 projects
-        manager.add_project(create_test_project(1, 10, 1)); // Needs 10 Wood, 1 Turn
-        manager.add_project(create_test_project(2, 50, 5)); // Needs 50 Wood, 5 Turns
-        manager.add_project(create_test_project(3, 0, 1)); // Needs 0 Wood, 1 Turn
+        manager.add_project(create_test_project(1, 10, 1)).unwrap(); // Needs 10 Wood, 1 Turn
+        manager.add_project(create_test_project(2, 50, 5)).unwrap(); // Needs 50 Wood, 5 Turns
+        manager.add_project(create_test_project(3, 0, 1)).unwrap(); // Needs 0 Wood, 1 Turn
 
         // We simulate a turn passing where Project 1 gets what it needs,
         // Project 2 gets nothing, and Project 3 (which only needs a turn) advances.
         let mut allocations: AllocationResult = HashMap::new();
         let mut p1_grants = HashMap::new();
         p1_grants.insert(ResourceType::Wood, 10);
-        allocations.insert(1, p1_grants);
+        allocations.insert(AllocationRecipient::Project(ProjectId(1)), p1_grants);
 
         manager.process_allocation(&allocations);
 
@@ -228,7 +261,7 @@ mod tests {
         );
 
         // Verify correct projects were extracted
-        let completed_ids: Vec<u32> = completed_projects.iter().map(|p| p.id).collect();
+        let completed_ids: Vec<u32> = completed_projects.iter().map(|p| p.id.0).collect();
         assert!(
             completed_ids.contains(&1),
             "Completed project 1 should be extracted"
@@ -240,7 +273,8 @@ mod tests {
 
         // Verify correct project remains active
         assert_eq!(
-            manager.active_projects[0].id, 2,
+            manager.active_projects[0].id,
+            ProjectId(2),
             "Incomplete project 2 should remain active"
         );
     }

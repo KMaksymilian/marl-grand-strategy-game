@@ -1,5 +1,5 @@
 use crate::domain::economy::resource::ResourceType;
-use crate::domain::economy::resource_allocation::DemandRequest;
+use crate::domain::economy::resource_allocation::{AllocationRecipient, DemandRequest};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -62,7 +62,7 @@ impl PopulationManager {
             }
 
             requests.push(DemandRequest {
-                entity_id: 0,
+                recipient: AllocationRecipient::Population,
                 demand: tier_demand,
             });
         }

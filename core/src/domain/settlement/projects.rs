@@ -1,7 +1,8 @@
 use crate::domain::buildings::core::{BuildingLocation, Position};
 use crate::domain::buildings::factory::BuildingDefinition;
 use crate::domain::economy::resource::ResourceType;
-use crate::domain::economy::resource_allocation::DemandRequest;
+use crate::domain::economy::resource_allocation::{AllocationRecipient, DemandRequest};
+use crate::domain::ids::{BuildingId, ProjectId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -13,7 +14,7 @@ pub enum ProjectResult {
         definition: Arc<BuildingDefinition>,
     },
     UpgradeBuilding {
-        target_instance_id: u32,
+        target_instance_id: BuildingId,
         new_definition: Arc<BuildingDefinition>,
     },
     RecruitUnit {
@@ -34,13 +35,13 @@ impl ProjectCost {
 }
 #[derive(Debug, Clone)]
 pub struct Project {
-    pub id: u32,
+    pub id: ProjectId,
     pub result: ProjectResult,
     pub remaining_cost: ProjectCost,
 }
 
 impl Project {
-    pub fn new(id: u32, result: ProjectResult, initial_cost: ProjectCost) -> Self {
+    pub fn new(id: ProjectId, result: ProjectResult, initial_cost: ProjectCost) -> Self {
         Self {
             id,
             result,
@@ -51,7 +52,7 @@ impl Project {
     /// Demand request
     pub fn as_demand_request(&self) -> DemandRequest {
         DemandRequest {
-            entity_id: self.id,
+            recipient: AllocationRecipient::Project(self.id),
             demand: self.remaining_cost.needed_resources.clone(),
         }
     }
@@ -167,10 +168,10 @@ mod tests {
         };
 
         // Act
-        let project = Project::new(1, create_dummy_result(), initial_cost);
+        let project = Project::new(ProjectId(1), create_dummy_result(), initial_cost);
 
         // Assert
-        assert_eq!(project.id, 1);
+        assert_eq!(project.id, ProjectId(1));
         assert_eq!(project.remaining_cost.turn_cost, 3);
         assert_eq!(
             *project
@@ -190,7 +191,7 @@ mod tests {
         resources.insert(ResourceType::Wood, 50);
 
         let project = Project::new(
-            10,
+            ProjectId(10),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: resources,
@@ -203,7 +204,8 @@ mod tests {
 
         // Assert
         assert_eq!(
-            request.entity_id, 10,
+            request.recipient,
+            AllocationRecipient::Project(ProjectId(10)),
             "DemandRequest should inherit the project's ID"
         );
         assert_eq!(
@@ -221,7 +223,7 @@ mod tests {
         resources.insert(ResourceType::Wood, 50);
 
         let mut project = Project::new(
-            1,
+            ProjectId(1),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: resources,
@@ -258,7 +260,7 @@ mod tests {
         resources.insert(ResourceType::Stone, 20);
 
         let mut project = Project::new(
-            1,
+            ProjectId(1),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: resources,
@@ -286,7 +288,7 @@ mod tests {
         resources.insert(ResourceType::Wood, 10);
 
         let mut project = Project::new(
-            1,
+            ProjectId(1),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: resources,
@@ -314,7 +316,7 @@ mod tests {
         resources.insert(ResourceType::Wood, 50);
 
         let mut project = Project::new(
-            1,
+            ProjectId(1),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: resources,
@@ -345,7 +347,7 @@ mod tests {
     fn test_resolve_allocation_does_not_underflow_turn_cost() {
         // Arrange
         let mut project = Project::new(
-            1,
+            ProjectId(1),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: HashMap::new(),
@@ -370,7 +372,7 @@ mod tests {
         resources.insert(ResourceType::Wood, 10);
 
         let mut project = Project::new(
-            1,
+            ProjectId(1),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: resources,

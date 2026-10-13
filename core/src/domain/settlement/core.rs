@@ -1,12 +1,17 @@
 use crate::domain::buildings::core::{Building, BuildingLocation, Position};
 use crate::domain::buildings::factory::BuildingDefinition;
-use crate::domain::economy::resource_allocation::AllocationEngine;
+use crate::domain::economy::resource_allocation::{AllocationEngine, AllocationRecipient};
+use crate::domain::ids::{BuildingId, ProjectId};
 use crate::domain::settlement::building_manager::BuildingManager;
 use crate::domain::settlement::demographics::{ConsumptionResult, NeedRegistry, PopulationManager};
 use crate::domain::settlement::project_manager::ProjectManager;
 use crate::domain::settlement::projects::{Project, ProjectCost, ProjectResult};
 use crate::domain::settlement::settlement_inventory_manager::SettlementInventoryManager;
 use std::sync::Arc;
+
+#[cfg(test)]
+#[path = "turn_tests.rs"]
+mod turn_tests;
 
 #[derive(Debug)]
 pub struct Settlement {
@@ -50,7 +55,7 @@ impl Settlement {
         // 3. Consumption and production phase
         let consumption_result = self
             .population_manager
-            .process_allocation(allocations.get(&0));
+            .process_allocation(allocations.get(&AllocationRecipient::Population));
         self.project_manager.process_allocation(&allocations);
         let (produced, returned) = self.building_manager.process_allocations(&allocations);
 
@@ -75,8 +80,15 @@ impl Settlement {
                     position,
                     definition,
                 } => {
-                    let new_building = Building::new(project.id, position, location, definition);
-                    self.building_manager.construct_building(new_building);
+                    let new_building = Building::new(
+                        self.building_manager.next_available_id(),
+                        position,
+                        location,
+                        definition,
+                    );
+                    self.building_manager
+                        .construct_building(new_building)
+                        .expect("new building ID must be unique");
                 }
                 ProjectResult::UpgradeBuilding {
                     target_instance_id,
@@ -95,12 +107,12 @@ impl Settlement {
     // Request new building
     pub fn queue_construction(
         &mut self,
-        project_id: u32,
+        project_id: ProjectId,
         location: BuildingLocation,
         position: Position,
         definition: Arc<BuildingDefinition>,
         cost: ProjectCost,
-    ) {
+    ) -> Result<(), ProjectId> {
         let project = Project::new(
             project_id,
             ProjectResult::ConstructBuilding {
@@ -111,17 +123,17 @@ impl Settlement {
             cost,
         );
 
-        self.project_manager.add_project(project);
+        self.project_manager.add_project(project)
     }
 
     // Request upgrading existing building
     pub fn queue_upgrade(
         &mut self,
-        project_id: u32,
-        target_instance_id: u32,
+        project_id: ProjectId,
+        target_instance_id: BuildingId,
         new_definition: Arc<BuildingDefinition>,
         cost: ProjectCost,
-    ) {
+    ) -> Result<(), ProjectId> {
         let project = Project::new(
             project_id,
             ProjectResult::UpgradeBuilding {
@@ -131,6 +143,6 @@ impl Settlement {
             cost,
         );
 
-        self.project_manager.add_project(project);
+        self.project_manager.add_project(project)
     }
 }

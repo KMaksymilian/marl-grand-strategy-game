@@ -1,7 +1,10 @@
 use crate::domain::buildings::core::{Building, BuildingLocation};
 use crate::domain::buildings::factory::BuildingDefinition;
 use crate::domain::economy::resource::ResourceType;
-use crate::domain::economy::resource_allocation::{AllocationResult, DemandRequest};
+use crate::domain::economy::resource_allocation::{
+    AllocationRecipient, AllocationResult, DemandRequest,
+};
+use crate::domain::ids::BuildingId;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -19,14 +22,41 @@ impl BuildingManager {
         }
     }
 
-    pub fn construct_building(&mut self, building: Building) {
+    pub fn construct_building(&mut self, building: Building) -> Result<(), BuildingId> {
+        if self
+            .hub_buildings
+            .iter()
+            .chain(&self.spoke_buildings)
+            .any(|existing| existing.instance_id == building.instance_id)
+        {
+            return Err(building.instance_id);
+        }
         match building.location {
             BuildingLocation::Hub => self.hub_buildings.push(building),
             BuildingLocation::Spoke => self.spoke_buildings.push(building),
         }
+        Ok(())
     }
 
-    pub fn upgrade_building(&mut self, target_id: u32, new_def: Arc<BuildingDefinition>) -> bool {
+    /// A completed project receives a building ID independent of its project ID.
+    pub fn next_available_id(&self) -> BuildingId {
+        let used: std::collections::HashSet<_> = self
+            .hub_buildings
+            .iter()
+            .chain(&self.spoke_buildings)
+            .map(|building| building.instance_id)
+            .collect();
+        (0..=u32::MAX)
+            .map(BuildingId)
+            .find(|id| !used.contains(id))
+            .expect("building ID space exhausted")
+    }
+
+    pub fn upgrade_building(
+        &mut self,
+        target_id: BuildingId,
+        new_def: Arc<BuildingDefinition>,
+    ) -> bool {
         if let Some(building) = self
             .hub_buildings
             .iter_mut()
@@ -50,7 +80,7 @@ impl BuildingManager {
                     None
                 } else {
                     Some(DemandRequest {
-                        entity_id: b.instance_id,
+                        recipient: AllocationRecipient::Building(b.instance_id),
                         demand,
                     })
                 }
@@ -70,7 +100,7 @@ impl BuildingManager {
             .iter_mut()
             .chain(self.spoke_buildings.iter_mut())
         {
-            let grants = allocations.get(&building.instance_id);
+            let grants = allocations.get(&AllocationRecipient::Building(building.instance_id));
             let update_result = building.resolve_allocation(grants);
 
             for (res, amount) in update_result.production.produced {
@@ -96,6 +126,23 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
+    #[test]
+    fn duplicate_building_ids_are_rejected_across_locations() {
+        let mut manager = BuildingManager::new();
+        let def = create_test_definition("test", 1, vec![]);
+        manager
+            .construct_building(create_active_building(
+                7,
+                BuildingLocation::Hub,
+                def.clone(),
+            ))
+            .unwrap();
+        let duplicate = create_active_building(7, BuildingLocation::Spoke, def);
+        assert_eq!(manager.construct_building(duplicate), Err(BuildingId(7)));
+        assert_eq!(manager.hub_buildings.len(), 1);
+        assert!(manager.spoke_buildings.is_empty());
+    }
+
     // --- Helpers ---
 
     fn create_test_definition(
@@ -118,7 +165,12 @@ mod tests {
         location: BuildingLocation,
         def: Arc<BuildingDefinition>,
     ) -> Building {
-        let mut building = Building::new(instance_id, Position { x: 0, y: 0 }, location, def);
+        let mut building = Building::new(
+            BuildingId(instance_id),
+            Position { x: 0, y: 0 },
+            location,
+            def,
+        );
         // Important: default is 0.0, which means no demand and no production.
         // We set it to 1.0 to simulate a fully functioning building.
         building.target_efficiency = 1.0;
@@ -137,8 +189,8 @@ mod tests {
         let spoke_building = create_active_building(2, BuildingLocation::Spoke, Arc::clone(&def));
 
         // Act
-        manager.construct_building(hub_building);
-        manager.construct_building(spoke_building);
+        manager.construct_building(hub_building).unwrap();
+        manager.construct_building(spoke_building).unwrap();
 
         // Assert
         assert_eq!(
@@ -146,14 +198,14 @@ mod tests {
             1,
             "Hub building should go to hub_buildings array"
         );
-        assert_eq!(manager.hub_buildings[0].instance_id, 1);
+        assert_eq!(manager.hub_buildings[0].instance_id, BuildingId(1));
 
         assert_eq!(
             manager.spoke_buildings.len(),
             1,
             "Spoke building should go to spoke_buildings array"
         );
-        assert_eq!(manager.spoke_buildings[0].instance_id, 2);
+        assert_eq!(manager.spoke_buildings[0].instance_id, BuildingId(2));
     }
 
     #[test]
@@ -163,10 +215,12 @@ mod tests {
         let old_def = create_test_definition("tier_1", 5, vec![]);
         let new_def = create_test_definition("tier_2", 10, vec![]);
 
-        manager.construct_building(create_active_building(1, BuildingLocation::Hub, old_def));
+        manager
+            .construct_building(create_active_building(1, BuildingLocation::Hub, old_def))
+            .unwrap();
 
         // Act
-        let result = manager.upgrade_building(1, Arc::clone(&new_def));
+        let result = manager.upgrade_building(BuildingId(1), Arc::clone(&new_def));
 
         // Assert
         assert!(result, "Upgrade should return true for existing building");
@@ -181,12 +235,14 @@ mod tests {
         // Arrange
         let mut manager = BuildingManager::new();
         let def = create_test_definition("tier_1", 5, vec![]);
-        manager.construct_building(create_active_building(1, BuildingLocation::Hub, def));
+        manager
+            .construct_building(create_active_building(1, BuildingLocation::Hub, def))
+            .unwrap();
 
         let new_def = create_test_definition("tier_2", 10, vec![]);
 
         // Act
-        let result = manager.upgrade_building(99, new_def);
+        let result = manager.upgrade_building(BuildingId(99), new_def);
 
         // Assert
         assert!(
@@ -202,7 +258,9 @@ mod tests {
 
         // Building 1: Hub, wants 5 Labour
         let def1 = create_test_definition("house", 5, vec![]);
-        manager.construct_building(create_active_building(1, BuildingLocation::Hub, def1));
+        manager
+            .construct_building(create_active_building(1, BuildingLocation::Hub, def1))
+            .unwrap();
 
         // Building 2: Spoke, wants 10 Labour + 10 Wood (via Production behavior)
         let prod_behavior = BuildingBehavior::Production {
@@ -210,7 +268,9 @@ mod tests {
             outputs: vec![(ResourceType::Stone, 20)],
         };
         let def2 = create_test_definition("lumber", 10, vec![prod_behavior]);
-        manager.construct_building(create_active_building(2, BuildingLocation::Spoke, def2));
+        manager
+            .construct_building(create_active_building(2, BuildingLocation::Spoke, def2))
+            .unwrap();
 
         // Act
         let requests = manager.generate_requests();
@@ -223,12 +283,18 @@ mod tests {
         );
 
         // Verify Building 1 demand
-        let req1 = requests.iter().find(|r| r.entity_id == 1).unwrap();
+        let req1 = requests
+            .iter()
+            .find(|r| r.recipient == AllocationRecipient::Building(BuildingId(1)))
+            .unwrap();
         assert_eq!(*req1.demand.get(&ResourceType::Labour).unwrap(), 5);
         assert!(!req1.demand.contains_key(&ResourceType::Wood));
 
         // Verify Building 2 demand
-        let req2 = requests.iter().find(|r| r.entity_id == 2).unwrap();
+        let req2 = requests
+            .iter()
+            .find(|r| r.recipient == AllocationRecipient::Building(BuildingId(2)))
+            .unwrap();
         assert_eq!(*req2.demand.get(&ResourceType::Labour).unwrap(), 10);
         assert_eq!(*req2.demand.get(&ResourceType::Wood).unwrap(), 10);
     }
@@ -246,12 +312,16 @@ mod tests {
         let def = create_test_definition("stone_maker", 10, vec![behavior]);
 
         // Add two identical buildings
-        manager.construct_building(create_active_building(
-            1,
-            BuildingLocation::Hub,
-            Arc::clone(&def),
-        ));
-        manager.construct_building(create_active_building(2, BuildingLocation::Spoke, def));
+        manager
+            .construct_building(create_active_building(
+                1,
+                BuildingLocation::Hub,
+                Arc::clone(&def),
+            ))
+            .unwrap();
+        manager
+            .construct_building(create_active_building(2, BuildingLocation::Spoke, def))
+            .unwrap();
 
         // Setup AllocationResult
         let mut allocations: AllocationResult = HashMap::new();
@@ -260,13 +330,13 @@ mod tests {
         let mut b1_grants = HashMap::new();
         b1_grants.insert(ResourceType::Labour, 10);
         b1_grants.insert(ResourceType::Wood, 10);
-        allocations.insert(1, b1_grants);
+        allocations.insert(AllocationRecipient::Building(BuildingId(1)), b1_grants);
 
         // Building 2 gets full labour, but EXTRA wood (15 instead of 10)
         let mut b2_grants = HashMap::new();
         b2_grants.insert(ResourceType::Labour, 10);
         b2_grants.insert(ResourceType::Wood, 15);
-        allocations.insert(2, b2_grants);
+        allocations.insert(AllocationRecipient::Building(BuildingId(2)), b2_grants);
 
         // Act
         let (produced, returned) = manager.process_allocations(&allocations);

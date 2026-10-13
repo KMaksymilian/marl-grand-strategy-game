@@ -20,39 +20,39 @@ This document describes the implementation including `fix/economy` (`9d24d16`). 
 ```mermaid
 classDiagram
     class Settlement {
-        +u32 id
-        +SettlementInventoryManager inventory_manager
-        +BuildingManager building_manager
-        +PopulationManager population_manager
-        +ProjectManager project_manager
+        -u32 id
+        -SettlementInventoryManager inventory_manager
+        -BuildingManager building_manager
+        -PopulationManager population_manager
+        -ProjectManager project_manager
         +process_turn() TurnReport
     }
     class SettlementInventoryManager {
-        +ResourceInventory main
-        +ResourceInventory pending_production
+        -ResourceInventory main
+        -ResourceInventory pending_production
     }
     class BuildingManager {
-        +Vec~Building~ hub_buildings
-        +Vec~Building~ spoke_buildings
+        -Vec~Building~ hub_buildings
+        -Vec~Building~ spoke_buildings
     }
     class PopulationManager {
         +u32 population
         +Arc~NeedRegistry~ registry
     }
     class ProjectManager {
-        +Vec~Project~ active_projects
+        -Vec~Project~ active_projects
     }
     class Building {
-        +BuildingId instance_id
-        +Arc~BuildingDefinition~ definition
-        +f32 target_efficiency
-        +u32 current_workers
-        +bool is_active
+        -BuildingId instance_id
+        -Arc~BuildingDefinition~ definition
+        -f32 target_efficiency
+        -u32 current_workers
+        -bool is_active
     }
     class Project {
-        +ProjectId id
-        +ProjectResult result
-        +ProjectCost remaining_cost
+        -ProjectId id
+        -ProjectResult result
+        -ProjectCost remaining_cost
     }
     Settlement *-- SettlementInventoryManager
     Settlement *-- BuildingManager
@@ -64,9 +64,11 @@ classDiagram
 
 `Settlement::new(id, initial_capacity, initial_population, need_registry)` creates an empty warehouse and buffer with the requested capacity, no buildings or projects, and a population manager with a shared `Arc<NeedRegistry>`.
 
-Each settlement also owns independent storage priorities. `set_storage_priority(resource, priority)` configures a material's preference and returns `Result<(), StoragePriorityError>`; `storage_priority(resource)` returns its current value. Higher values are admitted first during storage overflow, with `0` as the default. Warehouse and buffer use the same policy. The policy does not change proportional demand allocation or evict existing stock. See [economic.md](economic.md) for examples and tie rules.
+Each settlement owns an independent ordered storage list. `set_storage_order(materials: impl AsRef<[ResourceType]>)` validates it against the material catalogue; `storage_order()` returns a read-only slice. No numerical priority weights are stored. See [economic.md](economic.md).
 
-Manager modules and `demographics` remain private in `settlement/mod.rs`, although settlement fields are public. In particular, an external crate cannot normally name `NeedTier` and `NeedRegistry` to create its own needs configuration. Type inference permits a default empty registry through `Arc::default()`. Completing these exports remains future API work.
+Settlement fields and manager modules are private implementation details. Public reads use `id()`, `population()`, `inventory()`, `pending_inventory()`, `buildings()` and `active_projects()`. Building and project views expose immutable identity, definitions and remaining costs through accessors. There is no mutable collection getter.
+
+Use `deposit()`, `withdraw()` and `set_inventory_capacity()` to change warehouse stock or capacity. Add validated buildings through `add_building()`; duplicate IDs are rejected. Change a managed building through `set_building_efficiency()` or `set_building_active()`, which reject missing IDs. Queue projects through `queue_construction()` and `queue_upgrade()`, which validate definitions before any allocation. `NeedRegistry` and `NeedTier` are re-exported for external needs configuration.
 
 ## 3. Turn Sequence
 
@@ -151,7 +153,7 @@ Recruitment is currently unsupported: an active `RecruitUnit` project is rejecte
 
 `queue_construction` and `queue_upgrade` accept a caller-supplied project ID and explicit `ProjectCost`. They do not automatically use `BuildingDefinition.construction_cost`. The definition cost is available as data; consistency with the command cost remains the caller's responsibility.
 
-Zero material entries are removed when a project is created or registered and after allocation. Demand excludes zero entries even if public state was edited directly. `is_fully_paid()` checks that all remaining amounts are zero and time is zero, so a stray zero entry cannot block completion.
+Zero material entries are removed when a project is created or registered and after allocation. Demand excludes zero entries defensively. `is_fully_paid()` checks that all remaining amounts are zero and time is zero, so a stray zero entry cannot block completion.
 
 Each turn, a valid project requests its entire remaining material cost. `resolve_allocation` subtracts grants with `saturating_sub` and removes entries reduced to zero. The time counter decreases by 1 if positive, even without material delivery. It represents elapsed turns since ordering, rather than work turns after payment. This timing rule is unchanged.
 
@@ -165,12 +167,12 @@ Example: a project costs 10 wood and 2 turns. Turn one delivers 4 wood, leaving 
 | --- | --- |
 | `construct_building(building)` | `Result<(), BuildingId>`: an error identifies an existing building with that ID, including one in the other location collection |
 | `add_project(project)` | `Result<(), ProjectId>`: an error identifies an existing active project with that ID |
-| `queue_construction(...)`, `queue_upgrade(...)` | `Result<(), ProjectError>`: report duplicate projects or a missing upgrade target before accepting a command |
+| `queue_construction(...)`, `queue_upgrade(...)` | `Result<(), ProjectError>`: report duplicate projects, missing upgrade targets or invalid definitions before accepting a command |
 | `next_available_id()` | The first free `BuildingId`, starting at 0 and checked against Hub and Spoke |
 
 A completed construction receives a building ID independently of its project number. A project ID is not a global identity for the resulting object. Typed arguments prevent passing a `ProjectId` as an upgrade target.
 
-Validation applies to manager methods. Collections and fields remain public, so direct mutation can bypass uniqueness checks. There is no completed-project history; a project number can be reused after it leaves the active list.
+Validation applies to commands. Collections and runtime fields are protected from external mutation. There is no completed-project history; a project number can be reused after it leaves the active list.
 
 ## 7. Turn Report and Project Outcomes
 
@@ -201,7 +203,7 @@ If an upgrade target disappears after earlier partial payment, the next turn rep
 
 - Recruitment remains unimplemented and is explicitly rejected.
 - There is no project cancellation, cost refund, position validation, population change or global turn integration.
-- Overflow uses configurable settlement priorities with stable resource order only for ties. There is no automatic policy choosing these priorities. Direct mutation of public resource maps can still create invalid stock; capacity changes must use `set_capacity()`.
+- Overflow uses a configurable ordered material list. There is no automatic policy choosing this order. Resource maps are private; capacity changes use validated commands.
 
 These limitations describe current code rather than approving final game rules. Policies requiring further decisions are collected in [0001-economy.md](../decisions/0001-economy.md).
 

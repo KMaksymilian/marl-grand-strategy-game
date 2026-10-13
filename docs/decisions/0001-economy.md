@@ -16,7 +16,7 @@ The first implementation used a shared `u32` recipient ID and `f32` ratios. This
 
 **Rationale:** the allocation key identifies the recipient kind. A project and building can share a number without sharing a grant. Argument types detect confusion between a project and an upgrade target at compile time.
 
-**Consequences:** managers reject active duplicates within their own kind. Completed construction receives the first free building ID instead of inheriting the project number. Command callers handle `Result`. Fields remain public, so direct mutation can bypass validation.
+**Consequences:** managers reject active duplicates within their own kind. Completed construction receives the first free building ID instead of inheriting the project number. Command callers handle `Result`. Runtime fields are now protected by D10.
 
 **Alternatives:** a shared `EntityId` would be valid with a common uniqueness generator and entity registry. No such registry exists currently. Reserved numeric ranges provide no type protection and require additional agreements about range boundaries.
 
@@ -70,13 +70,13 @@ The first implementation used a shared `u32` recipient ID and `f32` ratios. This
 
 **Rationale:** a zero-valued cost entry could leave a project stuck, while invalid upgrades could consume materials and disappear without an effect. Validation must happen before resource allocation rather than only after payment.
 
-**Consequences:** `process_turn()` now returns a public `TurnReport` with `consumption` and `projects`. Each removed project produces one `ProjectOutcome` containing its ID and either a completion with a building ID or a typed error. Pending projects produce no event. Queue errors are returned immediately as `ProjectError`, and duplicate registration remains guarded. Unsupported recruitment does not charge materials. Public collection edits are still possible, so active effects are checked every turn.
+**Consequences:** `process_turn()` now returns a public `TurnReport` with `consumption` and `projects`. Each removed project produces one `ProjectOutcome` containing its ID and either a completion with a building ID or a typed error. Pending projects produce no event. Queue errors are returned immediately as `ProjectError`, and duplicate registration remains guarded. Unsupported recruitment does not charge materials. Active effects are checked every turn; D10 additionally protects collections from external mutation.
 
 Previously paid material costs are not refunded if a target later disappears. Project time still decreases without material grants. Refunds, cancellation and timing policy remain separate decisions. D8 extends the initial report with production, returns and warehouse losses.
 
 ## D8. Deterministic Storage, Explicit Losses and Material Balance
 
-**Implemented:** `add()` returns accepted and rejected quantities. Returns are processed before products; the initial storage policy used ascending resource order, subsequently replaced by D9's configurable priorities. Excess is discarded with a stage-specific loss record rather than silently. Buffer losses and warehouse losses are separate. `Labour` does not use material capacity. Capacity is private, and `set_capacity()` rejects shrinking below stock without deleting goods. Free-space subtraction is saturating to handle invalid public resource maps safely.
+**Implemented:** `add()` returns accepted and rejected quantities. Returns are processed before products; the initial storage policy used ascending resource order, subsequently replaced by D9's configurable priorities. Excess is discarded with a stage-specific loss record rather than silently. Buffer losses and warehouse losses are separate. `Labour` does not use material capacity. Capacity is private, and `set_capacity()` rejects shrinking below stock without deleting goods. Free-space subtraction is saturating to handle internally inconsistent resource maps safely.
 
 **Rationale:** `HashMap` iteration previously selected which goods survived overflow, making repeated simulations diverge. Silent rejection prevented full accounting, and a capacity below public stock could underflow during an addition.
 
@@ -86,7 +86,7 @@ Existing stock is retained. No eviction or automatic shrinking loss is introduce
 
 ## D9. Storage Priorities Owned by Each Settlement
 
-**Implemented:** each settlement has an independent `StoragePriorities` configuration. `set_storage_priority(resource, priority)` sets a `u32` preference, and `storage_priority(resource)` reads it. Incoming batches are sorted by descending priority, then ascending resource type. Unconfigured or reset materials use `0`. Assigning a storage priority to `Labour` returns a typed error.
+**Superseded:** numerical storage weights have been replaced by an ordered material list (D10 below).
 
 **Rationale:** fixed resource order systematically preferred wood during overflow regardless of settlement needs. Explicit settlement priorities allow the caller or a future agent to choose which incoming materials to retain without adding probabilistic behavior or a new quantity scale.
 
@@ -112,7 +112,15 @@ Existing stock is retained. No eviction or automatic shrinking loss is introduce
 - [demographics.rs](../../core/src/domain/settlement/demographics.rs): D6, including integer needs, tier aggregation, large quantities and excess-grant tests.
 - [projects.rs](../../core/src/domain/settlement/projects.rs), [turn_report.rs](../../core/src/domain/settlement/turn_report.rs) and [settlement/core.rs](../../core/src/domain/settlement/core.rs): D7, normalized costs, command validation and project outcomes.
 - [resource.rs](../../core/src/domain/economy/resource.rs), [settlement_inventory_manager.rs](../../core/src/domain/settlement/settlement_inventory_manager.rs) and [turn_report.rs](../../core/src/domain/settlement/turn_report.rs): D8, capacity validation, loss reporting and material balance.
-- [storage_priority.rs](../../core/src/domain/economy/storage_priority.rs) and [settlement/core.rs](../../core/src/domain/settlement/core.rs): D9, explicit settlement storage priorities.
+- [storage_order.rs](../../core/src/domain/economy/storage_order.rs) and [settlement/core.rs](../../core/src/domain/settlement/core.rs): D9/D10, explicit settlement storage order.
 - [turn_tests.rs](../../core/src/domain/settlement/turn_tests.rs): ID collisions, single-material allocation, large costs, shared inputs and products becoming usable in the next turn.
 
 Update this record and the architecture documents when the code changes, especially tie rules, recipe order or project duration semantics.
+
+## D10. Ordered Storage Preferences and Protected Runtime State
+
+Storage preferences use a variable-length ordered list, without numerical weights or fixed-size array APIs. It must contain each material in the centralized `ResourceType::MATERIALS` catalogue exactly once. Validation is atomic. This keeps caller and future AI actions expressed as resource orderings, while preserving admission behavior and the returns-first phase rule.
+
+Building definitions are validated at registration and every application boundary. Per-resource recipe totals and maximum-staffed stat modifiers must fit `u32`; labour belongs to staffing, not recipe material entries. Target efficiency must be finite and within 0–1. Invalid updates preserve the previous valid state.
+
+Inventory maps and building fields are private. Settlement owns private managers; their internal collections are restricted to the settlement implementation. Public collection views are immutable. Controlled commands enforce capacity, ID uniqueness and definition validity. Configuration drafts and detached reports remain ordinary public data. No fixed-point conversion, interpreter or new simulation dependency is introduced.

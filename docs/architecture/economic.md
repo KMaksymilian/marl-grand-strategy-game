@@ -15,7 +15,7 @@ Inventories, grants, recipe inputs/outputs, material costs and per-capita needs 
 
 ## 2. Warehouse and Production Buffer
 
-`ResourceInventory` stores `resources: HashMap<ResourceType, u32>` and a private shared capacity of type `u32`. Capacity limits the sum of materials, rather than each resource separately. Read it through `capacity()` and change it through `set_capacity()`.
+`ResourceInventory` stores a private `HashMap<ResourceType, u32>` and a private shared capacity of type `u32`. Capacity limits the sum of materials, rather than each resource separately. Read it through `capacity()` and change it through `set_capacity()`.
 
 | Method | Behavior |
 | --- | --- |
@@ -28,24 +28,20 @@ Inventories, grants, recipe inputs/outputs, material costs and per-capita needs 
 
 `SettlementInventoryManager` owns `main` and `pending_production`, initially with the same capacity. Unused material grants return to `main`; products enter the buffer. At the end of turn accounting, `commit_pending_production()` drains the buffer into `main` through `add`.
 
-Returns are admitted before new products. Each return, buffer insertion and buffer-to-warehouse transfer processes materials by the settlement's storage priorities, highest value first. Equal priorities use ascending `ResourceType` order: `Wood`, `Stone`, `Grain`. Stored stock is never evicted to make room for an incoming batch. An accepted addition and its rejection always sum to the requested amount. Buffer and warehouse rejection are reported separately, so already discarded buffer products are not counted again during transfer.
+Returns are admitted before new products. Each return, buffer insertion and buffer-to-warehouse transfer processes materials by the settlement's ordered material preference list. The default order comes from `ResourceType::MATERIALS`: `Wood`, `Stone`, `Grain`. Stored stock is never evicted to make room for an incoming batch. An accepted addition and its rejection always sum to the requested amount. Buffer and warehouse rejection are reported separately, so already discarded buffer products are not counted again during transfer.
 
 ### Settlement Storage Priorities
 
-Each settlement owns an independent `StoragePriorities` policy in its inventory manager. Unconfigured materials have priority `0`. The settlement exposes commands to set or read each material's priority:
+Each settlement owns an independent `StorageOrder`: a persistent list from first admitted to last. There are no numerical weights or fixed-length array signatures.
 
 ```rust
-settlement.set_storage_priority(ResourceType::Grain, 100).unwrap();
-settlement.set_storage_priority(ResourceType::Wood, 50).unwrap();
-settlement.set_storage_priority(ResourceType::Stone, 10).unwrap();
-assert_eq!(settlement.storage_priority(ResourceType::Grain), 100);
+settlement.set_storage_order(vec![ResourceType::Grain, ResourceType::Wood, ResourceType::Stone]).unwrap();
+assert_eq!(settlement.storage_order()[0], ResourceType::Grain);
 ```
 
-These settings admit grain before wood and wood before stone within each batch. Setting a value to `0` restores the default lowest priority; it does not prohibit storing the material. `Labour` has no material storage priority: attempting to set one returns `StoragePriorityError::LabourIsNotMaterial` without changing the policy.
+`set_storage_order(materials: impl AsRef<[ResourceType]>)` accepts vectors, slices and arrays. Every material from `ResourceType::MATERIALS` must occur exactly once. Duplicate materials, missing materials and `Labour` return `StorageOrderError` without changing the previous list. The catalogue is centralized; adding a material requires extending it, without changing this API's signature. The list is not consumed as a FIFO queue.
 
-The policy is shared by the settlement's warehouse and production buffer, including unused material returns. It affects future admissions, not existing stock, warehouse capacity or resource allocation to population/buildings/projects. Returns still precede new production as a phase rule even when a product has a higher priority. Change priorities before `process_turn()` to apply one policy throughout that turn. Direct single-resource `ResourceInventory::add()` calls have no batch to reorder.
-
-With three free spaces and a batch containing three grain and three wood, a higher grain priority retains grain and reports the wood as rejected. Priorities are explicit caller settings; no AI or automatic need-based policy is implemented here. The API and policy are defined in [storage_priority.rs](../../core/src/domain/economy/storage_priority.rs).
+Warehouse, production buffer and returned batches use the same order. Changing it affects future admissions without evicting existing stock or changing demand allocation. Returns still precede new products as a turn phase rule. Single-resource deposits have no batch to reorder. The implementation is in [storage_order.rs](../../core/src/domain/economy/storage_order.rs).
 
 The inventory manager reports `InventoryLoss { resource, amount, stage }` for `Returns`, `ProductionBuffer` and `Warehouse`. It accepts aggregate production/returns in `u64`, admitting only what the `u32` inventory can store. Building-manager aggregate totals also use `u64`; no resource unit conversion is introduced. Materials retain their existing whole-unit scale.
 
@@ -53,7 +49,7 @@ Products are visible in the warehouse after the turn ends, but do not participat
 
 `refresh_labor_capacity(population)` directly sets `Labour` to the population count. Labour is renewed every turn and generic additions can also succeed when the material warehouse is full. Its counter is capped at `u32::MAX`, with any excess reported as rejected by `add`.
 
-Capacity reduction does not destroy existing goods: a reduction below stock returns `CapacityError { requested, stored }`. Resource maps remain public. If direct mutation creates an overfull inventory, additions use saturating free-space calculation and reject materials without arithmetic underflow. This guards operations; it does not automatically repair invalid stock.
+Capacity reduction does not destroy existing goods: a reduction below stock returns `CapacityError { requested, stored }`. Resource maps are private. `resources()` returns an immutable view and `amount(resource)` returns zero for missing entries. External callers cannot insert stock directly to bypass capacity checks.
 
 ### Material Balance in the Turn Report
 
@@ -69,7 +65,7 @@ opening stock + produced
 
 Unused building grants are subtracted from production input consumption. Returns are an internal transfer, not new production, and must not be added to the left side. Labour is a renewed capacity and is excluded from this material conservation equation. The report describes operations within `process_turn`; additions made outside the turn must be tracked using their own `InventoryAddResult`.
 
-Tests cover all six insertion orders of three materials, configured priorities and ties, independent settlement policies, priority changes without eviction, losses at both storage stages, complete report equality under reversed building order, combined production above `u32`, returned materials without workers and preexisting buffer stock.
+Tests cover all six insertion orders of three materials, configured material orders and invalid lists, independent settlement policies, priority changes without eviction, losses at both storage stages, complete report equality under reversed building order, combined production above `u32`, returned materials without workers and preexisting buffer stock.
 
 ## 3. Demand Recipients
 
@@ -194,4 +190,10 @@ Per-capita needs must currently be whole numbers; fractional rates such as 0.5 a
 | Warehouse and buffer | [settlement_inventory_manager.rs](../../core/src/domain/settlement/settlement_inventory_manager.rs) |
 
 
-Run existing tests with `cargo test --workspace`. The fixes do not guarantee support for arbitrarily large definitions, overflowing production totals or invalid direct mutations of public inventory state.
+Run verification with `cargo test --workspace` and `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
+
+### Definition Validation
+
+`BuildingDefinition::validate()` checks per-resource input and output totals across all recipes, including duplicate entries, using checked `u32` arithmetic. Recipe entries cannot contain `Labour`, which is supplied through `max_workers`. Each stat modifier must fit `u32` at maximum staffing. Invalid definitions return `DefinitionError` before registration, construction, upgrade or project queueing. Registration and upgrade preserve existing state on failure. `Building::new()` and `BuildingFactory::register()` now return `Result`; callers must handle invalid configuration. Upgrades clamp current workers to the new staffing limit.
+
+Definitions and project costs remain editable configuration drafts. Live building state is private, and its shared definition is exposed only as `&BuildingDefinition`. Turn reports remain detached, publicly readable data.

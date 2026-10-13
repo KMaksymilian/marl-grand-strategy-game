@@ -121,6 +121,10 @@ Update this record and the architecture documents when the code changes, especia
 
 Storage preferences use a variable-length ordered list, without numerical weights or fixed-size array APIs. It must contain each material in the centralized `ResourceType::MATERIALS` catalogue exactly once. Validation is atomic. This keeps caller and future AI actions expressed as resource orderings, while preserving admission behavior and the returns-first phase rule.
 
-Building definitions are validated at registration and every application boundary. Per-resource recipe totals and maximum-staffed stat modifiers must fit `u32`; labour belongs to staffing, not recipe material entries. Target efficiency must be finite and within 0–1. Invalid updates preserve the previous valid state.
+Building definitions are validated at registration and every application boundary. Per-resource recipe totals and maximum-staffed stat modifiers must fit `u32`; labour belongs to staffing, not recipe material entries. Target efficiency must be finite and within 0â€“1. Invalid updates preserve the previous valid state.
 
 Inventory maps and building fields are private. Settlement owns private managers; their internal collections are restricted to the settlement implementation. Public collection views are immutable. Controlled commands enforce capacity, ID uniqueness and definition validity. Configuration drafts and detached reports remain ordinary public data. No fixed-point conversion, interpreter or new simulation dependency is introduced.
+
+## D11. Keep Commands on Settlement
+
+`Settlement` remains the public local interface and owns private simulation state. Commands and immutable views are grouped in a second `impl Settlement` in the private child module `commands.rs`. This separates files without a forwarding object, copied state or extra lifetime parameters for callers. Unit tests inspecting private state stay inline; public integration tests belong in `core/tests/`. Developed separately on `feature/settlement-api`.

@@ -210,3 +210,9 @@ These limitations describe current code rather than approving final game rules. 
 ## 9. Sources
 
 Model and coordinator: [settlement/core.rs](../../core/src/domain/settlement/core.rs). Managers: [building_manager.rs](../../core/src/domain/settlement/building_manager.rs), [project_manager.rs](../../core/src/domain/settlement/project_manager.rs). Projects: [projects.rs](../../core/src/domain/settlement/projects.rs). Turn tests: [turn_tests.rs](../../core/src/domain/settlement/turn_tests.rs).
+
+## Organization of Settlement Commands and Tests
+
+`Settlement` is the local Rust interface. It owns private state and exposes validated commands and immutable views directly; no separate `SettlementApi` object or wrapper lifetime is needed. Public methods are grouped in [commands.rs](../../core/src/domain/settlement/commands.rs) as another `impl Settlement`. This private child implementation module of `settlement::core` accesses the same private fields without widening visibility. The turn engine remains in `core.rs`.
+
+Unit tests inspecting private state are inline in `core.rs` under `#[cfg(test)]`. Public integration tests live in `core/tests/`, including `economy_validation_tests.rs` and `settlement_commands_tests.rs`. The separately attached `turn_tests.rs` is removed. Existing command names and errors remain compatible.

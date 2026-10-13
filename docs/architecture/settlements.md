@@ -25,7 +25,7 @@ classDiagram
         +BuildingManager building_manager
         +PopulationManager population_manager
         +ProjectManager project_manager
-        +process_turn() ConsumptionResult
+        +process_turn() TurnReport
     }
     class SettlementInventoryManager {
         +ResourceInventory main
@@ -68,15 +68,16 @@ Manager modules and `demographics` remain private in `settlement/mod.rs`, althou
 
 ## 3. Turn Sequence
 
-`process_turn(&mut self) -> ConsumptionResult` accepts neither actions nor a time parameter. It performs these steps:
+`process_turn(&mut self) -> TurnReport` accepts neither actions nor a time parameter. It performs these steps:
 
+0. **Validate projects:** remove unsupported projects and upgrades without a target, recording their errors before allocation.
 1. **Refresh labour:** set `main[Labour] = population`.
 2. **Gather requests:** population needs, remaining project costs, building inputs and labour.
 3. **Allocate:** distribute resources proportionally with remainder allocation; withdraw materials from `main`.
 4. **Evaluate and execute:** population evaluates its grant, projects reduce costs, buildings produce and return unused materials.
 5. **Account for inventory:** return unused materials to `main`, put products in `pending_production`, then drain the buffer into `main`.
-6. **Finalize projects:** remove completed projects and construct buildings or replace building definitions.
-7. **Return the result:** return population satisfaction without changing the population count automatically.
+6. **Finalize projects:** remove completed projects, check their effects again and report construction, upgrade or failure.
+7. **Return the report:** return population satisfaction and project outcomes without changing the population count automatically.
 
 ```mermaid
 sequenceDiagram
@@ -87,6 +88,8 @@ sequenceDiagram
     participant Q as ProjectManager
     participant B as BuildingManager
     participant A as AllocationEngine
+    S->>Q: validate active project effects
+    Note over S,Q: Reject invalid projects before material allocation
     S->>I: refresh_labor_capacity(population)
     S->>P: generate_requests()
     P-->>S: Population demands
@@ -107,6 +110,7 @@ sequenceDiagram
     S->>Q: extract_completed()
     Q-->>S: completed projects
     S->>B: construct or upgrade buildings
+    Note over S,Q: Completion and failure enter TurnReport.projects
     Note over S,B: New buildings can work in a later turn
 ```
 
@@ -139,11 +143,15 @@ Replacing an `Arc` in `Building::upgrade` is O(1). `BuildingManager::upgrade_bui
 | --- | --- |
 | `ConstructBuilding` | Creates a building at the supplied location and position with the supplied definition |
 | `UpgradeBuilding` | Replaces the definition of the target `BuildingId` |
-| `RecruitUnit` | The variant exists, but finalization remains `todo` |
+| `RecruitUnit` | Explicitly rejected with `UnsupportedRecruitment` |
+
+Recruitment is currently unsupported: an active `RecruitUnit` project is rejected with `UnsupportedRecruitment` before it can receive materials. No unit is created.
 
 `queue_construction` and `queue_upgrade` accept a caller-supplied project ID and explicit `ProjectCost`. They do not automatically use `BuildingDefinition.construction_cost`. The definition cost is available as data; consistency with the command cost remains the caller's responsibility.
 
-Each turn, a project requests its entire remaining material cost. `resolve_allocation` subtracts grants with `saturating_sub` and removes entries reduced to zero. The time counter decreases by 1 if positive, even without material delivery. It represents elapsed turns since ordering, rather than work turns after payment. Completion requires an empty cost map and zero time remaining.
+Zero material entries are removed when a project is created or registered and after allocation. Demand excludes zero entries even if public state was edited directly. `is_fully_paid()` checks that all remaining amounts are zero and time is zero, so a stray zero entry cannot block completion.
+
+Each turn, a valid project requests its entire remaining material cost. `resolve_allocation` subtracts grants with `saturating_sub` and removes entries reduced to zero. The time counter decreases by 1 if positive, even without material delivery. It represents elapsed turns since ordering, rather than work turns after payment. This timing rule is unchanged.
 
 Example: a project costs 10 wood and 2 turns. Turn one delivers 4 wood, leaving 6 wood and 1 turn. Turn two delivers nothing, leaving 6 wood and 0 turns. Turn three delivers 6 wood; the project completes during finalization of that turn.
 
@@ -155,23 +163,43 @@ Example: a project costs 10 wood and 2 turns. Turn one delivers 4 wood, leaving 
 | --- | --- |
 | `construct_building(building)` | `Result<(), BuildingId>`: an error identifies an existing building with that ID, including one in the other location collection |
 | `add_project(project)` | `Result<(), ProjectId>`: an error identifies an existing active project with that ID |
-| `queue_construction(...)`, `queue_upgrade(...)` | Return the project registration result |
+| `queue_construction(...)`, `queue_upgrade(...)` | `Result<(), ProjectError>`: report duplicate projects or a missing upgrade target before accepting a command |
 | `next_available_id()` | The first free `BuildingId`, starting at 0 and checked against Hub and Spoke |
 
 A completed construction receives a building ID independently of its project number. A project ID is not a global identity for the resulting object. Typed arguments prevent passing a `ProjectId` as an upgrade target.
 
 Validation applies to manager methods. Collections and fields remain public, so direct mutation can bypass uniqueness checks. There is no completed-project history; a project number can be reused after it leaves the active list.
 
-## 7. Limitations and Open Questions
+## 7. Turn Report and Project Outcomes
 
-- A zero cost entry such as `{Wood: 0}` can block completion because the code checks map emptiness, while a zero grant does not remove the entry.
-- Upgrade targets are not validated when queued. Finalization ignores `false`: a paid project can disappear without an effect or refund.
-- `RecruitUnit` can settle its cost without creating a unit.
+The public report is defined in [turn_report.rs](../../core/src/domain/settlement/turn_report.rs):
+
+```rust
+pub struct TurnReport {
+    pub consumption: ConsumptionResult,
+    pub projects: Vec<ProjectOutcome>,
+}
+
+pub struct ProjectOutcome {
+    pub project_id: ProjectId,
+    pub result: Result<ProjectCompletion, ProjectError>,
+}
+```
+
+Successful outcomes identify `BuildingConstructed(BuildingId)` or `BuildingUpgraded(BuildingId)`. Errors include `MissingBuilding`, `UnsupportedRecruitment` and duplicate IDs. Construction allocates its own building ID; upgrades preserve the target ID and position. Population evaluation is now accessed through `report.consumption`.
+
+Queue errors are returned immediately and do not enter the active list. At turn start, invalid active projects are removed and reported before material withdrawal. Finalization also checks the target and handles the effect result explicitly. Pending projects produce no outcome entry. An outcome is emitted only in the turn that removes its project; no history is stored in the settlement. Pre-allocation rejections appear first, followed by finalization outcomes, preserving project order within each phase.
+
+If an upgrade target disappears after earlier partial payment, the next turn reports failure without further allocation. Previously paid materials remain spent; this stage does not introduce refund or cancellation rules.
+
+## 8. Limitations and Open Questions
+
+- Recruitment remains unimplemented and is explicitly rejected.
 - There is no project cancellation, cost refund, position validation, population change or global turn integration.
 - Warehouse overflow has no deterministic policy. Population satisfaction now uses shared integer demand in the same units as building inputs and project costs, and caps each good's contribution; details are in [economic.md](economic.md).
 
 These limitations describe current code rather than approving final game rules. Policies requiring further decisions are collected in [0001-economy.md](../decisions/0001-economy.md).
 
-## 8. Sources
+## 9. Sources
 
 Model and coordinator: [settlement/core.rs](../../core/src/domain/settlement/core.rs). Managers: [building_manager.rs](../../core/src/domain/settlement/building_manager.rs), [project_manager.rs](../../core/src/domain/settlement/project_manager.rs). Projects: [projects.rs](../../core/src/domain/settlement/projects.rs). Turn tests: [turn_tests.rs](../../core/src/domain/settlement/turn_tests.rs).

@@ -16,7 +16,7 @@ impl ProjectManager {
         }
     }
 
-    pub fn add_project(&mut self, project: Project) -> Result<(), ProjectId> {
+    pub fn add_project(&mut self, mut project: Project) -> Result<(), ProjectId> {
         if self
             .active_projects
             .iter()
@@ -24,6 +24,7 @@ impl ProjectManager {
         {
             return Err(project.id);
         }
+        project.remaining_cost.normalize();
         self.active_projects.push(project);
         Ok(())
     }
@@ -75,6 +76,25 @@ mod tests {
     use crate::domain::economy::resource_allocation::AllocationResult;
     use crate::domain::settlement::projects::{Project, ProjectCost, ProjectResult};
     use std::collections::HashMap;
+
+    #[test]
+    fn direct_project_registration_normalizes_zero_costs() {
+        let mut manager = ProjectManager::new();
+        manager
+            .add_project(Project {
+                id: ProjectId(1),
+                result: create_dummy_result(),
+                remaining_cost: ProjectCost {
+                    needed_resources: HashMap::from([(ResourceType::Wood, 0)]),
+                    turn_cost: 1,
+                },
+            })
+            .unwrap();
+        assert!(manager.generate_requests().is_empty());
+        assert_eq!(manager.active_projects[0].remaining_cost.turn_cost, 1);
+        manager.process_allocation(&HashMap::new());
+        assert_eq!(manager.extract_completed().len(), 1);
+    }
 
     #[test]
     fn duplicate_project_ids_are_rejected() {

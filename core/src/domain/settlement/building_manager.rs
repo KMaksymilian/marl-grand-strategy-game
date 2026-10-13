@@ -23,12 +23,7 @@ impl BuildingManager {
     }
 
     pub fn construct_building(&mut self, building: Building) -> Result<(), BuildingId> {
-        if self
-            .hub_buildings
-            .iter()
-            .chain(&self.spoke_buildings)
-            .any(|existing| existing.instance_id == building.instance_id)
-        {
+        if self.contains(building.instance_id) {
             return Err(building.instance_id);
         }
         match building.location {
@@ -36,6 +31,13 @@ impl BuildingManager {
             BuildingLocation::Spoke => self.spoke_buildings.push(building),
         }
         Ok(())
+    }
+
+    pub fn contains(&self, id: BuildingId) -> bool {
+        self.hub_buildings
+            .iter()
+            .chain(&self.spoke_buildings)
+            .any(|building| building.instance_id == id)
     }
 
     /// A completed project receives a building ID independent of its project ID.

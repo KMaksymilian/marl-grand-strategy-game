@@ -6,6 +6,26 @@ use crate::domain::ids::{BuildingId, ProjectId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectError {
+    DuplicateProject(ProjectId),
+    MissingBuilding(BuildingId),
+    DuplicateBuilding(BuildingId),
+    UnsupportedRecruitment,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectCompletion {
+    BuildingConstructed(BuildingId),
+    BuildingUpgraded(BuildingId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProjectOutcome {
+    pub project_id: ProjectId,
+    pub result: Result<ProjectCompletion, ProjectError>,
+}
+
 #[derive(Debug, Clone)]
 pub enum ProjectResult {
     ConstructBuilding {
@@ -29,8 +49,12 @@ pub struct ProjectCost {
 }
 
 impl ProjectCost {
+    pub fn normalize(&mut self) {
+        self.needed_resources.retain(|_, amount| *amount > 0);
+    }
+
     pub fn is_fully_paid(&self) -> bool {
-        self.needed_resources.is_empty() && self.turn_cost == 0
+        self.needed_resources.values().all(|amount| *amount == 0) && self.turn_cost == 0
     }
 }
 #[derive(Debug, Clone)]
@@ -41,7 +65,8 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn new(id: ProjectId, result: ProjectResult, initial_cost: ProjectCost) -> Self {
+    pub fn new(id: ProjectId, result: ProjectResult, mut initial_cost: ProjectCost) -> Self {
+        initial_cost.normalize();
         Self {
             id,
             result,
@@ -53,7 +78,13 @@ impl Project {
     pub fn as_demand_request(&self) -> DemandRequest {
         DemandRequest {
             recipient: AllocationRecipient::Project(self.id),
-            demand: self.remaining_cost.needed_resources.clone(),
+            demand: self
+                .remaining_cost
+                .needed_resources
+                .iter()
+                .filter(|(_, amount)| **amount > 0)
+                .map(|(&resource, &amount)| (resource, amount))
+                .collect(),
         }
     }
 
@@ -71,6 +102,8 @@ impl Project {
             }
         }
 
+        self.remaining_cost.normalize();
+
         if self.remaining_cost.turn_cost > 0 {
             self.remaining_cost.turn_cost -= 1;
         }
@@ -87,6 +120,40 @@ mod tests {
     use super::*;
     use crate::domain::economy::resource::ResourceType;
     use std::collections::HashMap;
+
+    #[test]
+    fn zero_entries_are_normalized_without_changing_material_or_time_costs() {
+        let project = Project::new(
+            ProjectId(1),
+            create_dummy_result(),
+            ProjectCost {
+                needed_resources: HashMap::from([
+                    (ResourceType::Wood, 0),
+                    (ResourceType::Stone, 5),
+                ]),
+                turn_cost: 2,
+            },
+        );
+        assert_eq!(
+            project.remaining_cost.needed_resources,
+            HashMap::from([(ResourceType::Stone, 5)])
+        );
+        assert_eq!(project.remaining_cost.turn_cost, 2);
+        assert!(!project.is_completed());
+    }
+
+    #[test]
+    fn public_zero_cost_entries_are_paid_and_do_not_generate_demand() {
+        let mut project = Project::new(ProjectId(1), create_dummy_result(), ProjectCost::default());
+        project
+            .remaining_cost
+            .needed_resources
+            .insert(ResourceType::Wood, 0);
+        assert!(project.is_completed());
+        assert!(project.as_demand_request().demand.is_empty());
+        project.resolve_allocation(None);
+        assert!(project.remaining_cost.needed_resources.is_empty());
+    }
 
     // --- Helpers ---
 

@@ -1,6 +1,6 @@
 # 0001 — Local Economy and Turn Accounting
 
-Date: October 13, 2026. Status: record of implemented solutions, including `fix/economy` (`9d24d16`) and the subsequent population needs repair. Open questions are listed separately and are not presented as approved game rules.
+Date: October 13, 2026. Status: record of implemented solutions, including `fix/economy` (`9d24d16`), integer population needs and validated project reporting. Open questions are listed separately and are not presented as approved game rules.
 
 Related documents: [economy](../architecture/economic.md), [settlements](../architecture/settlements.md), [roadmap](../architecture/economy_roadmap.md).
 
@@ -64,6 +64,16 @@ The first implementation used a shared `u32` recipient ID and `f32` ratios. This
 
 **Example:** three residents with grain needs of 1 and 2 across active tiers request 9 grain. Warehouse stock, project costs and recipe inputs use the same unit. Demand of 1 grain and 1 wood with a grant of 2 grain and no wood yields 0.5.
 
+## D7. Normalize Costs, Validate Effects and Report Project Outcomes
+
+**Implemented:** remove zero material costs at project creation, registration and allocation. Zero entries are excluded from requests and do not prevent a fully paid cost. `queue_upgrade` validates its target before registering a command. Active projects are validated again before allocation; unsupported recruitment or a missing target is rejected without further grants. Completed project effects are also checked and their results handled explicitly.
+
+**Rationale:** a zero-valued cost entry could leave a project stuck, while invalid upgrades could consume materials and disappear without an effect. Validation must happen before resource allocation rather than only after payment.
+
+**Consequences:** `process_turn()` now returns a public `TurnReport` with `consumption` and `projects`. Each removed project produces one `ProjectOutcome` containing its ID and either a completion with a building ID or a typed error. Pending projects produce no event. Queue errors are returned immediately as `ProjectError`, and duplicate registration remains guarded. Unsupported recruitment does not charge materials. Public collection edits are still possible, so active effects are checked every turn.
+
+Previously paid material costs are not refunded if a target later disappears. Project time still decreases without material grants. Refunds, cancellation and timing policy remain separate decisions. This initial turn report does not yet include production, returns or warehouse losses.
+
 ## Open Questions
 
 | Topic | Current behavior | Decision needed |
@@ -72,8 +82,7 @@ The first implementation used a shared `u32` recipient ID and `f32` ratios. This
 | Ties across turns | Fixed recipient order | Whether to rotate precedence |
 | Warehouse overflow | Excess is discarded; `HashMap` order affects selection | Loss policy and reporting of discarded quantities |
 | Project duration | Decreases without materials | Elapsed time since ordering or work time after funding |
-| Zero costs | A zero-valued entry can block completion | Cost normalization |
-| Invalid upgrades | Projects disappear even without a target | Command validation and refund rules |
+| Failed projects and refunds | Invalid effects are reported before further spending; earlier costs remain spent | Refund and cancellation rules |
 | Quantity limits | State and many aggregate quantities use `u32` | Definition validation and boundary behavior |
 | Public state | Manager validation can be bypassed | Controlled operations and population API exports |
 
@@ -83,6 +92,7 @@ The first implementation used a shared `u32` recipient ID and `f32` ratios. This
 - [buildings/core.rs](../../core/src/domain/buildings/core.rs): D4.
 - [settlement/core.rs](../../core/src/domain/settlement/core.rs) and [settlement_inventory_manager.rs](../../core/src/domain/settlement/settlement_inventory_manager.rs): D5.
 - [demographics.rs](../../core/src/domain/settlement/demographics.rs): D6, including integer needs, tier aggregation, large quantities and excess-grant tests.
+- [projects.rs](../../core/src/domain/settlement/projects.rs), [turn_report.rs](../../core/src/domain/settlement/turn_report.rs) and [settlement/core.rs](../../core/src/domain/settlement/core.rs): D7, normalized costs, command validation and project outcomes.
 - [turn_tests.rs](../../core/src/domain/settlement/turn_tests.rs): ID collisions, single-material allocation, large costs, shared inputs and products becoming usable in the next turn.
 
 Update this record and the architecture documents when the code changes, especially tie rules, recipe order or project duration semantics.

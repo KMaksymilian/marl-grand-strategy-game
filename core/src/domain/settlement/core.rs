@@ -3,10 +3,13 @@ use crate::domain::buildings::factory::BuildingDefinition;
 use crate::domain::economy::resource_allocation::{AllocationEngine, AllocationRecipient};
 use crate::domain::ids::{BuildingId, ProjectId};
 use crate::domain::settlement::building_manager::BuildingManager;
-use crate::domain::settlement::demographics::{ConsumptionResult, NeedRegistry, PopulationManager};
+use crate::domain::settlement::demographics::{NeedRegistry, PopulationManager};
 use crate::domain::settlement::project_manager::ProjectManager;
-use crate::domain::settlement::projects::{Project, ProjectCost, ProjectResult};
+use crate::domain::settlement::projects::{
+    Project, ProjectCompletion, ProjectCost, ProjectError, ProjectOutcome, ProjectResult,
+};
 use crate::domain::settlement::settlement_inventory_manager::SettlementInventoryManager;
+use crate::domain::settlement::turn_report::TurnReport;
 use std::sync::Arc;
 
 #[cfg(test)]
@@ -38,7 +41,9 @@ impl Settlement {
         }
     }
 
-    pub fn process_turn(&mut self) -> ConsumptionResult {
+    pub fn process_turn(&mut self) -> TurnReport {
+        // Invalid projects must not participate in material allocation.
+        let mut projects = self.reject_invalid_projects();
         // Labour update
         self.inventory_manager
             .refresh_labor_capacity(self.population_manager.population);
@@ -65,42 +70,98 @@ impl Settlement {
         self.inventory_manager.commit_pending_production();
 
         // 5. Project finalization phase
-        self.resolve_completed_projects();
+        projects.extend(self.resolve_completed_projects());
 
-        consumption_result
+        TurnReport {
+            consumption: consumption_result,
+            projects,
+        }
     }
 
-    fn resolve_completed_projects(&mut self) {
-        let completed = self.project_manager.extract_completed();
-
-        for project in completed {
-            match project.result {
-                ProjectResult::ConstructBuilding {
-                    location,
-                    position,
-                    definition,
-                } => {
-                    let new_building = Building::new(
-                        self.building_manager.next_available_id(),
-                        position,
-                        location,
-                        definition,
-                    );
-                    self.building_manager
-                        .construct_building(new_building)
-                        .expect("new building ID must be unique");
-                }
-                ProjectResult::UpgradeBuilding {
-                    target_instance_id,
-                    new_definition,
-                } => {
-                    self.building_manager
-                        .upgrade_building(target_instance_id, new_definition);
-                }
-                ProjectResult::RecruitUnit { .. } => {
-                    // todo
+    fn validate_project_result(
+        result: &ProjectResult,
+        buildings: &BuildingManager,
+    ) -> Result<(), ProjectError> {
+        match result {
+            ProjectResult::ConstructBuilding { .. } => Ok(()),
+            ProjectResult::UpgradeBuilding {
+                target_instance_id, ..
+            } => {
+                if buildings.contains(*target_instance_id) {
+                    Ok(())
+                } else {
+                    Err(ProjectError::MissingBuilding(*target_instance_id))
                 }
             }
+            ProjectResult::RecruitUnit { .. } => Err(ProjectError::UnsupportedRecruitment),
+        }
+    }
+
+    fn reject_invalid_projects(&mut self) -> Vec<ProjectOutcome> {
+        let mut outcomes = Vec::new();
+        let buildings = &self.building_manager;
+        self.project_manager
+            .active_projects
+            .retain(
+                |project| match Self::validate_project_result(&project.result, buildings) {
+                    Ok(()) => true,
+                    Err(error) => {
+                        outcomes.push(ProjectOutcome {
+                            project_id: project.id,
+                            result: Err(error),
+                        });
+                        false
+                    }
+                },
+            );
+        outcomes
+    }
+
+    fn resolve_completed_projects(&mut self) -> Vec<ProjectOutcome> {
+        let completed = self.project_manager.extract_completed();
+        let mut outcomes = Vec::new();
+        for project in completed {
+            let result = self.finalize_project(project.result);
+            outcomes.push(ProjectOutcome {
+                project_id: project.id,
+                result,
+            });
+        }
+        outcomes
+    }
+
+    fn finalize_project(
+        &mut self,
+        result: ProjectResult,
+    ) -> Result<ProjectCompletion, ProjectError> {
+        Self::validate_project_result(&result, &self.building_manager)?;
+        match result {
+            ProjectResult::ConstructBuilding {
+                location,
+                position,
+                definition,
+            } => {
+                let id = self.building_manager.next_available_id();
+                let new_building = Building::new(id, position, location, definition);
+                self.building_manager
+                    .construct_building(new_building)
+                    .map_err(ProjectError::DuplicateBuilding)?;
+                Ok(ProjectCompletion::BuildingConstructed(id))
+            }
+            ProjectResult::UpgradeBuilding {
+                target_instance_id,
+                new_definition,
+            } => {
+                if self
+                    .building_manager
+                    .upgrade_building(target_instance_id, new_definition)
+                {
+                    Ok(ProjectCompletion::BuildingUpgraded(target_instance_id))
+                } else {
+                    Err(ProjectError::MissingBuilding(target_instance_id))
+                }
+            }
+            ProjectResult::RecruitUnit { .. } => Err(ProjectError::UnsupportedRecruitment),
         }
     }
 
@@ -112,7 +173,7 @@ impl Settlement {
         position: Position,
         definition: Arc<BuildingDefinition>,
         cost: ProjectCost,
-    ) -> Result<(), ProjectId> {
+    ) -> Result<(), ProjectError> {
         let project = Project::new(
             project_id,
             ProjectResult::ConstructBuilding {
@@ -123,7 +184,9 @@ impl Settlement {
             cost,
         );
 
-        self.project_manager.add_project(project)
+        self.project_manager
+            .add_project(project)
+            .map_err(ProjectError::DuplicateProject)
     }
 
     // Request upgrading existing building
@@ -133,16 +196,16 @@ impl Settlement {
         target_instance_id: BuildingId,
         new_definition: Arc<BuildingDefinition>,
         cost: ProjectCost,
-    ) -> Result<(), ProjectId> {
-        let project = Project::new(
-            project_id,
-            ProjectResult::UpgradeBuilding {
-                target_instance_id,
-                new_definition,
-            },
-            cost,
-        );
+    ) -> Result<(), ProjectError> {
+        let result = ProjectResult::UpgradeBuilding {
+            target_instance_id,
+            new_definition,
+        };
+        Self::validate_project_result(&result, &self.building_manager)?;
+        let project = Project::new(project_id, result, cost);
 
-        self.project_manager.add_project(project)
+        self.project_manager
+            .add_project(project)
+            .map_err(ProjectError::DuplicateProject)
     }
 }

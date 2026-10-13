@@ -9,7 +9,7 @@ use crate::domain::settlement::projects::{
     Project, ProjectCompletion, ProjectCost, ProjectError, ProjectOutcome, ProjectResult,
 };
 use crate::domain::settlement::settlement_inventory_manager::SettlementInventoryManager;
-use crate::domain::settlement::turn_report::TurnReport;
+use crate::domain::settlement::turn_report::{InventoryTurnReport, TurnReport};
 use std::sync::Arc;
 
 #[cfg(test)]
@@ -42,6 +42,10 @@ impl Settlement {
     }
 
     pub fn process_turn(&mut self) -> TurnReport {
+        let opening_stock = InventoryTurnReport::snapshot(
+            &self.inventory_manager.main,
+            &self.inventory_manager.pending_production,
+        );
         // Invalid projects must not participate in material allocation.
         let mut projects = self.reject_invalid_projects();
         // Labour update
@@ -56,6 +60,7 @@ impl Settlement {
 
         // 2. Allocation phase
         let allocations = AllocationEngine::execute(&mut self.inventory_manager.main, requests);
+        let mut inventory = InventoryTurnReport::from_allocations(opening_stock, &allocations);
 
         // 3. Consumption and production phase
         let consumption_result = self
@@ -63,11 +68,19 @@ impl Settlement {
             .process_allocation(allocations.get(&AllocationRecipient::Population));
         self.project_manager.process_allocation(&allocations);
         let (produced, returned) = self.building_manager.process_allocations(&allocations);
+        inventory.record_production(&produced, &returned);
 
         // 4. Collecting phase
-        self.inventory_manager
+        inventory.losses = self
+            .inventory_manager
             .process_production_results(produced, returned);
-        self.inventory_manager.commit_pending_production();
+        inventory
+            .losses
+            .extend(self.inventory_manager.commit_pending_production());
+        inventory.closing_stock = InventoryTurnReport::snapshot(
+            &self.inventory_manager.main,
+            &self.inventory_manager.pending_production,
+        );
 
         // 5. Project finalization phase
         projects.extend(self.resolve_completed_projects());
@@ -75,6 +88,7 @@ impl Settlement {
         TurnReport {
             consumption: consumption_result,
             projects,
+            inventory,
         }
     }
 

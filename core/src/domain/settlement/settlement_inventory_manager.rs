@@ -1,4 +1,5 @@
 use crate::domain::economy::resource::{ResourceInventory, ResourceType};
+use crate::domain::settlement::turn_report::{InventoryLoss, InventoryLossStage};
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -23,22 +24,49 @@ impl SettlementInventoryManager {
     /// Produced goods are stored in buffer
     pub fn process_production_results(
         &mut self,
-        produced: HashMap<ResourceType, u32>,
-        returned: HashMap<ResourceType, u32>,
-    ) {
-        for (res, amount) in returned {
-            self.main.add(res, amount);
-        }
-        for (res, amount) in produced {
-            self.pending_production.add(res, amount);
-        }
+        produced: HashMap<ResourceType, u64>,
+        returned: HashMap<ResourceType, u64>,
+    ) -> Vec<InventoryLoss> {
+        let mut losses = Self::add_in_order(&mut self.main, returned, InventoryLossStage::Returns);
+        losses.extend(Self::add_in_order(
+            &mut self.pending_production,
+            produced,
+            InventoryLossStage::ProductionBuffer,
+        ));
+        losses
     }
 
     /// Move goods from buffer to inventory
-    pub fn commit_pending_production(&mut self) {
-        for (res, amount) in self.pending_production.resources.drain() {
-            self.main.add(res, amount);
+    pub fn commit_pending_production(&mut self) -> Vec<InventoryLoss> {
+        let pending = self
+            .pending_production
+            .resources
+            .drain()
+            .map(|(resource, amount)| (resource, u64::from(amount)))
+            .collect();
+        Self::add_in_order(&mut self.main, pending, InventoryLossStage::Warehouse)
+    }
+
+    fn add_in_order(
+        inventory: &mut ResourceInventory,
+        batch: HashMap<ResourceType, u64>,
+        stage: InventoryLossStage,
+    ) -> Vec<InventoryLoss> {
+        let mut entries: Vec<_> = batch.into_iter().collect();
+        entries.sort_unstable_by_key(|(resource, _)| *resource);
+        let mut losses = Vec::new();
+        for (resource, amount) in entries {
+            let addition = inventory.add(resource, amount.min(u64::from(u32::MAX)) as u32);
+            let rejected = amount - u64::from(addition.accepted);
+            if rejected > 0 {
+                losses.push(InventoryLoss {
+                    resource,
+                    amount: rejected,
+                    stage,
+                });
+            }
         }
+        losses
     }
 }
 
@@ -49,17 +77,107 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
+    fn overflow_order_is_stable_for_all_resource_insertion_orders() {
+        use ResourceType::{Grain, Stone, Wood};
+        let orders = [
+            [Wood, Stone, Grain],
+            [Wood, Grain, Stone],
+            [Stone, Wood, Grain],
+            [Stone, Grain, Wood],
+            [Grain, Wood, Stone],
+            [Grain, Stone, Wood],
+        ];
+        for order in orders {
+            let mut manager = SettlementInventoryManager::new(2);
+            let produced = order
+                .into_iter()
+                .map(|resource| (resource, 3_u64))
+                .collect();
+            let losses = manager.process_production_results(produced, HashMap::new());
+            assert_eq!(
+                manager.pending_production.resources,
+                HashMap::from([(Wood, 2)])
+            );
+            assert_eq!(
+                losses,
+                vec![
+                    InventoryLoss {
+                        resource: Wood,
+                        amount: 1,
+                        stage: InventoryLossStage::ProductionBuffer
+                    },
+                    InventoryLoss {
+                        resource: Stone,
+                        amount: 3,
+                        stage: InventoryLossStage::ProductionBuffer
+                    },
+                    InventoryLoss {
+                        resource: Grain,
+                        amount: 3,
+                        stage: InventoryLossStage::ProductionBuffer
+                    },
+                ]
+            );
+            assert!(manager.commit_pending_production().is_empty());
+            assert_eq!(manager.main.resources, HashMap::from([(Wood, 2)]));
+        }
+    }
+
+    #[test]
+    fn returns_are_retained_before_new_products() {
+        let mut manager = SettlementInventoryManager::new(2);
+        manager.main.add(ResourceType::Stone, 1);
+        assert!(
+            manager
+                .process_production_results(
+                    HashMap::from([(ResourceType::Wood, 2)]),
+                    HashMap::from([(ResourceType::Grain, 1)]),
+                )
+                .is_empty()
+        );
+        assert_eq!(
+            manager.commit_pending_production(),
+            vec![InventoryLoss {
+                resource: ResourceType::Wood,
+                amount: 2,
+                stage: InventoryLossStage::Warehouse,
+            }]
+        );
+        assert_eq!(manager.main.resources[&ResourceType::Grain], 1);
+        assert!(!manager.main.resources.contains_key(&ResourceType::Wood));
+    }
+
+    #[test]
+    fn returned_overflow_is_reported_separately() {
+        let mut manager = SettlementInventoryManager::new(1);
+        manager.main.add(ResourceType::Wood, 1);
+        assert_eq!(
+            manager.process_production_results(
+                HashMap::new(),
+                HashMap::from([(ResourceType::Stone, 2)])
+            ),
+            vec![InventoryLoss {
+                resource: ResourceType::Stone,
+                amount: 2,
+                stage: InventoryLossStage::Returns
+            }]
+        );
+    }
+
+    #[test]
     fn test_new_initializes_with_correct_capacities() {
         // Arrange & Act
         let manager = SettlementInventoryManager::new(150);
 
         // Assert
         assert_eq!(
-            manager.main.max_capacity, 150,
+            manager.main.capacity(),
+            150,
             "Main inventory should have correct capacity"
         );
         assert_eq!(
-            manager.pending_production.max_capacity, 150,
+            manager.pending_production.capacity(),
+            150,
             "Pending inventory should have correct capacity"
         );
         assert_eq!(manager.main.total_amount(), 0);

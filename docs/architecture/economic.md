@@ -15,20 +15,44 @@ Inventories, grants, recipe inputs/outputs, material costs and per-capita needs 
 
 ## 2. Warehouse and Production Buffer
 
-`ResourceInventory` stores `resources: HashMap<ResourceType, u32>` and a shared `max_capacity: u32`. Capacity limits the sum of materials, rather than each resource separately.
+`ResourceInventory` stores `resources: HashMap<ResourceType, u32>` and a private shared capacity of type `u32`. Capacity limits the sum of materials, rather than each resource separately. Read it through `capacity()` and change it through `set_capacity()`.
 
 | Method | Behavior |
 | --- | --- |
 | `new(capacity)` | Creates an empty inventory |
-| `total_amount()` | Sums materials, excluding `Labour` |
-| `add(resource, amount)` | Adds at most the available free capacity; does not report the discarded quantity |
+| `total_amount()` | Sums materials in `u64`, excluding `Labour` |
+| `capacity()` | Returns the current material limit |
+| `set_capacity(capacity)` | Returns `Result<(), CapacityError>`; rejects a limit below stored materials without changing capacity or stock |
+| `add(resource, amount)` | Returns `InventoryAddResult { accepted, rejected }`; material additions are limited by free space and `Labour` only by its `u32` counter |
 | `consume(resource, amount)` | Withdraws the whole quantity and returns `true`; returns `false` without a partial withdrawal if stock is insufficient |
 
 `SettlementInventoryManager` owns `main` and `pending_production`, initially with the same capacity. Unused material grants return to `main`; products enter the buffer. At the end of turn accounting, `commit_pending_production()` drains the buffer into `main` through `add`.
 
+Returns are admitted before new products. Each return, buffer insertion and buffer-to-warehouse transfer processes resources in ascending `ResourceType` order: `Wood`, `Stone`, `Grain`, then `Labour`. Stored stock is never evicted to make room for an incoming batch. An accepted addition and its rejection always sum to the requested amount. Buffer and warehouse rejection are reported separately, so already discarded buffer products are not counted again during transfer.
+
+The inventory manager reports `InventoryLoss { resource, amount, stage }` for `Returns`, `ProductionBuffer` and `Warehouse`. It accepts aggregate production/returns in `u64`, admitting only what the `u32` inventory can store. Building-manager aggregate totals also use `u64`; no resource unit conversion is introduced. Materials retain their existing whole-unit scale.
+
 Products are visible in the warehouse after the turn ends, but do not participate in that turn's earlier allocation. They can supply consumption, projects or other recipes in the next turn. Products from an earlier recipe also cannot feed a later recipe in the same building during the same turn.
 
-`refresh_labor_capacity(population)` directly sets `Labour` to the population count. Labour is renewed every turn. The generic `add` method still applies the free-space restriction to `Labour`, so the dedicated manager method should be used to refresh workers.
+`refresh_labor_capacity(population)` directly sets `Labour` to the population count. Labour is renewed every turn and generic additions can also succeed when the material warehouse is full. Its counter is capped at `u32::MAX`, with any excess reported as rejected by `add`.
+
+Capacity reduction does not destroy existing goods: a reduction below stock returns `CapacityError { requested, stored }`. Resource maps remain public. If direct mutation creates an overfull inventory, additions use saturating free-space calculation and reject materials without arithmetic underflow. This guards operations; it does not automatically repair invalid stock.
+
+### Material Balance in the Turn Report
+
+`TurnReport.inventory` contains opening/closing material stock, production, internal returns, consumption by population/projects/buildings and stage-specific losses. Opening and closing snapshots include both `main` and the pending buffer, excluding `Labour`. Aggregate report quantities use `u64` in the same resource units; the balance comparison uses `u128`.
+
+For every material, `report.inventory.is_balanced()` checks:
+
+```text
+opening stock + produced
+    = closing stock + population consumed + project consumed
+      + production inputs consumed + losses
+```
+
+Unused building grants are subtracted from production input consumption. Returns are an internal transfer, not new production, and must not be added to the left side. Labour is a renewed capacity and is excluded from this material conservation equation. The report describes operations within `process_turn`; additions made outside the turn must be tracked using their own `InventoryAddResult`.
+
+Tests cover all six insertion orders of three materials, losses at both storage stages, complete report equality under reversed building order, combined production above `u32`, returned materials without workers and preexisting buffer stock.
 
 ## 3. Demand Recipients
 

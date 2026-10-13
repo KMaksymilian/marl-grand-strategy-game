@@ -93,7 +93,7 @@ impl BuildingManager {
     pub fn process_allocations(
         &mut self,
         allocations: &AllocationResult,
-    ) -> (HashMap<ResourceType, u32>, HashMap<ResourceType, u32>) {
+    ) -> (HashMap<ResourceType, u64>, HashMap<ResourceType, u64>) {
         let mut all_produced = HashMap::new();
         let mut all_returned = HashMap::new();
 
@@ -106,11 +106,11 @@ impl BuildingManager {
             let update_result = building.resolve_allocation(grants);
 
             for (res, amount) in update_result.production.produced {
-                *all_produced.entry(res).or_insert(0) += amount;
+                *all_produced.entry(res).or_insert(0_u64) += u64::from(amount);
             }
             for (res, amount) in update_result.production.unused {
                 if amount > 0 {
-                    *all_returned.entry(res).or_insert(0) += amount;
+                    *all_returned.entry(res).or_insert(0_u64) += u64::from(amount);
                 }
             }
         }

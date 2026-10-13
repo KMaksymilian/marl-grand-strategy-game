@@ -2,6 +2,7 @@ use super::*;
 use crate::domain::buildings::factory::BuildingBehavior;
 use crate::domain::economy::resource::ResourceType;
 use crate::domain::settlement::demographics::NeedTier;
+use crate::domain::settlement::turn_report::{InventoryLoss, InventoryLossStage};
 use std::collections::HashMap;
 
 fn definition(behaviors: Vec<BuildingBehavior>) -> Arc<BuildingDefinition> {
@@ -44,6 +45,162 @@ fn stock(settlement: &Settlement, resource: ResourceType) -> u32 {
         .get(&resource)
         .copied()
         .unwrap_or(0)
+}
+
+#[test]
+fn buffer_and_warehouse_losses_are_reported_without_double_counting() {
+    let mut settlement = Settlement::new(1, 5, 1, Arc::default());
+    settlement
+        .inventory_manager
+        .main
+        .add(ResourceType::Stone, 3);
+    add_building(
+        &mut settlement,
+        1,
+        definition(vec![BuildingBehavior::Production {
+            inputs: vec![],
+            outputs: vec![(ResourceType::Wood, 4), (ResourceType::Grain, 4)],
+        }]),
+    );
+    let report = settlement.process_turn();
+    assert_eq!(
+        report.inventory.losses,
+        vec![
+            InventoryLoss {
+                resource: ResourceType::Grain,
+                amount: 3,
+                stage: InventoryLossStage::ProductionBuffer
+            },
+            InventoryLoss {
+                resource: ResourceType::Wood,
+                amount: 2,
+                stage: InventoryLossStage::Warehouse
+            },
+            InventoryLoss {
+                resource: ResourceType::Grain,
+                amount: 1,
+                stage: InventoryLossStage::Warehouse
+            },
+        ]
+    );
+    assert_eq!(stock(&settlement, ResourceType::Stone), 3);
+    assert_eq!(stock(&settlement, ResourceType::Wood), 2);
+    assert_eq!(report.inventory.produced[&ResourceType::Grain], 4);
+    assert!(report.inventory.is_balanced());
+    let mut corrupted = report.inventory;
+    corrupted.closing_stock.insert(ResourceType::Wood, 3);
+    assert!(!corrupted.is_balanced());
+}
+
+#[test]
+fn material_grants_returned_without_workers_are_not_consumption() {
+    let mut settlement = Settlement::new(1, 2, 0, Arc::default());
+    settlement.inventory_manager.main.add(ResourceType::Wood, 2);
+    add_building(
+        &mut settlement,
+        1,
+        definition(vec![BuildingBehavior::Production {
+            inputs: vec![(ResourceType::Wood, 2)],
+            outputs: vec![(ResourceType::Stone, 5)],
+        }]),
+    );
+    let report = settlement.process_turn();
+    assert_eq!(report.inventory.returned[&ResourceType::Wood], 2);
+    assert_eq!(report.inventory.production_consumed[&ResourceType::Wood], 0);
+    assert!(report.inventory.produced.is_empty());
+    assert!(report.inventory.losses.is_empty());
+    assert_eq!(stock(&settlement, ResourceType::Wood), 2);
+    assert!(report.inventory.is_balanced());
+}
+
+#[test]
+fn combined_building_production_can_exceed_u32_without_wrapping() {
+    let mut settlement = Settlement::new(1, u32::MAX, 2, Arc::default());
+    let blueprint = definition(vec![BuildingBehavior::Production {
+        inputs: vec![],
+        outputs: vec![(ResourceType::Wood, u32::MAX)],
+    }]);
+    add_building(&mut settlement, 1, blueprint.clone());
+    add_building(&mut settlement, 2, blueprint);
+    let report = settlement.process_turn();
+    assert_eq!(
+        report.inventory.produced[&ResourceType::Wood],
+        2 * u64::from(u32::MAX)
+    );
+    assert_eq!(
+        report.inventory.losses,
+        vec![InventoryLoss {
+            resource: ResourceType::Wood,
+            amount: u64::from(u32::MAX),
+            stage: InventoryLossStage::ProductionBuffer,
+        }]
+    );
+    assert_eq!(stock(&settlement, ResourceType::Wood), u32::MAX);
+    assert!(report.inventory.is_balanced());
+}
+
+#[test]
+fn opening_balance_includes_preexisting_buffer_stock() {
+    let mut settlement = Settlement::new(1, 3, 0, Arc::default());
+    settlement
+        .inventory_manager
+        .main
+        .add(ResourceType::Grain, 1);
+    settlement
+        .inventory_manager
+        .pending_production
+        .add(ResourceType::Wood, 3);
+    let report = settlement.process_turn();
+    assert_eq!(report.inventory.opening_stock[&ResourceType::Wood], 3);
+    assert_eq!(report.inventory.closing_stock[&ResourceType::Wood], 2);
+    assert_eq!(
+        report.inventory.losses,
+        vec![InventoryLoss {
+            resource: ResourceType::Wood,
+            amount: 1,
+            stage: InventoryLossStage::Warehouse,
+        }]
+    );
+    assert!(
+        settlement
+            .inventory_manager
+            .pending_production
+            .resources
+            .is_empty()
+    );
+    assert!(report.inventory.is_balanced());
+}
+
+#[test]
+fn complete_overflow_reports_are_independent_of_building_order() {
+    let mut expected = None;
+    for order in [[1, 2], [2, 1]] {
+        let mut settlement = Settlement::new(1, 3, 2, Arc::default());
+        for id in order {
+            let output = if id == 1 {
+                ResourceType::Stone
+            } else {
+                ResourceType::Wood
+            };
+            add_building(
+                &mut settlement,
+                id,
+                definition(vec![BuildingBehavior::Production {
+                    inputs: vec![],
+                    outputs: vec![(output, 3)],
+                }]),
+            );
+        }
+        let report = settlement.process_turn();
+        assert!(report.inventory.is_balanced());
+        if let Some(expected) = &expected {
+            assert_eq!(&report, expected);
+        } else {
+            expected = Some(report);
+        }
+        assert_eq!(stock(&settlement, ResourceType::Wood), 3);
+        assert_eq!(stock(&settlement, ResourceType::Stone), 0);
+    }
 }
 
 #[test]
@@ -375,6 +532,11 @@ fn population_building_and_project_share_whole_resource_units() {
     assert_eq!(stock(&settlement, ResourceType::Wood), 0);
     assert_eq!(stock(&settlement, ResourceType::Stone), 1);
     assert_eq!(result.consumption.satisfaction_percent, 1.0);
+    assert_eq!(result.inventory.population_consumed[&ResourceType::Wood], 2);
+    assert_eq!(result.inventory.project_consumed[&ResourceType::Wood], 1);
+    assert_eq!(result.inventory.production_consumed[&ResourceType::Wood], 1);
+    assert!(result.inventory.losses.is_empty());
+    assert!(result.inventory.is_balanced());
     assert!(result.consumption.missing_resources.is_empty());
     assert!(settlement.project_manager.active_projects.is_empty());
     assert_eq!(settlement.building_manager.hub_buildings.len(), 2);
@@ -483,6 +645,17 @@ fn population_and_building_zero_have_separate_allocations() {
     let report = settlement.process_turn();
 
     assert_eq!(report.consumption.satisfaction_percent, 1.0);
+    assert_eq!(
+        report.inventory.population_consumed[&ResourceType::Grain],
+        1
+    );
+    assert!(report.inventory.project_consumed.is_empty());
+    assert_eq!(
+        report.inventory.production_consumed[&ResourceType::Grain],
+        1
+    );
+    assert!(report.inventory.losses.is_empty());
+    assert!(report.inventory.is_balanced());
     assert_eq!(stock(&settlement, ResourceType::Grain), 0);
     assert_eq!(stock(&settlement, ResourceType::Stone), 1);
 }

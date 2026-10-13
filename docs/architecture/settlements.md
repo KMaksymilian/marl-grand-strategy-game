@@ -178,6 +178,7 @@ The public report is defined in [turn_report.rs](../../core/src/domain/settlemen
 pub struct TurnReport {
     pub consumption: ConsumptionResult,
     pub projects: Vec<ProjectOutcome>,
+    pub inventory: InventoryTurnReport,
 }
 
 pub struct ProjectOutcome {
@@ -192,11 +193,13 @@ Queue errors are returned immediately and do not enter the active list. At turn 
 
 If an upgrade target disappears after earlier partial payment, the next turn reports failure without further allocation. Previously paid materials remain spent; this stage does not introduce refund or cancellation rules.
 
+`inventory` records material stock, production, internal returns, consumption categories and stage-specific overflow losses. `inventory.is_balanced()` checks conservation separately for each material, excluding renewed labour. The detailed policy and balance equation are documented in [economic.md](economic.md).
+
 ## 8. Limitations and Open Questions
 
 - Recruitment remains unimplemented and is explicitly rejected.
 - There is no project cancellation, cost refund, position validation, population change or global turn integration.
-- Warehouse overflow has no deterministic policy. Population satisfaction now uses shared integer demand in the same units as building inputs and project costs, and caps each good's contribution; details are in [economic.md](economic.md).
+- Overflow uses fixed resource order, which is deterministic but not a configurable economic priority. Direct mutation of public resource maps can still create invalid stock; capacity changes must use `set_capacity()`.
 
 These limitations describe current code rather than approving final game rules. Policies requiring further decisions are collected in [0001-economy.md](../decisions/0001-economy.md).
 

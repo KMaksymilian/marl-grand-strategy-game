@@ -72,7 +72,17 @@ The first implementation used a shared `u32` recipient ID and `f32` ratios. This
 
 **Consequences:** `process_turn()` now returns a public `TurnReport` with `consumption` and `projects`. Each removed project produces one `ProjectOutcome` containing its ID and either a completion with a building ID or a typed error. Pending projects produce no event. Queue errors are returned immediately as `ProjectError`, and duplicate registration remains guarded. Unsupported recruitment does not charge materials. Public collection edits are still possible, so active effects are checked every turn.
 
-Previously paid material costs are not refunded if a target later disappears. Project time still decreases without material grants. Refunds, cancellation and timing policy remain separate decisions. This initial turn report does not yet include production, returns or warehouse losses.
+Previously paid material costs are not refunded if a target later disappears. Project time still decreases without material grants. Refunds, cancellation and timing policy remain separate decisions. D8 extends the initial report with production, returns and warehouse losses.
+
+## D8. Deterministic Storage, Explicit Losses and Material Balance
+
+**Implemented:** `add()` returns accepted and rejected quantities. Returns are processed before products; every storage batch follows ascending resource order. Excess is discarded with a stage-specific loss record rather than silently. Buffer losses and warehouse losses are separate. `Labour` does not use material capacity. Capacity is private, and `set_capacity()` rejects shrinking below stock without deleting goods. Free-space subtraction is saturating to handle invalid public resource maps safely.
+
+**Rationale:** `HashMap` iteration previously selected which goods survived overflow, making repeated simulations diverge. Silent rejection prevented full accounting, and a capacity below public stock could underflow during an addition.
+
+**Consequences:** the fixed material order is `Wood`, `Stone`, `Grain`; it is a storage tie policy, not a configurable economic priority. Physical inventories, costs and requests retain `u32` whole-unit amounts. Multi-building aggregate production/returns and report totals use `u64` to account for excess without wrapping. `TurnReport.inventory` records stock, produced goods, returned grants, consumption categories and losses. Its balance check excludes labour and does not count internal returns as production. Opening/closing stock includes the pending buffer.
+
+Existing stock is retained. No eviction or automatic shrinking loss is introduced. Warehouse and buffer capacities can be changed independently through their setters. Public resource maps still permit invalid external state, so full state encapsulation remains future work. Per-building definition limits and configurable storage priorities are also outside this stage.
 
 ## Open Questions
 
@@ -80,7 +90,7 @@ Previously paid material costs are not refunded if a target later disappears. Pr
 | --- | --- | --- |
 | Need weights | Evaluation is weighted by material quantities | Whether to add weights per need or survival priority |
 | Ties across turns | Fixed recipient order | Whether to rotate precedence |
-| Warehouse overflow | Excess is discarded; `HashMap` order affects selection | Loss policy and reporting of discarded quantities |
+| Storage priorities | Returns first, then fixed resource order; excess is reported and discarded | Whether to introduce configurable priorities or retention policies |
 | Project duration | Decreases without materials | Elapsed time since ordering or work time after funding |
 | Failed projects and refunds | Invalid effects are reported before further spending; earlier costs remain spent | Refund and cancellation rules |
 | Quantity limits | State and many aggregate quantities use `u32` | Definition validation and boundary behavior |
@@ -93,6 +103,7 @@ Previously paid material costs are not refunded if a target later disappears. Pr
 - [settlement/core.rs](../../core/src/domain/settlement/core.rs) and [settlement_inventory_manager.rs](../../core/src/domain/settlement/settlement_inventory_manager.rs): D5.
 - [demographics.rs](../../core/src/domain/settlement/demographics.rs): D6, including integer needs, tier aggregation, large quantities and excess-grant tests.
 - [projects.rs](../../core/src/domain/settlement/projects.rs), [turn_report.rs](../../core/src/domain/settlement/turn_report.rs) and [settlement/core.rs](../../core/src/domain/settlement/core.rs): D7, normalized costs, command validation and project outcomes.
+- [resource.rs](../../core/src/domain/economy/resource.rs), [settlement_inventory_manager.rs](../../core/src/domain/settlement/settlement_inventory_manager.rs) and [turn_report.rs](../../core/src/domain/settlement/turn_report.rs): D8, capacity validation, loss reporting and material balance.
 - [turn_tests.rs](../../core/src/domain/settlement/turn_tests.rs): ID collisions, single-material allocation, large costs, shared inputs and products becoming usable in the next turn.
 
 Update this record and the architecture documents when the code changes, especially tie rules, recipe order or project duration semantics.

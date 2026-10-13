@@ -1,6 +1,8 @@
 use crate::domain::buildings::core::{Building, BuildingLocation, Position};
 use crate::domain::buildings::factory::BuildingDefinition;
+use crate::domain::economy::resource::ResourceType;
 use crate::domain::economy::resource_allocation::{AllocationEngine, AllocationRecipient};
+use crate::domain::economy::storage_priority::StoragePriorityError;
 use crate::domain::ids::{BuildingId, ProjectId};
 use crate::domain::settlement::building_manager::BuildingManager;
 use crate::domain::settlement::demographics::{NeedRegistry, PopulationManager};
@@ -90,6 +92,20 @@ impl Settlement {
             projects,
             inventory,
         }
+    }
+
+    /// Applies to incoming storage batches; does not evict existing stock.
+    pub fn set_storage_priority(
+        &mut self,
+        resource: ResourceType,
+        priority: u32,
+    ) -> Result<(), StoragePriorityError> {
+        self.inventory_manager
+            .set_storage_priority(resource, priority)
+    }
+
+    pub fn storage_priority(&self, resource: ResourceType) -> u32 {
+        self.inventory_manager.storage_priority(resource)
     }
 
     fn validate_project_result(

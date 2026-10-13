@@ -48,6 +48,70 @@ fn stock(settlement: &Settlement, resource: ResourceType) -> u32 {
 }
 
 #[test]
+fn storage_priorities_are_local_to_each_settlement() {
+    let mut food_first = Settlement::new(1, 3, 1, Arc::default());
+    let mut wood_first = Settlement::new(2, 3, 1, Arc::default());
+    food_first
+        .set_storage_priority(ResourceType::Grain, 10)
+        .unwrap();
+    wood_first
+        .set_storage_priority(ResourceType::Wood, 10)
+        .unwrap();
+    let blueprint = definition(vec![BuildingBehavior::Production {
+        inputs: vec![],
+        outputs: vec![(ResourceType::Wood, 3), (ResourceType::Grain, 3)],
+    }]);
+    add_building(&mut food_first, 1, blueprint.clone());
+    add_building(&mut wood_first, 1, blueprint);
+    let food_report = food_first.process_turn();
+    let wood_report = wood_first.process_turn();
+    assert_eq!(food_first.storage_priority(ResourceType::Wood), 0);
+    assert_eq!(wood_first.storage_priority(ResourceType::Grain), 0);
+    assert_eq!(stock(&food_first, ResourceType::Grain), 3);
+    assert_eq!(stock(&food_first, ResourceType::Wood), 0);
+    assert_eq!(stock(&wood_first, ResourceType::Wood), 3);
+    assert_eq!(stock(&wood_first, ResourceType::Grain), 0);
+    assert!(food_report.inventory.is_balanced());
+    assert!(wood_report.inventory.is_balanced());
+}
+
+#[test]
+fn changing_storage_priority_affects_future_admissions_without_eviction() {
+    let mut settlement = Settlement::new(1, 3, 1, Arc::default());
+    settlement
+        .set_storage_priority(ResourceType::Grain, 10)
+        .unwrap();
+    add_building(
+        &mut settlement,
+        1,
+        definition(vec![BuildingBehavior::Production {
+            inputs: vec![],
+            outputs: vec![(ResourceType::Wood, 3), (ResourceType::Grain, 3)],
+        }]),
+    );
+    assert!(settlement.process_turn().inventory.is_balanced());
+    assert_eq!(stock(&settlement, ResourceType::Grain), 3);
+
+    settlement
+        .set_storage_priority(ResourceType::Wood, 20)
+        .unwrap();
+    let report = settlement.process_turn();
+    assert_eq!(stock(&settlement, ResourceType::Grain), 3);
+    assert_eq!(stock(&settlement, ResourceType::Wood), 0);
+    assert!(report.inventory.is_balanced());
+
+    assert!(
+        settlement
+            .inventory_manager
+            .main
+            .consume(ResourceType::Grain, 3)
+    );
+    assert!(settlement.process_turn().inventory.is_balanced());
+    assert_eq!(stock(&settlement, ResourceType::Wood), 3);
+    assert_eq!(stock(&settlement, ResourceType::Grain), 0);
+}
+
+#[test]
 fn buffer_and_warehouse_losses_are_reported_without_double_counting() {
     let mut settlement = Settlement::new(1, 5, 1, Arc::default());
     settlement

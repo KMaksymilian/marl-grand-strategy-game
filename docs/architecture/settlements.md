@@ -64,6 +64,8 @@ classDiagram
 
 `Settlement::new(id, initial_capacity, initial_population, need_registry)` creates an empty warehouse and buffer with the requested capacity, no buildings or projects, and a population manager with a shared `Arc<NeedRegistry>`.
 
+Each settlement also owns independent storage priorities. `set_storage_priority(resource, priority)` configures a material's preference and returns `Result<(), StoragePriorityError>`; `storage_priority(resource)` returns its current value. Higher values are admitted first during storage overflow, with `0` as the default. Warehouse and buffer use the same policy. The policy does not change proportional demand allocation or evict existing stock. See [economic.md](economic.md) for examples and tie rules.
+
 Manager modules and `demographics` remain private in `settlement/mod.rs`, although settlement fields are public. In particular, an external crate cannot normally name `NeedTier` and `NeedRegistry` to create its own needs configuration. Type inference permits a default empty registry through `Arc::default()`. Completing these exports remains future API work.
 
 ## 3. Turn Sequence
@@ -199,7 +201,7 @@ If an upgrade target disappears after earlier partial payment, the next turn rep
 
 - Recruitment remains unimplemented and is explicitly rejected.
 - There is no project cancellation, cost refund, position validation, population change or global turn integration.
-- Overflow uses fixed resource order, which is deterministic but not a configurable economic priority. Direct mutation of public resource maps can still create invalid stock; capacity changes must use `set_capacity()`.
+- Overflow uses configurable settlement priorities with stable resource order only for ties. There is no automatic policy choosing these priorities. Direct mutation of public resource maps can still create invalid stock; capacity changes must use `set_capacity()`.
 
 These limitations describe current code rather than approving final game rules. Policies requiring further decisions are collected in [0001-economy.md](../decisions/0001-economy.md).
 

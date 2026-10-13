@@ -28,7 +28,24 @@ Inventories, grants, recipe inputs/outputs, material costs and per-capita needs 
 
 `SettlementInventoryManager` owns `main` and `pending_production`, initially with the same capacity. Unused material grants return to `main`; products enter the buffer. At the end of turn accounting, `commit_pending_production()` drains the buffer into `main` through `add`.
 
-Returns are admitted before new products. Each return, buffer insertion and buffer-to-warehouse transfer processes resources in ascending `ResourceType` order: `Wood`, `Stone`, `Grain`, then `Labour`. Stored stock is never evicted to make room for an incoming batch. An accepted addition and its rejection always sum to the requested amount. Buffer and warehouse rejection are reported separately, so already discarded buffer products are not counted again during transfer.
+Returns are admitted before new products. Each return, buffer insertion and buffer-to-warehouse transfer processes materials by the settlement's storage priorities, highest value first. Equal priorities use ascending `ResourceType` order: `Wood`, `Stone`, `Grain`. Stored stock is never evicted to make room for an incoming batch. An accepted addition and its rejection always sum to the requested amount. Buffer and warehouse rejection are reported separately, so already discarded buffer products are not counted again during transfer.
+
+### Settlement Storage Priorities
+
+Each settlement owns an independent `StoragePriorities` policy in its inventory manager. Unconfigured materials have priority `0`. The settlement exposes commands to set or read each material's priority:
+
+```rust
+settlement.set_storage_priority(ResourceType::Grain, 100).unwrap();
+settlement.set_storage_priority(ResourceType::Wood, 50).unwrap();
+settlement.set_storage_priority(ResourceType::Stone, 10).unwrap();
+assert_eq!(settlement.storage_priority(ResourceType::Grain), 100);
+```
+
+These settings admit grain before wood and wood before stone within each batch. Setting a value to `0` restores the default lowest priority; it does not prohibit storing the material. `Labour` has no material storage priority: attempting to set one returns `StoragePriorityError::LabourIsNotMaterial` without changing the policy.
+
+The policy is shared by the settlement's warehouse and production buffer, including unused material returns. It affects future admissions, not existing stock, warehouse capacity or resource allocation to population/buildings/projects. Returns still precede new production as a phase rule even when a product has a higher priority. Change priorities before `process_turn()` to apply one policy throughout that turn. Direct single-resource `ResourceInventory::add()` calls have no batch to reorder.
+
+With three free spaces and a batch containing three grain and three wood, a higher grain priority retains grain and reports the wood as rejected. Priorities are explicit caller settings; no AI or automatic need-based policy is implemented here. The API and policy are defined in [storage_priority.rs](../../core/src/domain/economy/storage_priority.rs).
 
 The inventory manager reports `InventoryLoss { resource, amount, stage }` for `Returns`, `ProductionBuffer` and `Warehouse`. It accepts aggregate production/returns in `u64`, admitting only what the `u32` inventory can store. Building-manager aggregate totals also use `u64`; no resource unit conversion is introduced. Materials retain their existing whole-unit scale.
 
@@ -52,7 +69,7 @@ opening stock + produced
 
 Unused building grants are subtracted from production input consumption. Returns are an internal transfer, not new production, and must not be added to the left side. Labour is a renewed capacity and is excluded from this material conservation equation. The report describes operations within `process_turn`; additions made outside the turn must be tracked using their own `InventoryAddResult`.
 
-Tests cover all six insertion orders of three materials, losses at both storage stages, complete report equality under reversed building order, combined production above `u32`, returned materials without workers and preexisting buffer stock.
+Tests cover all six insertion orders of three materials, configured priorities and ties, independent settlement policies, priority changes without eviction, losses at both storage stages, complete report equality under reversed building order, combined production above `u32`, returned materials without workers and preexisting buffer stock.
 
 ## 3. Demand Recipients
 

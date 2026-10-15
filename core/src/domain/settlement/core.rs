@@ -1,5 +1,6 @@
 use crate::domain::buildings::core::{Building, BuildingLocation, Position};
 use crate::domain::buildings::factory::BuildingDefinition;
+use crate::domain::economy::gold::GoldInventoryManager;
 use crate::domain::economy::resource::ResourceType;
 use crate::domain::economy::resource_allocation::{AllocationEngine, AllocationRecipient};
 use crate::domain::economy::storage_order::StorageOrderError;
@@ -12,6 +13,8 @@ use crate::domain::settlement::projects::{
 };
 use crate::domain::settlement::settlement_inventory_manager::SettlementInventoryManager;
 use crate::domain::settlement::turn_report::{InventoryTurnReport, TurnReport};
+use crate::domain::trading::trade_log_demand::TradeLogDemand;
+use crate::domain::trading::trade_log_manager::TradeLogManager;
 use std::sync::Arc;
 
 #[cfg(test)]
@@ -33,7 +36,9 @@ pub enum BuildingCommandError {
 #[derive(Debug)]
 pub struct Settlement {
     id: u32,
+    gold_inventory: GoldInventoryManager,
     inventory_manager: SettlementInventoryManager,
+    trade_log_manager: TradeLogManager,
     building_manager: BuildingManager,
     population_manager: PopulationManager,
     project_manager: ProjectManager,
@@ -46,11 +51,17 @@ impl Settlement {
     pub fn population(&self) -> u32 {
         self.population_manager.population
     }
+    pub fn gold(&self) -> u32 {
+        self.gold_inventory.gold_amount
+    }
     pub fn inventory(&self) -> &crate::domain::economy::resource::ResourceInventory {
         &self.inventory_manager.main
     }
     pub fn pending_inventory(&self) -> &crate::domain::economy::resource::ResourceInventory {
         &self.inventory_manager.pending_production
+    }
+    pub fn deposit_gold(&mut self, amount: u32) {
+        self.gold_inventory.add(amount);
     }
     pub fn deposit(
         &mut self,
@@ -61,6 +72,9 @@ impl Settlement {
     }
     pub fn withdraw(&mut self, resource: ResourceType, amount: u32) -> bool {
         self.inventory_manager.main.consume(resource, amount)
+    }
+    pub fn withdraw_gold(&mut self, amount: u32) -> bool {
+        self.gold_inventory.consume(amount)
     }
     pub fn set_inventory_capacity(
         &mut self,
@@ -117,7 +131,9 @@ impl Settlement {
     ) -> Self {
         Self {
             id,
+            gold_inventory: GoldInventoryManager::new(),
             inventory_manager: SettlementInventoryManager::new(initial_capacity),
+            trade_log_manager: TradeLogManager::new(),
             building_manager: BuildingManager::new(),
             population_manager: PopulationManager::new(initial_population, need_registry),
             project_manager: ProjectManager::new(),
@@ -135,17 +151,27 @@ impl Settlement {
         self.inventory_manager
             .refresh_labor_capacity(self.population_manager.population);
 
-        // 1. Demand phase
+        // 1. TradeLog Update
+        let trade_log_demands: Vec<TradeLogDemand> = self.trade_log_manager.generate_trade_log_demand();
+
+        // 2. TradeLog Allocation
+        self.trade_log_manager.trade_log = AllocationEngine::execute_trading_log(&mut self.inventory_manager.main, trade_log_demands);
+
+        // 3. Caravan setup (if possible)
+
+        // 4. Caravan Allocation (if possible)
+
+        // 4. Demand phase
         let mut requests = Vec::new();
         requests.extend(self.population_manager.generate_requests());
         requests.extend(self.project_manager.generate_requests());
         requests.extend(self.building_manager.generate_requests());
 
-        // 2. Allocation phase
+        // 5. Allocation phase
         let allocations = AllocationEngine::execute(&mut self.inventory_manager.main, requests);
         let mut inventory = InventoryTurnReport::from_allocations(opening_stock, &allocations);
 
-        // 3. Consumption and production phase
+        // 6. Consumption and production phase
         let consumption_result = self
             .population_manager
             .process_allocation(allocations.get(&AllocationRecipient::Population));
@@ -153,7 +179,7 @@ impl Settlement {
         let (produced, returned) = self.building_manager.process_allocations(&allocations);
         inventory.record_production(&produced, &returned);
 
-        // 4. Collecting phase
+        // 7. Collecting phase
         inventory.losses = self
             .inventory_manager
             .process_production_results(produced, returned);
@@ -165,7 +191,7 @@ impl Settlement {
             &self.inventory_manager.pending_production,
         );
 
-        // 5. Project finalization phase
+        // 8. Project finalization phase
         projects.extend(self.resolve_completed_projects());
 
         TurnReport {

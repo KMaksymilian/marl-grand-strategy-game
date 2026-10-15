@@ -1,5 +1,8 @@
 use crate::domain::economy::resource::{ResourceInventory, ResourceType};
 use crate::domain::ids::{BuildingId, ProjectId};
+use crate::domain::trading::trade_log::TradeLog;
+use crate::domain::trading::trade_log_demand::TradeLogDemand;
+use crate::domain::trading::trade_offer::TradeOffer;
 use std::collections::{BTreeMap, HashMap};
 
 /// Distinct allocation namespaces, local to one settlement.
@@ -22,6 +25,20 @@ pub type AllocationResult = HashMap<AllocationRecipient, HashMap<ResourceType, u
 pub struct AllocationEngine;
 
 impl AllocationEngine {
+    pub fn execute_trading_log(inventory: &mut ResourceInventory, demands: Vec<TradeLogDemand>) -> TradeLog {
+        let mut trade_log: TradeLog = TradeLog::new();
+        for demand in demands {
+            let resource_type: ResourceType = demand.resource_type;
+            let mut trade_offer: TradeOffer = demand.trade_offer;
+            if !inventory.consume(resource_type, trade_offer.amount_to_sell) {
+                trade_offer.amount_to_sell = inventory.amount(resource_type);
+                inventory.consume(resource_type, inventory.amount(resource_type));
+            }
+            trade_log.add_or_update_trade_offer(resource_type, trade_offer.amount_to_sell, trade_offer.min_price_per_unit);
+        }
+        trade_log
+    }
+
     pub fn execute(
         inventory: &mut ResourceInventory,
         requests: Vec<DemandRequest>,

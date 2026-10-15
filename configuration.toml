@@ -1,0 +1,6 @@
+# A* movement-cost units, not geometric tile distances.
+# On flat ground a straight step costs 10 and a diagonal step costs 14.
+# These are initial balance settings; edit them to change the linear falloff.
+[economy.building_productivity]
+full_productivity_cost = 100
+zero_productivity_cost = 300

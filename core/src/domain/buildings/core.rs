@@ -1,4 +1,5 @@
 use crate::domain::buildings::factory::{BuildingBehavior, BuildingDefinition, DefinitionError};
+use crate::domain::buildings::productivity::LocationProductivity;
 use crate::domain::economy::resource::ResourceType;
 use crate::domain::ids::BuildingId;
 use std::collections::HashMap;
@@ -13,12 +14,6 @@ pub struct Position {
 pub struct BuildingUpdateResult {
     pub production: ProductionResult,
     //pub modifiers: HashMap<ModifierType, f32>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BuildingLocation {
-    Hub,
-    Spoke,
 }
 
 pub struct ProductionResult {
@@ -37,15 +32,15 @@ pub struct ProductionResult {
 pub struct Building {
     instance_id: BuildingId,
     position: Position,
-    location: BuildingLocation,
     definition: Arc<BuildingDefinition>,
-    target_efficiency: f32,
+    target_load: f32,
+    location_productivity: LocationProductivity,
     is_active: bool,
     current_workers: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EfficiencyError;
+pub struct LoadError;
 impl Building {
     pub fn instance_id(&self) -> BuildingId {
         self.instance_id
@@ -53,14 +48,19 @@ impl Building {
     pub fn position(&self) -> Position {
         self.position
     }
-    pub fn location(&self) -> BuildingLocation {
-        self.location
-    }
     pub fn definition(&self) -> &BuildingDefinition {
         &self.definition
     }
-    pub fn target_efficiency(&self) -> f32 {
-        self.target_efficiency
+    pub fn target_load(&self) -> f32 {
+        self.target_load
+    }
+    /// Output multiplier, separate from staffing and recipe input demand.
+    pub fn location_productivity(&self) -> f64 {
+        self.location_productivity.as_factor()
+    }
+
+    pub(crate) fn set_location_productivity(&mut self, productivity: LocationProductivity) {
+        self.location_productivity = productivity;
     }
     pub fn is_active(&self) -> bool {
         self.is_active
@@ -72,27 +72,27 @@ impl Building {
         self.is_active = active;
     }
 
-    pub fn set_target_efficiency(&mut self, value: f32) -> Result<(), EfficiencyError> {
+    /// Requested fraction of staffing and recipe inputs, in the range 0..=1.
+    pub fn set_target_load(&mut self, value: f32) -> Result<(), LoadError> {
         if !value.is_finite() || !(0.0..=1.0).contains(&value) {
-            return Err(EfficiencyError);
+            return Err(LoadError);
         }
-        self.target_efficiency = value;
+        self.target_load = value;
         Ok(())
     }
 
     pub fn new(
         instance_id: BuildingId,
         position: Position,
-        location: BuildingLocation,
         definition: Arc<BuildingDefinition>,
     ) -> Result<Self, DefinitionError> {
         definition.validate()?;
         Ok(Self {
             instance_id,
             position,
-            location,
             definition,
-            target_efficiency: 0.0,
+            target_load: 0.0,
+            location_productivity: LocationProductivity::FULL,
             is_active: true,
             current_workers: 0,
         })
@@ -116,7 +116,7 @@ impl Building {
         }
 
         let labor_needed =
-            (self.definition.max_workers as f64 * f64::from(self.target_efficiency)).floor() as u32;
+            (self.definition.max_workers as f64 * f64::from(self.target_load)).floor() as u32;
         if labor_needed > 0 {
             demand.insert(ResourceType::Labour, labor_needed);
         }
@@ -125,7 +125,7 @@ impl Building {
             if let BuildingBehavior::Production { inputs, .. } = behavior {
                 for (res, amount) in inputs {
                     *demand.entry(*res).or_insert(0) +=
-                        (*amount as f64 * f64::from(self.target_efficiency)).floor() as u32;
+                        (*amount as f64 * f64::from(self.target_load)).floor() as u32;
                 }
             }
         }
@@ -200,8 +200,9 @@ impl Building {
                     }
                 }
                 for &(resource, amount) in outputs {
-                    let output = u32::try_from(u128::from(amount) * numerator / denominator)
-                        .expect("production cannot exceed recipe output");
+                    let output =
+                        self.location_productivity
+                            .scale_output(amount, numerator, denominator);
                     let total = produced.entry(resource).or_insert(0_u32);
                     *total = total
                         .checked_add(output)
@@ -228,13 +229,7 @@ mod tests {
                 outputs: vec![(ResourceType::Stone, 2)],
             }],
         );
-        let mut building = Building::new(
-            BuildingId(1),
-            Position { x: 0, y: 0 },
-            BuildingLocation::Hub,
-            def,
-        )
-        .unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
         let grants = HashMap::from([(ResourceType::Labour, 1), (ResourceType::Wood, 1)]);
         let result = building.resolve_allocation(Some(&grants)).production;
         assert_eq!(result.produced[&ResourceType::Stone], 1);
@@ -251,13 +246,7 @@ mod tests {
                 outputs: vec![(ResourceType::Stone, 9)],
             }],
         );
-        let mut building = Building::new(
-            BuildingId(1),
-            Position { x: 0, y: 0 },
-            BuildingLocation::Hub,
-            def,
-        )
-        .unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
         let grants = HashMap::from([
             (ResourceType::Labour, 1),
             (ResourceType::Wood, 3),
@@ -280,13 +269,7 @@ mod tests {
                 outputs: vec![(ResourceType::Stone, amount)],
             }],
         );
-        let mut building = Building::new(
-            BuildingId(1),
-            Position { x: 0, y: 0 },
-            BuildingLocation::Hub,
-            def,
-        )
-        .unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
         let grants = HashMap::from([(ResourceType::Labour, 1), (ResourceType::Wood, amount)]);
         let result = building.resolve_allocation(Some(&grants)).production;
         assert_eq!(result.produced[&ResourceType::Stone], amount);
@@ -311,17 +294,12 @@ mod tests {
     #[test]
     fn test_building_initialization() {
         let def = create_test_def("house", 5, vec![]);
-        let building = Building::new(
-            BuildingId(1),
-            Position { x: 10, y: 15 },
-            BuildingLocation::Hub,
-            def.clone(),
-        )
-        .unwrap();
+        let building =
+            Building::new(BuildingId(1), Position { x: 10, y: 15 }, def.clone()).unwrap();
 
         assert_eq!(building.instance_id, BuildingId(1));
         assert_eq!(building.position, Position { x: 10, y: 15 });
-        assert_eq!(building.location, BuildingLocation::Hub);
+
         assert_eq!(
             building.current_workers, 0,
             "New building should not have assigned workers."
@@ -335,13 +313,8 @@ mod tests {
         let def_t1 = create_test_def("lumber_t1", 5, vec![]);
         let def_t2 = create_test_def("lumber_t2", 10, vec![]);
 
-        let mut building = Building::new(
-            BuildingId(1),
-            Position { x: 0, y: 0 },
-            BuildingLocation::Spoke,
-            def_t1.clone(),
-        )
-        .unwrap();
+        let mut building =
+            Building::new(BuildingId(1), Position { x: 0, y: 0 }, def_t1.clone()).unwrap();
 
         building.upgrade(def_t2.clone()).unwrap();
 
@@ -359,13 +332,7 @@ mod tests {
             outputs: vec![(ResourceType::Wood, 10)],
         };
         let def = create_test_def("free_wood", 5, vec![behavior]);
-        let mut building = Building::new(
-            BuildingId(1),
-            Position { x: 0, y: 0 },
-            BuildingLocation::Hub,
-            def,
-        )
-        .unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
 
         // We do not grant Labour, only raw materials
         let mut granted = HashMap::new();
@@ -396,13 +363,7 @@ mod tests {
             outputs: vec![(ResourceType::Wood, 10)],
         };
         let def = create_test_def("free_wood", 5, vec![behavior]);
-        let mut building = Building::new(
-            BuildingId(1),
-            Position { x: 0, y: 0 },
-            BuildingLocation::Hub,
-            def,
-        )
-        .unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
         building.is_active = false;
 
         let mut granted = HashMap::new();
@@ -441,13 +402,7 @@ mod tests {
             outputs: vec![(ResourceType::Stone, 20)],
         };
         let def = create_test_def("stone_maker", 10, vec![behavior]);
-        let mut building = Building::new(
-            BuildingId(1),
-            Position { x: 0, y: 0 },
-            BuildingLocation::Spoke,
-            def,
-        )
-        .unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
 
         // AllocationEngine provides full labor and resources
         let mut granted = HashMap::new();
@@ -483,13 +438,7 @@ mod tests {
             outputs: vec![(ResourceType::Stone, 40)],
         };
         let def = create_test_def("stone_maker", 10, vec![behavior]);
-        let mut building = Building::new(
-            BuildingId(1),
-            Position { x: 0, y: 0 },
-            BuildingLocation::Spoke,
-            def,
-        )
-        .unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
 
         // Grant only 50% of required workforce (5/10) and more wood than needed for 50% efficiency
         let mut granted = HashMap::new();
@@ -535,13 +484,7 @@ mod tests {
             construction_cost: Default::default(),
         });
 
-        let mut building = Building::new(
-            BuildingId(1),
-            Position { x: 0, y: 0 },
-            BuildingLocation::Spoke,
-            def,
-        )
-        .unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
 
         // Workers = 100%
         // Wood = 100% (10 granted / 10 needed)

@@ -37,7 +37,13 @@ impl PathFinder {
     }
 
     pub fn new_generation(&mut self, start: (usize, usize), width: usize) {
-        self.generation += 1;
+        if self.generation == u32::MAX {
+            self.generated.fill(0);
+            self.visited.fill(0);
+            self.generation = 1;
+        } else {
+            self.generation += 1;
+        }
         let start_idx: usize = PathFinder::point_to_idx(start, width);
         self.set_g_score(start_idx, 0);
         self.came_from[start_idx] = None;

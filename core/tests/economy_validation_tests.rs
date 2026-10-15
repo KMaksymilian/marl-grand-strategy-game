@@ -1,4 +1,20 @@
-use core::domain::buildings::core::{Building, BuildingLocation, Position};
+use core::domain::geography::area as test_area;
+use core::domain::world_data::map as core_map;
+use core::services::algorithms::path_finder as test_path;
+
+fn test_map() -> core_map::Map {
+    core_map::Map::new(
+        64,
+        8,
+        vec![test_area::Area::new(0.5, 0.5); 64 * 8],
+        vec![0; 64 * 8],
+    )
+}
+
+fn test_finder() -> test_path::PathFinder {
+    test_path::PathFinder::new(64, 8)
+}
+use core::domain::buildings::core::{Building, Position};
 use core::domain::buildings::factory::{
     BuildingBehavior, BuildingDefinition, BuildingFactory, DefinitionError,
 };
@@ -56,13 +72,8 @@ fn invalid_registration_and_upgrade_preserve_existing_definition() {
         Err(DefinitionError::OutputOverflow(Grain))
     );
     let blueprint = factory.get_blueprint("mill").unwrap();
-    let mut building = Building::new(
-        BuildingId(1),
-        Position { x: 0, y: 0 },
-        BuildingLocation::Hub,
-        blueprint.clone(),
-    )
-    .unwrap();
+    let mut building =
+        Building::new(BuildingId(1), Position { x: 0, y: 0 }, blueprint.clone()).unwrap();
     assert_eq!(
         building.upgrade(Arc::new(definition(
             vec![(Wood, u32::MAX), (Wood, 1)],
@@ -79,28 +90,26 @@ fn invalid_efficiencies_do_not_change_existing_target() {
     let mut building = Building::new(
         BuildingId(1),
         Position { x: 0, y: 0 },
-        BuildingLocation::Hub,
         Arc::new(definition(vec![], vec![(Grain, 1)])),
     )
     .unwrap();
-    building.set_target_efficiency(0.5).unwrap();
+    building.set_target_load(0.5).unwrap();
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -0.1, 1.1] {
-        assert!(building.set_target_efficiency(value).is_err());
-        assert_eq!(building.target_efficiency(), 0.5);
+        assert!(building.set_target_load(value).is_err());
+        assert_eq!(building.target_load(), 0.5);
     }
-    settlement.add_building(building).unwrap();
+    settlement
+        .add_building(building, &test_map(), &mut test_finder())
+        .unwrap();
     assert_eq!(
-        settlement.set_building_efficiency(BuildingId(1), f32::NAN),
-        Err(BuildingCommandError::InvalidEfficiency)
+        settlement.set_building_load(BuildingId(1), f32::NAN),
+        Err(BuildingCommandError::InvalidLoad)
     );
     assert_eq!(
-        settlement.set_building_efficiency(BuildingId(9), 1.0),
+        settlement.set_building_load(BuildingId(9), 1.0),
         Err(BuildingCommandError::MissingBuilding(BuildingId(9)))
     );
-    assert_eq!(
-        settlement.buildings().next().unwrap().target_efficiency(),
-        0.5
-    );
+    assert_eq!(settlement.buildings().next().unwrap().target_load(), 0.5);
 }
 
 #[test]
@@ -111,7 +120,6 @@ fn invalid_project_is_rejected_before_queueing_or_spending() {
     assert_eq!(
         settlement.queue_construction(
             ProjectId(1),
-            BuildingLocation::Hub,
             Position { x: 0, y: 0 },
             invalid,
             ProjectCost::default()
@@ -122,7 +130,12 @@ fn invalid_project_is_rejected_before_queueing_or_spending() {
     );
     assert!(settlement.active_projects().is_empty());
     assert_eq!(settlement.inventory().amount(Wood), 10);
-    assert!(settlement.process_turn().inventory.is_balanced());
+    assert!(
+        settlement
+            .process_turn(&test_map(), &mut test_finder())
+            .inventory
+            .is_balanced()
+    );
 }
 
 #[test]
@@ -155,15 +168,7 @@ fn rejects_invalid_staffing_data_and_direct_construction() {
         per_worker_amount: 1,
     }];
     assert_eq!(blueprint.validate(), Err(DefinitionError::StatOverflow));
-    assert!(
-        Building::new(
-            BuildingId(1),
-            Position { x: 0, y: 0 },
-            BuildingLocation::Hub,
-            Arc::new(blueprint)
-        )
-        .is_err()
-    );
+    assert!(Building::new(BuildingId(1), Position { x: 0, y: 0 }, Arc::new(blueprint)).is_err());
     assert_eq!(
         definition(vec![(ResourceType::Labour, 1)], vec![]).validate(),
         Err(DefinitionError::LabourInRecipe)

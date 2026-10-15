@@ -1,5 +1,6 @@
 use crate::domain::buildings::core::{Building, BuildingLocation, Position};
 use crate::domain::buildings::factory::BuildingDefinition;
+use crate::domain::economy::gold_inventory::GoldInventory;
 use crate::domain::economy::resource::ResourceType;
 use crate::domain::economy::resource_allocation::{AllocationEngine, AllocationRecipient};
 use crate::domain::economy::storage_order::StorageOrderError;
@@ -12,6 +13,9 @@ use crate::domain::settlement::projects::{
 };
 use crate::domain::settlement::settlement_inventory_manager::SettlementInventoryManager;
 use crate::domain::settlement::turn_report::{InventoryTurnReport, TurnReport};
+use crate::domain::trade::trade_allocation_engine::TradeAllocationEngine;
+use crate::domain::trade::trade_log::TradeLog;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(test)]
@@ -33,7 +37,9 @@ pub enum BuildingCommandError {
 #[derive(Debug)]
 pub struct Settlement {
     id: u32,
+    gold_inventory: GoldInventory,
     inventory_manager: SettlementInventoryManager,
+    trade_log: TradeLog,
     building_manager: BuildingManager,
     population_manager: PopulationManager,
     project_manager: ProjectManager,
@@ -117,7 +123,9 @@ impl Settlement {
     ) -> Self {
         Self {
             id,
+            gold_inventory: GoldInventory::default(),
             inventory_manager: SettlementInventoryManager::new(initial_capacity),
+            trade_log: TradeLog::default(),
             building_manager: BuildingManager::new(),
             population_manager: PopulationManager::new(initial_population, need_registry),
             project_manager: ProjectManager::new(),
@@ -134,6 +142,15 @@ impl Settlement {
         // Labour update
         self.inventory_manager
             .refresh_labor_capacity(self.population_manager.population);
+
+        // 0. TradeLog phase
+        let demands: (HashMap<ResourceType, u32>, u32) = self.trade_log.calculate_demand();
+        TradeAllocationEngine::execute(
+            &mut self.trade_log,
+            &mut self.gold_inventory,
+            &mut self.inventory_manager.main,
+            demands,
+        );
 
         // 1. Demand phase
         let mut requests = Vec::new();
@@ -167,6 +184,14 @@ impl Settlement {
 
         // 5. Project finalization phase
         projects.extend(self.resolve_completed_projects());
+
+        // 6. TradeLog remaining resources phase
+        let returned: (HashMap<ResourceType, u32>, u32) = self.trade_log.return_resources();
+        TradeAllocationEngine::execute_remained_resources(
+            &mut self.gold_inventory,
+            &mut self.inventory_manager.main,
+            returned,
+        );
 
         TurnReport {
             consumption: consumption_result,

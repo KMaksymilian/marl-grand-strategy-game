@@ -11,7 +11,7 @@ This document describes the implementation including the first economy fixes in 
 
 Material roles come from recipe definitions, population needs and project costs
 
-Inventories, grants, recipe inputs/outputs, material costs and per-capita needs all use `u32` in the same whole resource units. A value of `1` means one unit everywhere. There is no fixed-point scale or conversion between these components. Target efficiency and satisfaction remain dimensionless `f32` coefficients, not resource amounts. Allocation uses `u128` for intermediate sums and products. Production combines repeated inputs using `u64` and computes its scale as a fraction using `u128`.
+Inventories, grants, recipe inputs/outputs, material costs and per-capita needs all use `u32` in the same whole resource units. A value of `1` means one unit everywhere. There is no fixed-point scale or conversion between these components. Target load and satisfaction remain dimensionless `f32` coefficients, not resource amounts. Allocation uses `u128` for intermediate sums and products. Production combines repeated inputs using `u64` and computes its scale as a fraction using `u128`.
 
 ## 2. Warehouse and Production Buffer
 
@@ -126,11 +126,11 @@ Materials are not allocated as complete recipe bundles. A building may receive w
 
 ### Demand
 
-A new `Building` has `is_active = true`, `current_workers = 0` and `target_efficiency = 0.0`. Target efficiency must be set before production starts. In `calculate_demand()`, finite efficiency is clamped to 0–1. Calculations use `f64` after converting the stored `f32`.
+A new `Building` has `is_active = true`, `current_workers = 0` and `target_load = 0.0`. `set_target_load()` sets the requested operating load and rejects non-finite values or values outside 0–1 without changing state. Load must be set before production starts. Calculations use `f64` after converting the stored `f32`.
 
 ```text
-labour     = floor(max_workers * target_efficiency)
-each input = floor(base_input * target_efficiency)
+labour     = floor(max_workers * target_load)
+each input = floor(base_input * target_load)
 ```
 
 Inputs from all recipes are added to the building request. An inactive building produces an empty demand.
@@ -146,12 +146,14 @@ s = min(current_workers / max_workers,
         remaining_input_1 / base_input_1,
         remaining_input_2 / base_input_2, ...)
 input consumption = ceil(base_input * s)
-output quantity   = floor(base_output * s)
+output quantity   = floor(base_output * s * location_productivity)
 ```
 
 
-Example: a building has 10 of 10 workers. A recipe requires 10 wood and 5 grain, but grants contain 10 wood and 2 grain. Its scale is 2/5. It consumes 4 wood and 2 grain, produces 8 stone from a base output of 20 and returns 6 wood.
+Example: a building has 10 of 10 workers. A recipe requires 10 wood and 5 grain, but grants contain 10 wood and 2 grain. Its scale is 2/5. It consumes 4 wood and 2 grain, produces 8 stone from a base output of 20 at full location productivity and returns 6 wood. At 50% location productivity it consumes the same materials and produces 4 stone.
 
+
+Travel-cost penalties affect outputs only. `BuildingProductivityCalculator` belongs to `BuildingManager`; the settlement delegates configuration to it, and changing it immediately refreshes the cached multiplier on every building. Added and completed buildings receive the current multiplier, and upgrades preserve it. Without a configured calculator, productivity is 1. Before every turn, `process_turn(map, finder)` refreshes costs using the same A* search and movement rules as the map view. The linear falloff thresholds come from `configuration.toml`. Exact `u128` ratios combine staffing, input availability and route cost before a single output rounding; resource quantities remain whole `u32` units. See [building_productivity.md](building_productivity.md).
 
 ## 6. Population Needs
 

@@ -45,7 +45,7 @@ graph TD
 
 ## Current implementation and documentation
 
-The Rust application generates and displays a map. The domain library implements settlement inventories, population needs, production, resource allocation and construction/upgrade projects. The application does not yet run settlement turns or connect settlements to the world map. Trading, caravans, nations and AI training remain planned features.
+The Rust application generates and displays a map. The domain library implements settlement inventories, population needs, production, resource allocation and construction/upgrade projects. The application does not yet run settlement turns or connect settlements to the world map. Domain settlement turns accept the current map and use its A* movement costs for optional building productivity penalties. The application reads and validates `configuration.toml` from its working directory at startup; run it from the repository root. Changes to that file take effect after reloading the configuration or restarting the application. Trading, caravans, nations and AI training remain planned features.
 
 The economy documentation describes the implementation including the changes from `fix/economy` (`9d24d16`):
 

@@ -1,9 +1,31 @@
 use crate::domain::buildings::core::{BuildingLocation, Position};
 use crate::domain::buildings::factory::BuildingDefinition;
 use crate::domain::economy::resource::ResourceType;
-use crate::domain::economy::resource_allocation::DemandRequest;
+use crate::domain::economy::resource_allocation::{AllocationRecipient, DemandRequest};
+use crate::domain::ids::{BuildingId, ProjectId};
 use std::collections::HashMap;
 use std::sync::Arc;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectError {
+    DuplicateProject(ProjectId),
+    MissingBuilding(BuildingId),
+    DuplicateBuilding(BuildingId),
+    UnsupportedRecruitment,
+    InvalidDefinition(crate::domain::buildings::factory::DefinitionError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectCompletion {
+    BuildingConstructed(BuildingId),
+    BuildingUpgraded(BuildingId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProjectOutcome {
+    pub project_id: ProjectId,
+    pub result: Result<ProjectCompletion, ProjectError>,
+}
 
 #[derive(Debug, Clone)]
 pub enum ProjectResult {
@@ -13,7 +35,7 @@ pub enum ProjectResult {
         definition: Arc<BuildingDefinition>,
     },
     UpgradeBuilding {
-        target_instance_id: u32,
+        target_instance_id: BuildingId,
         new_definition: Arc<BuildingDefinition>,
     },
     RecruitUnit {
@@ -28,19 +50,34 @@ pub struct ProjectCost {
 }
 
 impl ProjectCost {
+    pub fn normalize(&mut self) {
+        self.needed_resources.retain(|_, amount| *amount > 0);
+    }
+
     pub fn is_fully_paid(&self) -> bool {
-        self.needed_resources.is_empty() && self.turn_cost == 0
+        self.needed_resources.values().all(|amount| *amount == 0) && self.turn_cost == 0
     }
 }
 #[derive(Debug, Clone)]
 pub struct Project {
-    pub id: u32,
-    pub result: ProjectResult,
-    pub remaining_cost: ProjectCost,
+    pub(super) id: ProjectId,
+    pub(super) result: ProjectResult,
+    pub(super) remaining_cost: ProjectCost,
 }
 
 impl Project {
-    pub fn new(id: u32, result: ProjectResult, initial_cost: ProjectCost) -> Self {
+    pub fn id(&self) -> ProjectId {
+        self.id
+    }
+    pub fn result(&self) -> &ProjectResult {
+        &self.result
+    }
+    pub fn remaining_cost(&self) -> &ProjectCost {
+        &self.remaining_cost
+    }
+
+    pub fn new(id: ProjectId, result: ProjectResult, mut initial_cost: ProjectCost) -> Self {
+        initial_cost.normalize();
         Self {
             id,
             result,
@@ -51,8 +88,14 @@ impl Project {
     /// Demand request
     pub fn as_demand_request(&self) -> DemandRequest {
         DemandRequest {
-            entity_id: self.id,
-            demand: self.remaining_cost.needed_resources.clone(),
+            recipient: AllocationRecipient::Project(self.id),
+            demand: self
+                .remaining_cost
+                .needed_resources
+                .iter()
+                .filter(|(_, amount)| **amount > 0)
+                .map(|(&resource, &amount)| (resource, amount))
+                .collect(),
         }
     }
 
@@ -70,6 +113,8 @@ impl Project {
             }
         }
 
+        self.remaining_cost.normalize();
+
         if self.remaining_cost.turn_cost > 0 {
             self.remaining_cost.turn_cost -= 1;
         }
@@ -86,6 +131,40 @@ mod tests {
     use super::*;
     use crate::domain::economy::resource::ResourceType;
     use std::collections::HashMap;
+
+    #[test]
+    fn zero_entries_are_normalized_without_changing_material_or_time_costs() {
+        let project = Project::new(
+            ProjectId(1),
+            create_dummy_result(),
+            ProjectCost {
+                needed_resources: HashMap::from([
+                    (ResourceType::Wood, 0),
+                    (ResourceType::Stone, 5),
+                ]),
+                turn_cost: 2,
+            },
+        );
+        assert_eq!(
+            project.remaining_cost.needed_resources,
+            HashMap::from([(ResourceType::Stone, 5)])
+        );
+        assert_eq!(project.remaining_cost.turn_cost, 2);
+        assert!(!project.is_completed());
+    }
+
+    #[test]
+    fn public_zero_cost_entries_are_paid_and_do_not_generate_demand() {
+        let mut project = Project::new(ProjectId(1), create_dummy_result(), ProjectCost::default());
+        project
+            .remaining_cost
+            .needed_resources
+            .insert(ResourceType::Wood, 0);
+        assert!(project.is_completed());
+        assert!(project.as_demand_request().demand.is_empty());
+        project.resolve_allocation(None);
+        assert!(project.remaining_cost.needed_resources.is_empty());
+    }
 
     // --- Helpers ---
 
@@ -167,10 +246,10 @@ mod tests {
         };
 
         // Act
-        let project = Project::new(1, create_dummy_result(), initial_cost);
+        let project = Project::new(ProjectId(1), create_dummy_result(), initial_cost);
 
         // Assert
-        assert_eq!(project.id, 1);
+        assert_eq!(project.id, ProjectId(1));
         assert_eq!(project.remaining_cost.turn_cost, 3);
         assert_eq!(
             *project
@@ -190,7 +269,7 @@ mod tests {
         resources.insert(ResourceType::Wood, 50);
 
         let project = Project::new(
-            10,
+            ProjectId(10),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: resources,
@@ -203,7 +282,8 @@ mod tests {
 
         // Assert
         assert_eq!(
-            request.entity_id, 10,
+            request.recipient,
+            AllocationRecipient::Project(ProjectId(10)),
             "DemandRequest should inherit the project's ID"
         );
         assert_eq!(
@@ -221,7 +301,7 @@ mod tests {
         resources.insert(ResourceType::Wood, 50);
 
         let mut project = Project::new(
-            1,
+            ProjectId(1),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: resources,
@@ -258,7 +338,7 @@ mod tests {
         resources.insert(ResourceType::Stone, 20);
 
         let mut project = Project::new(
-            1,
+            ProjectId(1),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: resources,
@@ -286,7 +366,7 @@ mod tests {
         resources.insert(ResourceType::Wood, 10);
 
         let mut project = Project::new(
-            1,
+            ProjectId(1),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: resources,
@@ -314,7 +394,7 @@ mod tests {
         resources.insert(ResourceType::Wood, 50);
 
         let mut project = Project::new(
-            1,
+            ProjectId(1),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: resources,
@@ -345,7 +425,7 @@ mod tests {
     fn test_resolve_allocation_does_not_underflow_turn_cost() {
         // Arrange
         let mut project = Project::new(
-            1,
+            ProjectId(1),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: HashMap::new(),
@@ -370,7 +450,7 @@ mod tests {
         resources.insert(ResourceType::Wood, 10);
 
         let mut project = Project::new(
-            1,
+            ProjectId(1),
             create_dummy_result(),
             ProjectCost {
                 needed_resources: resources,

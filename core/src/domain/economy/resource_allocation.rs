@@ -1,24 +1,23 @@
 use crate::domain::economy::resource::{ResourceInventory, ResourceType};
-use std::collections::HashMap;
+use crate::domain::ids::{BuildingId, ProjectId};
+use std::collections::{BTreeMap, HashMap};
 
-/// Sequence define strength of priority (descending)
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-// pub enum Priority {
-//     Luxury,
-//     Comfort,
-//     Industry,
-//     Military,
-//     Survival,
-//     CriticalOverride,
-// }
+/// Distinct allocation namespaces, local to one settlement.
+/// Ordering is used only to break equal-remainder ties deterministically.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum AllocationRecipient {
+    Population,
+    Building(BuildingId),
+    Project(ProjectId),
+}
 
 #[derive(Debug, Clone)]
 pub struct DemandRequest {
-    pub entity_id: u32, // 0 for population
+    pub recipient: AllocationRecipient,
     pub demand: HashMap<ResourceType, u32>,
 }
 
-pub type AllocationResult = HashMap<u32, HashMap<ResourceType, u32>>;
+pub type AllocationResult = HashMap<AllocationRecipient, HashMap<ResourceType, u32>>;
 
 pub struct AllocationEngine;
 
@@ -27,63 +26,58 @@ impl AllocationEngine {
         inventory: &mut ResourceInventory,
         requests: Vec<DemandRequest>,
     ) -> AllocationResult {
-        let total_demand = Self::calculate_global_demand(&requests);
-        let global_ratios = Self::calculate_fulfillment_ratios(inventory, &total_demand);
-
-        Self::distribute_resources(inventory, requests, &global_ratios)
-    }
-
-    fn calculate_global_demand(requests: &[DemandRequest]) -> HashMap<ResourceType, u32> {
-        let mut total_demand = HashMap::new();
-        for req in requests {
-            for (res, amount) in &req.demand {
-                *total_demand.entry(*res).or_insert(0) += amount;
-            }
-        }
-        total_demand
-    }
-
-    fn calculate_fulfillment_ratios(
-        inventory: &ResourceInventory,
-        total_demand: &HashMap<ResourceType, u32>,
-    ) -> HashMap<ResourceType, f32> {
-        let mut global_ratios = HashMap::new();
-        for (res, total_needed) in total_demand {
-            if *total_needed > 0 {
-                let available = inventory.resources.get(res).copied().unwrap_or(0);
-                let ratio = (available as f32 / *total_needed as f32).min(1.0);
-                global_ratios.insert(*res, ratio);
-            }
-        }
-        global_ratios
-    }
-
-    fn distribute_resources(
-        inventory: &mut ResourceInventory,
-        requests: Vec<DemandRequest>,
-        global_ratios: &HashMap<ResourceType, f32>,
-    ) -> AllocationResult {
-        let mut final_allocations: AllocationResult = HashMap::new();
-
-        for req in requests {
-            for (res, needed) in req.demand {
-                let ratio = global_ratios.get(&res).copied().unwrap_or(0.0);
-                let allocated_amount = (needed as f32 * ratio).floor() as u32;
-
-                if allocated_amount > 0 {
-                    if res != ResourceType::Labour {
-                        inventory.consume(res, allocated_amount);
-                    }
-
-                    *final_allocations
-                        .entry(req.entity_id)
+        // Combine repeated requests (e.g. population tiers) before rounding.
+        let mut demands: BTreeMap<ResourceType, BTreeMap<AllocationRecipient, u128>> =
+            BTreeMap::new();
+        for request in requests {
+            for (resource, amount) in request.demand {
+                if amount > 0 {
+                    *demands
+                        .entry(resource)
                         .or_default()
-                        .entry(res)
-                        .or_insert(0) += allocated_amount;
+                        .entry(request.recipient)
+                        .or_default() += u128::from(amount);
                 }
             }
         }
+        let mut final_allocations: AllocationResult = HashMap::new();
+        for (resource, recipients) in demands {
+            let available = inventory.resources().get(&resource).copied().unwrap_or(0);
+            let total: u128 = recipients.values().sum();
+            let budget = u128::from(available).min(total);
+            if budget == 0 {
+                continue;
+            }
 
+            let mut shares: Vec<_> = recipients
+                .into_iter()
+                .map(|(recipient, needed)| {
+                    let numerator = needed * budget;
+                    (recipient, numerator / total, numerator % total)
+                })
+                .collect();
+            let distributed: u128 = shares.iter().map(|(_, amount, _)| amount).sum();
+            let remaining = budget - distributed;
+            shares.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+            for share in shares.iter_mut().take(remaining as usize) {
+                share.1 += 1;
+            }
+
+            // Commit the material withdrawal before publishing any grants.
+            // Labour is a per-turn capacity: shared, but not physically consumed.
+            let budget = u32::try_from(budget).expect("budget cannot exceed inventory");
+            if resource != ResourceType::Labour && !inventory.consume(resource, budget) {
+                continue;
+            }
+            for (recipient, amount, _) in shares {
+                if amount > 0 {
+                    final_allocations.entry(recipient).or_default().insert(
+                        resource,
+                        u32::try_from(amount).expect("share cannot exceed budget"),
+                    );
+                }
+            }
+        }
         final_allocations
     }
 }
@@ -94,13 +88,138 @@ mod tests {
     use crate::domain::economy::resource::{ResourceInventory, ResourceType};
     use std::collections::HashMap;
 
+    #[test]
+    fn allocations_conserve_stock_and_ignore_request_order() {
+        let recipients = [
+            AllocationRecipient::Population,
+            AllocationRecipient::Building(BuildingId(0)),
+            AllocationRecipient::Project(ProjectId(0)),
+        ];
+        for resource in [ResourceType::Wood, ResourceType::Labour] {
+            for available in 0..=8_u32 {
+                for first in 0..=4_u32 {
+                    for second in 0..=4_u32 {
+                        for third in 0..=4_u32 {
+                            let demands = [first, second, third];
+                            let requests: Vec<_> = recipients
+                                .iter()
+                                .zip(demands)
+                                .map(|(&recipient, amount)| DemandRequest {
+                                    recipient,
+                                    demand: HashMap::from([(resource, amount)]),
+                                })
+                                .collect();
+                            let mut inventory = ResourceInventory::new(100);
+                            inventory.add(resource, available);
+                            let result =
+                                AllocationEngine::execute(&mut inventory, requests.clone());
+                            let mut total_allocated = 0;
+                            for (recipient, demand) in recipients.iter().zip(demands) {
+                                let allocated = result
+                                    .get(recipient)
+                                    .and_then(|grant| grant.get(&resource))
+                                    .copied()
+                                    .unwrap_or(0);
+                                assert!(allocated <= demand);
+                                total_allocated += allocated;
+                            }
+                            assert_eq!(total_allocated, available.min(first + second + third));
+                            assert_eq!(
+                                inventory.amount(resource),
+                                if resource == ResourceType::Labour {
+                                    available
+                                } else {
+                                    available - total_allocated
+                                }
+                            );
+
+                            let mut reversed_inventory = ResourceInventory::new(100);
+                            reversed_inventory.add(resource, available);
+                            let reversed = AllocationEngine::execute(
+                                &mut reversed_inventory,
+                                requests.into_iter().rev().collect(),
+                            );
+                            assert_eq!(result, reversed);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn demand_totals_can_exceed_u32_without_overflow() {
+        let mut inventory = ResourceInventory::new(u32::MAX);
+        inventory.add(ResourceType::Wood, u32::MAX);
+        let result = AllocationEngine::execute(
+            &mut inventory,
+            vec![
+                create_request(1, &[(ResourceType::Wood, u32::MAX)]),
+                create_request(2, &[(ResourceType::Wood, u32::MAX)]),
+            ],
+        );
+        assert_eq!(
+            result[&AllocationRecipient::Building(BuildingId(1))][&ResourceType::Wood],
+            2_147_483_648
+        );
+        assert_eq!(
+            result[&AllocationRecipient::Building(BuildingId(2))][&ResourceType::Wood],
+            2_147_483_647
+        );
+        assert_eq!(inventory.resources()[&ResourceType::Wood], 0);
+    }
+
+    #[test]
+    fn repeated_requests_are_combined_before_distributing_remainders() {
+        let mut inventory = ResourceInventory::new(100);
+        inventory.add(ResourceType::Wood, 2);
+        let result = AllocationEngine::execute(
+            &mut inventory,
+            vec![
+                create_request(1, &[(ResourceType::Wood, 1)]),
+                create_request(1, &[(ResourceType::Wood, 1)]),
+                create_request(2, &[(ResourceType::Wood, 2)]),
+            ],
+        );
+        assert_eq!(
+            result[&AllocationRecipient::Building(BuildingId(1))][&ResourceType::Wood],
+            1
+        );
+        assert_eq!(
+            result[&AllocationRecipient::Building(BuildingId(2))][&ResourceType::Wood],
+            1
+        );
+        assert_eq!(inventory.resources()[&ResourceType::Wood], 0);
+    }
+
+    #[test]
+    fn one_recipient_can_accumulate_demand_above_u32() {
+        let mut inventory = ResourceInventory::new(u32::MAX);
+        inventory.add(ResourceType::Wood, u32::MAX);
+        let result = AllocationEngine::execute(
+            &mut inventory,
+            vec![
+                create_request(1, &[(ResourceType::Wood, u32::MAX)]),
+                create_request(1, &[(ResourceType::Wood, u32::MAX)]),
+            ],
+        );
+        assert_eq!(
+            result[&AllocationRecipient::Building(BuildingId(1))][&ResourceType::Wood],
+            u32::MAX
+        );
+        assert_eq!(inventory.resources()[&ResourceType::Wood], 0);
+    }
+
     // Helper method to quickly build requests
     fn create_request(entity_id: u32, demands: &[(ResourceType, u32)]) -> DemandRequest {
         let mut demand = HashMap::new();
         for &(res, amount) in demands {
             demand.insert(res, amount);
         }
-        DemandRequest { entity_id, demand }
+        DemandRequest {
+            recipient: AllocationRecipient::Building(BuildingId(entity_id)),
+            demand,
+        }
     }
 
     #[test]
@@ -121,28 +240,40 @@ mod tests {
         // Assert
         // Entity 1 received exactly what it asked for
         assert_eq!(
-            *result.get(&1).unwrap().get(&ResourceType::Wood).unwrap(),
+            *result
+                .get(&AllocationRecipient::Building(BuildingId(1)))
+                .unwrap()
+                .get(&ResourceType::Wood)
+                .unwrap(),
             40
         );
         assert_eq!(
-            *result.get(&1).unwrap().get(&ResourceType::Stone).unwrap(),
+            *result
+                .get(&AllocationRecipient::Building(BuildingId(1)))
+                .unwrap()
+                .get(&ResourceType::Stone)
+                .unwrap(),
             20
         );
 
         // Entity 2 received exactly what it asked for
         assert_eq!(
-            *result.get(&2).unwrap().get(&ResourceType::Wood).unwrap(),
+            *result
+                .get(&AllocationRecipient::Building(BuildingId(2)))
+                .unwrap()
+                .get(&ResourceType::Wood)
+                .unwrap(),
             50
         );
 
         // Inventory is properly depleted
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Wood).unwrap(),
+            *inventory.resources().get(&ResourceType::Wood).unwrap(),
             10,
             "100 - (40 + 50) = 10"
         );
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Stone).unwrap(),
+            *inventory.resources().get(&ResourceType::Stone).unwrap(),
             30,
             "50 - 20 = 30"
         );
@@ -166,18 +297,26 @@ mod tests {
 
         // Assert
         assert_eq!(
-            *result.get(&1).unwrap().get(&ResourceType::Wood).unwrap(),
+            *result
+                .get(&AllocationRecipient::Building(BuildingId(1)))
+                .unwrap()
+                .get(&ResourceType::Wood)
+                .unwrap(),
             75,
             "150 * 0.5 = 75"
         );
         assert_eq!(
-            *result.get(&2).unwrap().get(&ResourceType::Wood).unwrap(),
+            *result
+                .get(&AllocationRecipient::Building(BuildingId(2)))
+                .unwrap()
+                .get(&ResourceType::Wood)
+                .unwrap(),
             25,
             "50 * 0.5 = 25"
         );
 
         // Inventory is completely empty
-        assert_eq!(*inventory.resources.get(&ResourceType::Wood).unwrap(), 0);
+        assert_eq!(*inventory.resources().get(&ResourceType::Wood).unwrap(), 0);
     }
 
     #[test]
@@ -198,12 +337,22 @@ mod tests {
         // Assert
         // Wood is allocated normally
         assert_eq!(
-            *result.get(&1).unwrap().get(&ResourceType::Wood).unwrap(),
+            *result
+                .get(&AllocationRecipient::Building(BuildingId(1)))
+                .unwrap()
+                .get(&ResourceType::Wood)
+                .unwrap(),
             20
         );
 
         // Stone was completely ignored and not added to the result
-        assert!(result.get(&1).unwrap().get(&ResourceType::Stone).is_none());
+        assert!(
+            result
+                .get(&AllocationRecipient::Building(BuildingId(1)))
+                .unwrap()
+                .get(&ResourceType::Stone)
+                .is_none()
+        );
     }
 
     #[test]
@@ -224,26 +373,34 @@ mod tests {
         // Assert
         // Ratio for Labour = 100 / 120 = ~0.833
         assert_eq!(
-            *result.get(&1).unwrap().get(&ResourceType::Labour).unwrap(),
+            *result
+                .get(&AllocationRecipient::Building(BuildingId(1)))
+                .unwrap()
+                .get(&ResourceType::Labour)
+                .unwrap(),
             33,
             "40 * 0.833 rounded down"
         );
         assert_eq!(
-            *result.get(&2).unwrap().get(&ResourceType::Labour).unwrap(),
-            66,
-            "80 * 0.833 rounded down"
+            *result
+                .get(&AllocationRecipient::Building(BuildingId(2)))
+                .unwrap()
+                .get(&ResourceType::Labour)
+                .unwrap(),
+            67,
+            "Largest remainder receives the final worker"
         );
 
         // Wood was consumed as it is a material resource
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Wood).unwrap(),
+            *inventory.resources().get(&ResourceType::Wood).unwrap(),
             40,
             "50 - 10 = 40"
         );
 
         // Labour remains untouched in the inventory (renewable resource)
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Labour).unwrap(),
+            *inventory.resources().get(&ResourceType::Labour).unwrap(),
             100
         );
     }
@@ -265,14 +422,14 @@ mod tests {
             "Result should be empty when no requests are provided"
         );
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Wood).unwrap(),
+            *inventory.resources().get(&ResourceType::Wood).unwrap(),
             50,
             "Inventory should remain untouched"
         );
     }
 
     #[test]
-    fn test_execute_fractional_floor_rounding() {
+    fn test_execute_exact_fractional_allocation() {
         // Arrange
         let mut inventory = ResourceInventory::new(1000);
         inventory.add(ResourceType::Wood, 10);
@@ -284,13 +441,17 @@ mod tests {
         let result = AllocationEngine::execute(&mut inventory, requests);
 
         // Assert
-        // 15 * 0.666... = 10. Floating point math can be tricky, this ensures we correctly floor to 10.
+        // A single recipient receives the entire available amount exactly.
         assert_eq!(
-            *result.get(&1).unwrap().get(&ResourceType::Wood).unwrap(),
+            *result
+                .get(&AllocationRecipient::Building(BuildingId(1)))
+                .unwrap()
+                .get(&ResourceType::Wood)
+                .unwrap(),
             10
         );
         assert_eq!(
-            *inventory.resources.get(&ResourceType::Wood).unwrap(),
+            *inventory.resources().get(&ResourceType::Wood).unwrap(),
             0,
             "Inventory should be fully depleted"
         );

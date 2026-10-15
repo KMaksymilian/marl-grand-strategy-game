@@ -1,3 +1,9 @@
+# Target Simulation Aggregates
+
+Status: architectural vision. The diagram shows planned relationships between settlements, nations, armies and the environment. It does not represent the current implementation.
+
+The current settlement, manager and project model is documented in [settlements.md](settlements.md). Resources and allocation are described in [economic.md](economic.md). `Nation`, `Army`, trade contracts and HRL control are not implemented yet.
+
 ```mermaid
 classDiagram
     direction TB
@@ -41,8 +47,8 @@ classDiagram
     Army ..> Map : Reads Topology via [NodeID]
     
     
-    %% Inter-Aggregate Communication 
-    Settlement ..> Settlement : Trades with [TargetID] 
+    %% Inter-Aggregate Communication
+    Settlement ..> Settlement : Trades with [TargetID]
     Settlement ..> Map : Queries optimal path & Commands road upgrades via [NodeIDs]
 ```
 

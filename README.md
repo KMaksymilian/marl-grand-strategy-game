@@ -10,9 +10,9 @@
 
 ## Project Overview
 
-This project focuses on the design, implementation, and evaluation of a complex, multi-agent simulation environment modeling geopolitical and economic processes within a grand strategy game framework. 
+This project focuses on the design, implementation, and evaluation of a complex, multi-agent simulation environment modeling geopolitical and economic processes within a grand strategy game framework.
 
-The simulated world is structured as a **dynamic graph**, where:
+The target simulated world is structured as a **dynamic graph**, where:
 *   **Nodes** represent territorial units (autonomous settlements).
 *   **Edges** model time-varying supply chains, trade routes, and diplomatic relations.
 
@@ -21,6 +21,8 @@ The goal is to develop highly scalable simulation architecture capable of handli
 ---
 
 ## AI Architecture & Decision System
+
+This section describes the target architecture. MARL/HRL training and the dynamic graph of settlement relationships are not implemented yet.
 
 The core Innovation of the project is a hybrid, **two-level hierarchical decision system** that bridges microeconomics and macro-level geopolitics using Reinforcement Learning:
 
@@ -41,7 +43,21 @@ graph TD
 ```
 ---
 
+## Current implementation and documentation
+
+The Rust application generates and displays a map. The domain library implements settlement inventories, population needs, production, resource allocation and construction/upgrade projects. The application does not yet run settlement turns or connect settlements to the world map. Trading, caravans, nations and AI training remain planned features.
+
+The economy documentation describes the implementation including the changes from `fix/economy` (`9d24d16`):
+
+- [Economy: resources, allocation and production](docs/architecture/economic.md)
+- [Settlements: managers, turn lifecycle and projects](docs/architecture/settlements.md)
+- [Economy decisions and unresolved policies](docs/decisions/0001-economy.md)
+- [Economy roadmap and proposed game content](docs/architecture/economy_roadmap.md)
+- [Target aggregate architecture](docs/architecture/agregates.md)
+
 ## Project Structure
+
+The tree below describes the intended structure; some directories are placeholders or planned components.
 
 ```
 marl_grand_strategy/

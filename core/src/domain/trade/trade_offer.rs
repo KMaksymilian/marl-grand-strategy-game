@@ -33,11 +33,17 @@ impl SellTradeOffer {
     pub fn update_sell_resource_amount(&mut self, avaiable_units: u32) {
         self.available_units = avaiable_units;
     }
+    pub fn get_amount_to_sell(&self) -> u32 {
+        self.available_units
+    }
     pub fn consume_avaiable_units(&mut self) -> u32 {
         std::mem::take(&mut self.available_units)
     }
     pub fn get_minimal_price_per_unit(&self) -> u32 {
         self.minimal_price_per_unit
+    }
+    pub fn subtract_sold_amount(&mut self, units: u32) {
+        self.available_units -= units;
     }
 }
 
@@ -55,10 +61,16 @@ impl BuyTradeOffer {
         TradeDemand::Gold(gold_amount)
     }
     pub fn consume_bought_units(&mut self) -> u32 {
-        self.available_units += self.already_bought_units;
         std::mem::take(&mut self.already_bought_units)
     }
     pub fn get_maximum_price_per_unit(&self) -> u32 {
         self.maximum_price_per_unit
+    }
+    pub fn get_remaining_amount_to_buy(&self) -> u32 {
+        self.available_units
+    }
+    pub fn add_bought_amount(&mut self, units: u32) {
+        self.already_bought_units += units;
+        self.available_units -= units;
     }
 }

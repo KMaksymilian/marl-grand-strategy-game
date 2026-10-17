@@ -1,4 +1,5 @@
 use crate::domain::world_data::map::Map;
+use crate::domain::world_data::point::Point;
 use crate::services::algorithms::path_finder::{DIAGONAL, PathFinder, STRAIGHT};
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
@@ -11,7 +12,7 @@ impl AStar {
         path_finder: &mut PathFinder,
         start: (usize, usize),
         end: (usize, usize),
-    ) -> Option<Vec<(usize, usize)>> {
+    ) -> Option<Vec<Point>> {
         let end_idx = PathFinder::point_to_idx(end, map.width);
         if PathFinder::is_ocean(map, PathFinder::point_to_idx(start, map.width))
             || PathFinder::is_ocean(map, end_idx)

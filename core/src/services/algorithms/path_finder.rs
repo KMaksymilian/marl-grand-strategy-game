@@ -1,4 +1,7 @@
-use crate::domain::{geography::elevation::Elevation, world_data::map::Map};
+use crate::domain::{
+    geography::elevation::Elevation,
+    world_data::{map::Map, point::Point},
+};
 
 pub const STRAIGHT: u32 = 10;
 pub const DIAGONAL: u32 = 14;
@@ -81,8 +84,16 @@ impl PathFinder {
         }
     }
 
+    pub fn zone_to_points(zone: Vec<(usize, usize)>) -> Vec<Point> {
+        let mut points: Vec<Point> = Vec::new();
+        for point in zone {
+            points.push(Point(point.0, point.1));
+        }
+        points
+    }
+
     /// Path from the search start to `end_idx`, as map points (start first).
-    pub fn path_to(&self, end_idx: usize) -> Vec<(usize, usize)> {
+    pub fn path_to(&self, end_idx: usize) -> Vec<Point> {
         let mut path = vec![Self::idx_to_point(end_idx, self.width)];
         let mut current = end_idx;
         while let Some(prev) = self.parent(current) {
@@ -90,6 +101,14 @@ impl PathFinder {
             current = prev;
         }
         path.reverse();
+        Self::path(path)
+    }
+
+    fn path(path_to: Vec<(usize, usize)>) -> Vec<Point> {
+        let mut path: Vec<Point> = Vec::new();
+        for point in path_to {
+            path.push(Point(point.0, point.1));
+        }
         path
     }
 

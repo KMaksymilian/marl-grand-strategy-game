@@ -1,4 +1,5 @@
 use crate::domain::world_data::map::Map;
+use crate::domain::world_data::point::Point;
 use crate::services::algorithms::path_finder::PathFinder;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
@@ -11,7 +12,7 @@ impl DijkstraFlood {
         path_finder: &mut PathFinder,
         start: (usize, usize),
         budget: u32,
-    ) -> Vec<(usize, usize)> {
+    ) -> Vec<Point> {
         if PathFinder::is_ocean(map, PathFinder::point_to_idx(start, map.width)) {
             return Vec::new();
         }
@@ -52,6 +53,6 @@ impl DijkstraFlood {
             }
         }
 
-        zone
+        PathFinder::zone_to_points(zone)
     }
 }

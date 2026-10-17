@@ -1,5 +1,5 @@
 use core::{
-    domain::world_data::world::World,
+    domain::world_data::{point::Point, world::World},
     services::algorithms::{a_star::AStar, dijkstra_flood::DijkstraFlood, path_finder::PathFinder},
 };
 
@@ -23,10 +23,10 @@ pub struct GameScreen {
     pub map_texture_data: MapTextureData,
     pub camera_type: CameraType,
     pub camera: MapCamera,
-    pub a_star_clicked_provinces: Vec<(usize, usize)>,
-    pub dijkstra_flood_clicked_provinces: Vec<(usize, usize)>,
-    pub a_star_path: Vec<(usize, usize)>,
-    pub dijkstra_flood_path: Vec<(usize, usize)>,
+    pub a_star_clicked_provinces: Vec<Point>,
+    pub dijkstra_flood_clicked_provinces: Vec<Point>,
+    pub a_star_path: Vec<Point>,
+    pub dijkstra_flood_path: Vec<Point>,
 }
 
 impl GameScreen {
@@ -62,7 +62,7 @@ impl GameScreen {
 
                 if tile_x < width && tile_y < height {
                     self.a_star_clicked_provinces
-                        .push((tile_x as usize, tile_y as usize));
+                        .push(Point(tile_x as usize, tile_y as usize));
 
                     if self.a_star_clicked_provinces.len() > 2 {
                         self.a_star_clicked_provinces.remove(0);
@@ -72,8 +72,14 @@ impl GameScreen {
                         if let Some(points) = AStar::a_star(
                             &world.map,
                             path_finder,
-                            self.a_star_clicked_provinces[0],
-                            self.a_star_clicked_provinces[1],
+                            (
+                                self.a_star_clicked_provinces[0].0,
+                                self.a_star_clicked_provinces[0].1,
+                            ),
+                            (
+                                self.a_star_clicked_provinces[1].0,
+                                self.a_star_clicked_provinces[1].1,
+                            ),
                         ) {
                             self.a_star_path = points;
                         } else {
@@ -94,7 +100,7 @@ impl GameScreen {
 
                 if tile_x < width && tile_y < height {
                     self.dijkstra_flood_clicked_provinces
-                        .push((tile_x as usize, tile_y as usize));
+                        .push(Point(tile_x as usize, tile_y as usize));
 
                     if self.dijkstra_flood_clicked_provinces.len() > 1 {
                         self.dijkstra_flood_clicked_provinces.remove(0);
@@ -104,7 +110,10 @@ impl GameScreen {
                         self.dijkstra_flood_path = DijkstraFlood::dijkstra_flood(
                             &world.map,
                             path_finder,
-                            self.dijkstra_flood_clicked_provinces[0],
+                            (
+                                self.dijkstra_flood_clicked_provinces[0].0,
+                                self.dijkstra_flood_clicked_provinces[0].1,
+                            ),
                             1000,
                         );
                     }
@@ -129,12 +138,12 @@ impl GameScreen {
             draw_rectangle(idx.0 as f32, idx.1 as f32, 1.0, 1.0, RED);
         }
 
-        for &(tx, ty) in &self.a_star_clicked_provinces {
-            draw_rectangle(tx as f32, ty as f32, 1.0, 1.0, BLUE);
+        for &point in &self.a_star_clicked_provinces {
+            draw_rectangle(point.0 as f32, point.1 as f32, 1.0, 1.0, BLUE);
         }
 
-        for &(tx, ty) in &self.dijkstra_flood_clicked_provinces {
-            draw_rectangle(tx as f32, ty as f32, 1.0, 1.0, GREEN);
+        for &point in &self.dijkstra_flood_clicked_provinces {
+            draw_rectangle(point.0 as f32, point.1 as f32, 1.0, 1.0, GREEN);
         }
 
         self.camera.end();

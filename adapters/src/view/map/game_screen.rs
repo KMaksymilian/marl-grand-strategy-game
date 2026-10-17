@@ -25,8 +25,8 @@ pub struct GameScreen {
     pub camera: MapCamera,
     pub a_star_clicked_provinces: Vec<(usize, usize)>,
     pub dijkstra_flood_clicked_provinces: Vec<(usize, usize)>,
-    pub a_star_path: Vec<usize>,
-    pub dijkstra_flood_path: Vec<usize>,
+    pub a_star_path: Vec<(usize, usize)>,
+    pub dijkstra_flood_path: Vec<(usize, usize)>,
 }
 
 impl GameScreen {
@@ -122,13 +122,11 @@ impl GameScreen {
         );
 
         for &idx in &self.dijkstra_flood_path {
-            let (tx, ty) = PathFinder::idx_to_point(idx, world.map.width);
-            draw_rectangle(tx as f32, ty as f32, 1.0, 1.0, PURPLE);
+            draw_rectangle(idx.0 as f32, idx.1 as f32, 1.0, 1.0, PURPLE);
         }
 
         for &idx in &self.a_star_path {
-            let (tx, ty) = PathFinder::idx_to_point(idx, world.map.width);
-            draw_rectangle(tx as f32, ty as f32, 1.0, 1.0, RED);
+            draw_rectangle(idx.0 as f32, idx.1 as f32, 1.0, 1.0, RED);
         }
 
         for &(tx, ty) in &self.a_star_clicked_provinces {

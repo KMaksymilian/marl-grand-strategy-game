@@ -5,7 +5,7 @@ pub const DIAGONAL: u32 = 14;
 const SLOPE_SCALE: f32 = 1000.0;
 const UPHILL_FACTOR: f32 = 1.5;
 
-const DIRS: [(i32, i32, u32); 8] = [
+const DIRS: [(isize, isize, u32); 8] = [
     (-1, 0, STRAIGHT),
     (1, 0, STRAIGHT),
     (0, -1, STRAIGHT),
@@ -16,65 +16,97 @@ const DIRS: [(i32, i32, u32); 8] = [
     (1, 1, DIAGONAL),
 ];
 
+/// Per-tile search state. `seen` / `closed` hold the generation in which the
+/// data is valid, so nothing has to be cleared between searches.
+#[derive(Clone, Copy, Default)]
+struct Node {
+    seen: u32,
+    closed: u32,
+    g: u32,
+    parent: Option<usize>,
+}
+
+/// Reusable scratch buffer for searches on a map of fixed size.
 pub struct PathFinder {
-    pub g_score: Vec<u32>,
-    pub visited: Vec<u32>,
-    pub generated: Vec<u32>,
-    pub came_from: Vec<Option<(usize, usize)>>,
-    pub generation: u32,
+    nodes: Vec<Node>,
+    generation: u32,
+    width: usize,
+    height: usize,
 }
 
 impl PathFinder {
     pub fn new(width: usize, height: usize) -> PathFinder {
-        let size: usize = width * height;
         PathFinder {
-            g_score: vec![0; size],
-            visited: vec![0; size],
-            generated: vec![0; size],
-            came_from: vec![None; size],
+            nodes: vec![Node::default(); width * height],
             generation: 0,
+            width,
+            height,
         }
     }
 
-    pub fn new_generation(&mut self, start: (usize, usize), width: usize) {
+    /// Starts a new search from `start`.
+    pub fn begin(&mut self, map: &Map, start: (usize, usize)) {
+        debug_assert!(map.width == self.width && map.height == self.height);
         self.generation += 1;
-        let start_idx: usize = PathFinder::point_to_idx(start, width);
-        self.set_g_score(start_idx, 0);
-        self.came_from[start_idx] = None;
+        let idx = Self::point_to_idx(start, self.width);
+        self.set(idx, 0, None);
     }
 
-    pub fn get_g_score(&self, idx: usize) -> u32 {
-        if self.generated[idx] == self.generation {
-            self.g_score[idx]
+    /// Best known cost to reach `idx` in the current search (`u32::MAX` if unreached).
+    pub fn g_score(&self, idx: usize) -> u32 {
+        let node = &self.nodes[idx];
+        if node.seen == self.generation {
+            node.g
         } else {
             u32::MAX
         }
     }
 
-    pub fn set_g_score(&mut self, idx: usize, val: u32) {
-        self.generated[idx] = self.generation;
-        self.g_score[idx] = val;
+    pub fn is_closed(&self, idx: usize) -> bool {
+        self.nodes[idx].closed == self.generation
     }
 
-    pub fn is_visited(&self, idx: usize) -> bool {
-        self.visited[idx] == self.generation
+    pub fn close(&mut self, idx: usize) {
+        self.nodes[idx].closed = self.generation;
     }
 
-    pub fn set_visited(&mut self, idx: usize) {
-        self.visited[idx] = self.generation;
+    /// Records the route to `idx` only if it is cheaper than the known one.
+    /// Returns true when the node was improved (and should be pushed to the heap).
+    pub fn try_relax(&mut self, idx: usize, g: u32, parent: usize) -> bool {
+        if g < self.g_score(idx) {
+            self.set(idx, g, Some(parent));
+            true
+        } else {
+            false
+        }
     }
 
-    pub fn get_came_from(&self, idx: usize) -> Option<(usize, usize)> {
-        if self.generated[idx] == self.generation {
-            self.came_from[idx]
+    /// Path from the search start to `end_idx`, as map points (start first).
+    pub fn path_to(&self, end_idx: usize) -> Vec<(usize, usize)> {
+        let mut path = vec![Self::idx_to_point(end_idx, self.width)];
+        let mut current = end_idx;
+        while let Some(prev) = self.parent(current) {
+            path.push(Self::idx_to_point(prev, self.width));
+            current = prev;
+        }
+        path.reverse();
+        path
+    }
+
+    fn parent(&self, idx: usize) -> Option<usize> {
+        let node = &self.nodes[idx];
+        if node.seen == self.generation {
+            node.parent
         } else {
             None
         }
     }
 
-    pub fn set_came_from(&mut self, idx: usize, val: Option<(usize, usize)>) {
-        self.generated[idx] = self.generation;
-        self.came_from[idx] = val;
+    fn set(&mut self, idx: usize, g: u32, parent: Option<usize>) {
+        let node = &mut self.nodes[idx];
+        node.seen = self.generation;
+        node.g = g;
+        node.parent = parent;
     }
 
     pub fn point_to_idx(point: (usize, usize), width: usize) -> usize {
@@ -85,27 +117,21 @@ impl PathFinder {
         (idx % width, idx / width)
     }
 
-    pub fn path_idx_to_point(idxes: Vec<usize>, width: usize) -> Vec<(usize, usize)> {
-        let mut points: Vec<(usize, usize)> = Vec::with_capacity(idxes.len());
-        for idx in idxes {
-            points.push(Self::idx_to_point(idx, width));
-        }
-        points
-    }
-
-    pub fn neighbors8(
+    /// In-bounds, non-ocean neighbors of `current` with their step length.
+    pub fn land_neighbors(
+        map: &Map,
         current: (usize, usize),
-        width: usize,
-        height: usize,
-    ) -> impl Iterator<Item = ((usize, usize), u32)> {
+    ) -> impl Iterator<Item = ((usize, usize), u32)> + '_ {
         DIRS.iter().filter_map(move |&(dx, dy, step)| {
-            let x = current.0 as i32 + dx;
-            let y = current.1 as i32 + dy;
-            if x < 0 || y < 0 || x >= width as i32 || y >= height as i32 {
-                None
-            } else {
-                Some(((x as usize, y as usize), step))
+            let x = current.0.checked_add_signed(dx)?;
+            let y = current.1.checked_add_signed(dy)?;
+            if x >= map.width || y >= map.height {
+                return None;
             }
+            if Self::is_ocean(map, Self::point_to_idx((x, y), map.width)) {
+                return None;
+            }
+            Some(((x, y), step))
         })
     }
 

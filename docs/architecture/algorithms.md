@@ -1,90 +1,64 @@
-# Dokumentacja Techniczna Algorytmów Grafowych
-Moduł algorytmów przestrzennych stanowi kluczowy element silnika symulacji, odpowiadający za nawigację, wyznaczanie optymalnych tras oraz analizę dostępności terytorialnej na dwuwymiarowej siatce mapy. Wszystkie algorytmy uwzględniają fizyczne ukształtowanie terenu (typ wyliczeniowy ***Elevation***), dynamizując koszt przejścia między sąsiadującymi komórkami.
+# Pathfinding
 
-**Standardowe stałe kosztów przemieszczania:**
-**MOVE_COST = 10 (koszt ruchu w pionie i poziomie)**
-**PENALTY = 100 (mnożnik kary wysokości)**
+The map is an eight-neighbor grid. `AStar`, `DijkstraFlood` and building
+productivity share `PathFinder` movement rules. Coordinates are `(usize, usize)`
+or `Point`; flat indices use `y * width + x`. See the [code map](code_map.md) for
+every method and source link.
 
-## 1. Architektura Struktur i Zarządzanie Pamięcią
-W ogólności, dla zachowania wysokiej wydajności oraz ciągłości pamięci podręcznej (cache-friendly), algorytmy rezygnują ze struktur opartych na haszowaniu (takich jak `HashMap` czy `HashSet`) na rzecz płaskich, jednowymiarowych wektorów zorientowanych indeksowo. Przejście z indeksowania dwuwymiarowego (x, y) na jednowymiarowe realizowane jest przy pomocy relacji: *idx = y * WIDTH + x*.
+## Shared search state
 
-```mermaid
-classDiagram
-    class PathFinder {
-        +Vec~u32~ g_score
-        +Vec~u32~ f_score
-        +Vec~bool~ visited
-        +Vec~Option~Point~~ came_from
-        +new(width: usize, height: usize) PathFinder
-        +new_generation(start: Point, width: usize)
-        +point_to_idx(point: Point, width: usize) usize
-        +neighbors(current: Point, width: usize, height: usize) Vec~Point~
-    }
+`PathFinder` allocates a private `Vec<Node>` for fixed map dimensions. Each node
+stores its best cost, parent index and seen/closed generation markers. `begin()`
+starts a search and initializes the start node. Old nodes are ignored by their
+generation rather than clearing the full buffer each time. At `u32::MAX`, nodes
+are cleared and the generation restarts at one.
 
-    class AStar {
-        +a_star(map: Map, path_finder: PathFinder, start: Point, end: Point) Option~Vec~usize~~
-        -heuristic(a: Point, b: Point) u32
-        -reconstruct_path(came_from: Vec, current: Point, width: usize) Vec~usize~
-    }
+`try_relax()` records improvements, `g_score()` reads the current cost and
+`path_to()` reconstructs a `Vec<Point>`. The heap belongs to each search; it is
+not part of the reusable buffer. Searches sharing a mutable buffer run sequentially.
 
-    class DijkstraFlood {
-        +dijkstra_flood(map: Map, path_finder: PathFinder, start: Point, budget: u32) Vec~usize~
-    }
+## Movement costs
 
-    class Map {
-        +usize width
-        +usize height
-        +Vec~Area~ terrain
-    }
+Straight steps cost 10 and diagonal steps 14 before terrain penalties. Ocean
+tiles (`elevation < 0.2`) are excluded. Diagonal steps do not test whether the
+two adjacent orthogonal tiles are ocean.
 
-    AStar --> PathFinder : wykorzystuje
-    DijkstraFlood --> PathFinder : wykorzystuje
-    AStar --> Map : odczytuje tereny
-    DijkstraFlood --> Map : odczytuje tereny
+For elevation difference `d`, step length `s`, slope scale 1000 and uphill factor
+1.5, the implementation computes:
+
+```text
+ratio = abs(d) * 1000 * (10 / s)
+if d > 0: ratio *= 1.5
+cost = (s * (1 + ratio * ratio)) as u32
 ```
 
-## 2. Struktura PathFinder
-Struktura ***PathFinder*** pełni rolę scentralizowanego bufora pamięci dla algorytmów przeszukiwania przestrzeni. Alokuje ona wektory o rozmiarze mapy (***WIDTH*** * ***HEIGHT***) wyłącznie raz podczas inicjalizacji, co zapobiega kosztownym alokacjom na stercie w trakcie trwania symulacji.
+The ratio uses floating-point arithmetic. Costs are directed: climbing can cost
+more than descending. Accumulated search costs use saturating addition.
 
-### 2.1 Pola Struktury
+## A*
 
-- **g_score** (`Vec<u32>`): Przechowuje najmniejszy znany koszt dotarcia ze startu do danej komórki. Domyślnie inicjalizowany wartością `u32::MAX`.
-- **f_score** (`Vec<u32>`): Przechowuje sumę kosztu g_score oraz heurystycznej oceny dystansu do celu.
-- **visited** (`Vec<bool>`): Flaga określająca, czy dany wierzchołek został już przetworzony (zamiennik zbioru `ClosedSet`)
-- **came_from** (`Vec<Option<(usize, usize)>>`): Drzewo najkrótszych ścieżek, przechowujące współrzędne rodzica dla danej komórki.
+`AStar::travel_cost()` returns `Option<u32>` without allocating a reconstructed
+path. It validates map size, endpoint bounds, terrain length and pathfinder shape,
+then rejects ocean endpoints. `AStar::a_star()` calls that same search and uses
+`path_to()` to return `Option<Vec<Point>>`. The heuristic is the octile distance:
 
-### 2.2 Metody Pomocnicze i Cykl Pracy
+```text
+14 * min(dx, dy) + 10 * (max(dx, dy) - min(dx, dy))
+```
 
-- `new_generation`: Resetuje stany wektorów dla nowego zapytania przy użyciu wydajnej operacji `.fill()`, ustawiając punkt startowy z kosztem początkowym równym 0.
-- `point_to_idx`: Odpowiada za deterministyczne przekształcanie współrzędnej dwuwymiarowej na indeks liniowy w wektorach mapy.
-- `neighbors`: Wyznacza listę legalnych sąsiadów w 4-spójnym układzie współrzędnych (góra, dół, lewo, prawo), weryfikując warunki brzegowe mapy (0..width oraz 0..height).
+The arithmetic saturates to avoid heuristic overflow. The view and caravans use
+point paths; building productivity uses only the cost.
 
-## 3. Algorytm Wyznaczania Ścieżek: A*
-Algorytm A* służy do odnalezienia optymalnej (najtańszej) ścieżki pomiędzy dwoma punktami na mapie (*start* -> *end*), uwzględniając wysokość terenu.
+## Dijkstra flood
 
-### 3.1 Heurystyka i Koszt Przejścia
-Algorytm wykorzystuje heurystykę opartą na odległości ***Manhattan***, pomnożonej przez bazowy koszt ruchu ***MOVE_COST***:
+`DijkstraFlood::dijkstra_flood()` returns `Vec<Point>` reached within an explicit
+movement budget. It shares neighbor enumeration, movement costs and generation
+state with A*. Unlike A*, its entry point currently assumes valid map buffers,
+an in-bounds start and matching pathfinder dimensions; callers must ensure these.
 
-*h(a,b) = (|a.x - b.x| + |a.y - b.y|) * MOVE_COST*
+## Verification
 
-Całkowity koszt przejścia między sąsiadami uwzględnia różnicę wysokości terenu (***delta_elevation***), karząc za wspinaczkę oraz strome zejścia zgodnie ze wzorem:
-
-*move_cost = MOVE_COST + (|delta_elevation| * PENALTY)*
-
-### 3.2 Kolejna Priorytetowa i Leniwe Usuwanie
-Proces sterowany jest przez kopiec binarny (`BinaryHeap`), sortujący wierzchołki malejąco według najniższej wartości f_score (zastosowanie `Reverse`). W celu optymalizacji zrezygnowano z kosztownego przeszukiwania kolejki. Jeśli wierzchołek zostaje dodany ponownie z lepszym wynikiem, starsza (gorsza) instancja jest ignorowana po ściągnięciu ze sterty dzięki weryfikacji flagi w wektorze `visited` (*lazy deletion*).
-
-### 3.3 Rekonstrukcja Trasy (`reconstruct_path`)
-Po osiągnięciu komórki docelowej następuje odtworzenie trasy od celu do startu na podstawie bufora `came_from`. Końcowa ścieżka jest odwracana i zwracana w formie jednowymiarowego wektora indeksów (`Vec<usize>`), gotowego do bezpośredniego użycia przez silnik mapy.
-
-## Algorytm Zalewowy: Dijkstra Flood
-Algorytm *Dijkstra Flood* (ekspansja Dijkstry z limitem kosztów) służy do wyznaczania strefy zasięgu, czyli wszystkich komórek możliwych do osiągnięcia z punktu startowego w ramach określonego budżetu punktów ruchu (*budget*).
-
-### 4.1 Specyfika Działania i Bariera Budżetu
-- **Granica oceanu:** Algorytm automatycznie odrzuca ekspansję na tereny poniżej poziomu morza (***Elevation::OCEAN_LEVEL***).
-
-- **Bariera rzeźby terenu:** Im większa różnica wysokości między komórkami (wysoka wartość delta_elevation), tym szybsze wyczerpanie dostępnego parametru budget. Powoduje to naturalne dostosowywanie się kształtu zalanej strefy do ukształtowania geograficznego.
-
-- W odróżnieniu od algorytmu A*, funkcja ta nie posiada punktu docelowego ani heurystyki (*h(x) = 0*). Ekspansja odbywa się równomiernie we wszystkich kierunkach na podstawie samego kosztu `g_score`.
-
-- Wynikiem działania algorytmu jest wektor indeksów liniowych(`Vec<usize>`) reprezentujących spójny terytorialnie obszar dostępny w danym budżecie ruchu.
+Inline tests compare A* cost with reconstructed paths, check slopes, detours,
+disconnected/ocean/invalid endpoints and repeated buffer use. A pathfinder unit
+test exercises generation wrap across A* and Dijkstra. Integration tests cover
+the effect of changed map routes on settlement productivity.

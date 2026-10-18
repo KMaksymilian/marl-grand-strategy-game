@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-core = { path = "../core" }
+simulation_core = { path = "../core" }
 macroquad = "0.4.15"
 rand = "0.10.2"
 

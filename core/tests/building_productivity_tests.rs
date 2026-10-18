@@ -1,6 +1,6 @@
-use core::domain::geography::area as test_area;
-use core::domain::world_data::map as core_map;
-use core::services::algorithms::path_finder as test_path;
+use simulation_core::world::map as core_map;
+use simulation_core::world::pathfinding::path_finder as test_path;
+use simulation_core::world::terrain::area as test_area;
 
 fn test_map() -> core_map::Map {
     core_map::Map::new(
@@ -14,15 +14,16 @@ fn test_map() -> core_map::Map {
 fn test_finder() -> test_path::PathFinder {
     test_path::PathFinder::new(64, 8)
 }
-use core::domain::buildings::core::{Building, Position};
-use core::domain::buildings::factory::{BuildingBehavior, BuildingDefinition};
-use core::domain::buildings::productivity::{
+use simulation_core::buildings::Building;
+use simulation_core::buildings::definition::{BuildingBehavior, BuildingDefinition};
+use simulation_core::buildings::productivity::{
     BuildingProductivityCalculator, TravelCostEfficiencyPolicy,
 };
-use core::domain::economy::resource::ResourceType;
-use core::domain::ids::{BuildingId, ProjectId};
-use core::domain::settlement::core::Settlement;
-use core::domain::settlement::projects::{ProjectCompletion, ProjectCost};
+use simulation_core::economy::ResourceType;
+use simulation_core::ids::{BuildingId, ProjectId};
+use simulation_core::settlement::Settlement;
+use simulation_core::settlement::projects::{ProjectCompletion, ProjectCost};
+use simulation_core::world::coordinates::Position;
 use std::sync::Arc;
 
 fn definition(workers: u32, input: u32, output: u32) -> Arc<BuildingDefinition> {
@@ -412,7 +413,7 @@ fn changing_toml_thresholds_changes_production_for_the_same_route() {
         let source = format!(
             "[economy.building_productivity]\nfull_productivity_cost = 10\nzero_productivity_cost = {zero_cost}"
         );
-        let config = core::configuration::Configuration::from_toml(&source).unwrap();
+        let config = simulation_core::configuration::Configuration::from_toml(&source).unwrap();
         settlement.set_building_productivity_calculator(
             Some(BuildingProductivityCalculator::new(
                 Position { x: 0, y: 0 },

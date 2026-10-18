@@ -1,7 +1,6 @@
 use crate::domain::world_data::map::Map;
-use crate::services::algorithms::path_finder::DIAGONAL;
-use crate::services::algorithms::path_finder::PathFinder;
-use crate::services::algorithms::path_finder::STRAIGHT;
+use crate::domain::world_data::point::Point;
+use crate::services::algorithms::path_finder::{DIAGONAL, PathFinder, STRAIGHT};
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
@@ -13,9 +12,9 @@ impl AStar {
         path_finder: &mut PathFinder,
         start: (usize, usize),
         end: (usize, usize),
-    ) -> Option<Vec<usize>> {
+    ) -> Option<Vec<Point>> {
         Self::travel_cost(map, path_finder, start, end)?;
-        Some(Self::reconstruct_path(path_finder, end, map.width))
+        Some(path_finder.path_to(PathFinder::point_to_idx(end, map.width)))
     }
 
     /// Minimum directed movement cost using the same search as the map path view.
@@ -34,10 +33,7 @@ impl AStar {
             || map.width > i32::MAX as usize
             || map.height > i32::MAX as usize
             || map.terrain.len() != size
-            || path_finder.g_score.len() != size
-            || path_finder.generated.len() != size
-            || path_finder.visited.len() != size
-            || path_finder.came_from.len() != size
+            || !path_finder.matches_map(map)
         {
             return None;
         }
@@ -48,44 +44,34 @@ impl AStar {
             return None;
         }
 
-        let mut open_set: BinaryHeap<Reverse<(u32, usize, usize)>> = BinaryHeap::new();
+        path_finder.begin(map, start);
+        let mut open_set: BinaryHeap<Reverse<(u32, (usize, usize))>> = BinaryHeap::new();
+        open_set.push(Reverse((Self::heuristic(start, end), start)));
 
-        path_finder.new_generation(start, map.width);
-        let start_h = Self::heuristic(start, end);
-        open_set.push(Reverse((start_h, start.0, start.1)));
-
-        while let Some(Reverse((_current_f, cx, cy))) = open_set.pop() {
-            let current = (cx, cy);
+        while let Some(Reverse((_f_score, current))) = open_set.pop() {
             if current == end {
-                return Some(path_finder.get_g_score(end_idx));
+                return Some(path_finder.g_score(end_idx));
             }
 
-            let current_idx: usize = PathFinder::point_to_idx(current, map.width);
-
-            if path_finder.is_visited(current_idx) {
+            let current_idx = PathFinder::point_to_idx(current, map.width);
+            if path_finder.is_closed(current_idx) {
                 continue;
             }
-            path_finder.set_visited(current_idx);
+            path_finder.close(current_idx);
 
-            for (neighbor, step) in PathFinder::neighbors8(current, map.width, map.height) {
+            for (neighbor, step) in PathFinder::land_neighbors(map, current) {
                 let neighbor_idx = PathFinder::point_to_idx(neighbor, map.width);
-
-                if path_finder.is_visited(neighbor_idx) || PathFinder::is_ocean(map, neighbor_idx) {
+                if path_finder.is_closed(neighbor_idx) {
                     continue;
                 }
 
-                let tentative_g_score = path_finder
-                    .get_g_score(current_idx)
+                let g_score = path_finder
+                    .g_score(current_idx)
                     .saturating_add(PathFinder::move_cost(map, current_idx, neighbor_idx, step));
 
-                if tentative_g_score < path_finder.get_g_score(neighbor_idx) {
-                    path_finder.set_came_from(neighbor_idx, Some(current));
-                    path_finder.set_g_score(neighbor_idx, tentative_g_score);
-
-                    let h_score: u32 = Self::heuristic(neighbor, end);
-                    let f_score: u32 = tentative_g_score.saturating_add(h_score);
-
-                    open_set.push(Reverse((f_score, neighbor.0, neighbor.1)));
+                if path_finder.try_relax(neighbor_idx, g_score, current_idx) {
+                    let f_score = g_score.saturating_add(Self::heuristic(neighbor, end));
+                    open_set.push(Reverse((f_score, neighbor)));
                 }
             }
         }
@@ -99,20 +85,6 @@ impl AStar {
         DIAGONAL
             .saturating_mul(min)
             .saturating_add(STRAIGHT.saturating_mul(max - min))
-    }
-
-    fn reconstruct_path(
-        path_finder: &PathFinder,
-        mut current: (usize, usize),
-        width: usize,
-    ) -> Vec<usize> {
-        let mut path: Vec<usize> = vec![PathFinder::point_to_idx(current, width)];
-        while let Some(prev) = path_finder.get_came_from(PathFinder::point_to_idx(current, width)) {
-            current = prev;
-            path.push(PathFinder::point_to_idx(current, width));
-        }
-        path.reverse();
-        path
     }
 }
 
@@ -130,17 +102,22 @@ mod tests {
         )
     }
 
-    fn path_cost(map: &Map, path: &[usize]) -> u32 {
+    fn path_cost(map: &Map, path: &[Point]) -> u32 {
         path.windows(2)
             .map(|pair| {
-                let from = PathFinder::idx_to_point(pair[0], map.width);
-                let to = PathFinder::idx_to_point(pair[1], map.width);
+                let from = pair[0];
+                let to = pair[1];
                 let step = if from.0 != to.0 && from.1 != to.1 {
                     DIAGONAL
                 } else {
                     STRAIGHT
                 };
-                PathFinder::move_cost(map, pair[0], pair[1], step)
+                PathFinder::move_cost(
+                    map,
+                    PathFinder::point_to_idx((from.0, from.1), map.width),
+                    PathFinder::point_to_idx((to.0, to.1), map.width),
+                    step,
+                )
             })
             .sum()
     }
@@ -159,7 +136,7 @@ mod tests {
         );
         map.terrain[4].elevation_val = 0.0;
         let route = AStar::a_star(&map, &mut finder, (0, 1), (2, 1)).unwrap();
-        assert!(!route.contains(&4));
+        assert!(!route.contains(&Point(1, 1)));
         assert_eq!(path_cost(&map, &route), 28);
         assert_eq!(
             AStar::travel_cost(&map, &mut finder, (0, 1), (2, 1)),
@@ -194,6 +171,13 @@ mod tests {
             AStar::travel_cost(&map, &mut PathFinder::new(1, 1), (0, 0), (0, 0)),
             None
         );
+        // Equal buffer lengths are insufficient when the map dimensions differ.
+        let mut wrong_shape = PathFinder::new(1, 9);
+        assert_eq!(
+            AStar::travel_cost(&map, &mut wrong_shape, (0, 0), (0, 0)),
+            None
+        );
+        assert_eq!(AStar::a_star(&map, &mut wrong_shape, (0, 0), (0, 0)), None);
         map.terrain.pop();
         assert_eq!(AStar::travel_cost(&map, &mut finder, (0, 0), (0, 0)), None);
         let empty = Map::new(0, 0, vec![], vec![]);
@@ -204,14 +188,13 @@ mod tests {
     }
 
     #[test]
-    fn reused_buffers_remain_valid_after_generation_wrap() {
+    fn reused_buffers_remain_valid_across_searches() {
         let map = map(3, 3);
         let mut finder = PathFinder::new(3, 3);
         assert_eq!(
             AStar::travel_cost(&map, &mut finder, (0, 0), (2, 2)),
             Some(28)
         );
-        finder.generation = u32::MAX;
         assert_eq!(
             AStar::travel_cost(&map, &mut finder, (2, 2), (0, 0)),
             Some(28)

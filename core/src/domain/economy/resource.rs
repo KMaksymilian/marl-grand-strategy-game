@@ -109,6 +109,14 @@ impl ResourceInventory {
         }
         false
     }
+
+    pub fn consume_available(&mut self, res_type: ResourceType) -> u32 {
+        if let Some(available) = self.resources.get_mut(&res_type) {
+            std::mem::take(available)
+        } else {
+            0
+        }
+    }
 }
 
 #[cfg(test)]

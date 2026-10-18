@@ -1,4 +1,4 @@
-use crate::domain::buildings::core::{BuildingLocation, Position};
+use crate::domain::buildings::core::Position;
 use crate::domain::buildings::factory::BuildingDefinition;
 use crate::domain::economy::resource::ResourceType;
 use crate::domain::economy::resource_allocation::{AllocationRecipient, DemandRequest};
@@ -30,7 +30,6 @@ pub struct ProjectOutcome {
 #[derive(Debug, Clone)]
 pub enum ProjectResult {
     ConstructBuilding {
-        location: BuildingLocation,
         position: Position,
         definition: Arc<BuildingDefinition>,
     },

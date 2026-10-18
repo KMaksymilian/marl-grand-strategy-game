@@ -49,10 +49,21 @@ impl PathFinder {
 
     /// Starts a new search from `start`.
     pub fn begin(&mut self, map: &Map, start: (usize, usize)) {
-        debug_assert!(map.width == self.width && map.height == self.height);
-        self.generation += 1;
+        debug_assert!(self.matches_map(map));
+        if self.generation == u32::MAX {
+            self.nodes.fill(Node::default());
+            self.generation = 1;
+        } else {
+            self.generation += 1;
+        }
         let idx = Self::point_to_idx(start, self.width);
         self.set(idx, 0, None);
+    }
+
+    pub(crate) fn matches_map(&self, map: &Map) -> bool {
+        self.width == map.width
+            && self.height == map.height
+            && map.width.checked_mul(map.height) == Some(self.nodes.len())
     }
 
     /// Best known cost to reach `idx` in the current search (`u32::MAX` if unreached).
@@ -165,5 +176,36 @@ impl PathFinder {
             ratio *= UPHILL_FACTOR;
         }
         (step as f32 * (1.0 + ratio * ratio)) as u32
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::geography::area::Area;
+    use crate::services::algorithms::{a_star::AStar, dijkstra_flood::DijkstraFlood};
+
+    #[test]
+    fn generation_wrap_clears_stale_nodes_for_both_search_algorithms() {
+        let map = Map::new(3, 3, vec![Area::new(0.5, 0.5); 9], vec![0; 9]);
+        let mut finder = PathFinder::new(3, 3);
+        assert_eq!(
+            AStar::travel_cost(&map, &mut finder, (0, 0), (2, 2)),
+            Some(28)
+        );
+        finder.generation = u32::MAX;
+        assert_eq!(
+            AStar::travel_cost(&map, &mut finder, (2, 2), (0, 0)),
+            Some(28)
+        );
+        assert_eq!(finder.generation, 1);
+        finder.generation = u32::MAX;
+        let zone = DijkstraFlood::dijkstra_flood(&map, &mut finder, (1, 1), STRAIGHT);
+        assert_eq!(zone.len(), 5);
+        assert!(zone.contains(&Point(1, 1)));
+        assert_eq!(
+            AStar::travel_cost(&map, &mut finder, (1, 1), (1, 1)),
+            Some(0)
+        );
     }
 }

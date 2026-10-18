@@ -10,7 +10,7 @@ Settlements are intended to publish buy and sell offers on local market boards a
 
 The proposed currency would be stored separately from materials without occupying warehouse or cargo capacity.
 
-Hub and Spoke may acquire building limits, territorial ownership and transport costs based on distance. Trading requires a shared world turn cycle, settlement placement on the map and a warehouse overflow policy first.
+Buildings now use one collection and optional A* travel-cost output penalties; see [building_productivity.md](building_productivity.md). Territorial ownership, building limits, roads and physical cargo transport remain future work. Trading requires a shared world turn cycle and settlement placement on the map. Warehouse overflow accounting is already implemented.
 
 
 ## Proposed Resources

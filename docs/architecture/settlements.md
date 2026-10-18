@@ -13,7 +13,7 @@ This document describes the implementation including `fix/economy` (`9d24d16`). 
 | --- | --- | --- |
 | `id` | `u32` | Settlement identity |
 | `inventory_manager` | `SettlementInventoryManager` | Warehouse and production buffer |
-| `building_manager` | `BuildingManager` | Hub/Spoke collections, requests, production and upgrades |
+| `building_manager` | `BuildingManager` | Building collection, productivity calculator, requests, production and upgrades |
 | `population_manager` | `PopulationManager` | Population count, needs registry and grant evaluation |
 | `project_manager` | `ProjectManager` | Active projects, remaining costs and completion |
 
@@ -25,15 +25,15 @@ classDiagram
         -BuildingManager building_manager
         -PopulationManager population_manager
         -ProjectManager project_manager
-        +process_turn() TurnReport
+        +process_turn(map, finder) TurnReport
     }
     class SettlementInventoryManager {
         -ResourceInventory main
         -ResourceInventory pending_production
     }
     class BuildingManager {
-        -Vec~Building~ hub_buildings
-        -Vec~Building~ spoke_buildings
+        -Vec~Building~ buildings
+        -Option~BuildingProductivityCalculator~ productivity_calculator
     }
     class PopulationManager {
         +u32 population
@@ -45,7 +45,8 @@ classDiagram
     class Building {
         -BuildingId instance_id
         -Arc~BuildingDefinition~ definition
-        -f32 target_efficiency
+        -f32 target_load
+        -LocationProductivity location_productivity
         -u32 current_workers
         -bool is_active
     }
@@ -62,19 +63,19 @@ classDiagram
     ProjectManager *-- Project
 ```
 
-`Settlement::new(id, initial_capacity, initial_population, need_registry)` creates an empty warehouse and buffer with the requested capacity, no buildings or projects, and a population manager with a shared `Arc<NeedRegistry>`.
+`Settlement::new(id, initial_capacity, initial_population, need_registry)` creates an empty warehouse and buffer with the requested capacity, no buildings or projects, no distance penalty (`BuildingManager.productivity_calculator = None`), and a population manager with a shared `Arc<NeedRegistry>`.
 
 Each settlement owns an independent ordered storage list. `set_storage_order(materials: impl AsRef<[ResourceType]>)` validates it against the material catalogue; `storage_order()` returns a read-only slice. No numerical priority weights are stored. See [economic.md](economic.md).
 
 Settlement fields and manager modules are private implementation details. Public reads use `id()`, `population()`, `inventory()`, `pending_inventory()`, `buildings()` and `active_projects()`. Building and project views expose immutable identity, definitions and remaining costs through accessors. There is no mutable collection getter.
 
-Use `deposit()`, `withdraw()` and `set_inventory_capacity()` to change warehouse stock or capacity. Add validated buildings through `add_building()`; duplicate IDs are rejected. Change a managed building through `set_building_efficiency()` or `set_building_active()`, which reject missing IDs. Queue projects through `queue_construction()` and `queue_upgrade()`, which validate definitions before any allocation. `NeedRegistry` and `NeedTier` are re-exported for external needs configuration.
+Use `deposit()`, `withdraw()` and `set_inventory_capacity()` to change warehouse stock or capacity. Add validated buildings through `add_building()`; duplicate IDs are rejected. Change a managed building through `set_building_load()` or `set_building_active()`, which reject missing IDs. Queue projects through `queue_construction()` and `queue_upgrade()`, which validate definitions before any allocation. `NeedRegistry` and `NeedTier` are re-exported for external needs configuration.
 
 ## 3. Turn Sequence
 
-`process_turn(&mut self) -> TurnReport` accepts neither actions nor a time parameter. It performs these steps:
+`process_turn(&mut self, map: &Map, finder: &mut PathFinder) -> TurnReport` receives the current map and a reusable pathfinding buffer. It refreshes A* travel costs before gathering economic requests and accepts neither actions nor a time parameter. It performs these steps:
 
-0. **Validate projects:** remove unsupported projects and upgrades without a target, recording their errors before allocation.
+0. **Refresh building productivity:** compute current A* travel costs from the capital using the configured policy. Then **validate projects:** remove unsupported projects and upgrades without a target, recording their errors before allocation.
 1. **Refresh labour:** set `main[Labour] = population`.
 2. **Gather requests:** population needs, remaining project costs, building inputs and labour.
 3. **Allocate:** distribute resources proportionally with remainder allocation; withdraw materials from `main`.
@@ -92,6 +93,7 @@ sequenceDiagram
     participant Q as ProjectManager
     participant B as BuildingManager
     participant A as AllocationEngine
+    Note over S,B: Refresh A* travel costs from the current map
     S->>Q: validate active project effects
     Note over S,Q: Reject invalid projects before material allocation
     S->>I: refresh_labor_capacity(population)
@@ -120,15 +122,15 @@ sequenceDiagram
 
 Request gathering order does not establish population priority over industry or projects. The allocator considers all demands together. Population takes precedence only when remainders are equal under recipient ordering.
 
-Products created during a turn cannot satisfy its earlier demands. Construction finishes after production, so a new building cannot work in its completion turn. It also starts with `target_efficiency = 0.0`, which must be set. An upgraded building retains its instance state; the new definition participates in the next demand phase.
+Products created during a turn cannot satisfy its earlier demands. Construction finishes after production, so a new building cannot work in its completion turn. It also starts with `target_load = 0.0`, which must be set. An upgraded building retains its instance state; the new definition participates in the next demand phase.
 
 ## 4. Building Definitions and Instances
 
 `BuildingDefinition` contains `id: String`, `name`, `tier`, `max_workers`, `behaviors` and `construction_cost`. `BuildingFactory::register` stores a definition under its string ID; registration under an existing ID replaces the entry. `get_blueprint(id)` returns `Option<Arc<BuildingDefinition>>`. Existing buildings retain their previous `Arc`; registering a replacement does not upgrade them automatically.
 
-`Building` holds a `BuildingId`, `Position { x: i32, y: i32 }`, `BuildingLocation`, a shared definition, activity, target efficiency and current worker count. The string definition ID identifies a building type; `instance_id` identifies a particular building.
+`Building` holds a `BuildingId`, `Position { x: i32, y: i32 }`, a shared definition, activity, target load, location productivity and current worker count. The string definition ID identifies a building type; `instance_id` identifies a particular building.
 
-`BuildingLocation::Hub` and `Spoke` select one of two collections. The code does not validate territorial boundaries, occupied positions, distance from the center or local resource availability. These categories do not yet apply bonuses or logistical costs.
+All buildings belong to one collection; Hub/Spoke and `BuildingLocation` have been removed. An optional `BuildingProductivityCalculator` owned by `BuildingManager` configures the capital position and a validated `TravelCostEfficiencyPolicy`. `Settlement` delegates configuration and refresh operations to the manager. Its linear output penalty uses A* route costs and preserves staffing and material costs. Thresholds are loaded from the repository-root `configuration.toml`. `set_building_productivity_calculator()` and `add_building()` also receive the map and mutable pathfinding buffer so their cached productivity values are immediately correct. The code does not validate territorial boundaries, occupied positions or local resource availability. See [building_productivity.md](building_productivity.md) for configuration, exact arithmetic and migration details.
 
 | Behavior | Implementation status |
 | --- | --- |
@@ -137,7 +139,7 @@ Products created during a turn cannot satisfy its earlier demands. Construction 
 
 `StatType` contains `HousingCapacity`, `InventoryCapacity` and `TradeCapacity`. Stat aggregation and automatic warehouse capacity changes from buildings do not exist yet.
 
-Replacing an `Arc` in `Building::upgrade` is O(1). `BuildingManager::upgrade_building` first searches both collections linearly, making the complete lookup and upgrade O(B). It returns `false` when the target does not exist.
+Replacing an `Arc` in `Building::upgrade` is O(1). `BuildingManager::upgrade_building` first searches the collection linearly, making the complete lookup and upgrade O(B). It returns `false` when the target does not exist.
 
 ## 5. Construction and Upgrade Projects
 
@@ -145,7 +147,7 @@ Replacing an `Arc` in `Building::upgrade` is O(1). `BuildingManager::upgrade_bui
 
 | Project result | Action on completion |
 | --- | --- |
-| `ConstructBuilding` | Creates a building at the supplied location and position with the supplied definition |
+| `ConstructBuilding` | Creates a building at the supplied position with the supplied definition |
 | `UpgradeBuilding` | Replaces the definition of the target `BuildingId` |
 | `RecruitUnit` | Explicitly rejected with `UnsupportedRecruitment` |
 
@@ -165,10 +167,10 @@ Example: a project costs 10 wood and 2 turns. Turn one delivers 4 wood, leaving 
 
 | Operation | Result |
 | --- | --- |
-| `construct_building(building)` | `Result<(), BuildingId>`: an error identifies an existing building with that ID, including one in the other location collection |
+| `construct_building(building)` | `Result<(), BuildingId>`: an error identifies an existing building with that ID |
 | `add_project(project)` | `Result<(), ProjectId>`: an error identifies an existing active project with that ID |
 | `queue_construction(...)`, `queue_upgrade(...)` | `Result<(), ProjectError>`: report duplicate projects, missing upgrade targets or invalid definitions before accepting a command |
-| `next_available_id()` | The first free `BuildingId`, starting at 0 and checked against Hub and Spoke |
+| `next_available_id()` | The first free `BuildingId`, starting at 0 and checked against all buildings |
 
 A completed construction receives a building ID independently of its project number. A project ID is not a global identity for the resulting object. Typed arguments prevent passing a `ProjectId` as an upgrade target.
 

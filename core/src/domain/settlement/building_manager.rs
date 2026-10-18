@@ -1,51 +1,94 @@
-use crate::domain::buildings::core::{Building, BuildingLocation};
+use crate::domain::buildings::core::Building;
+use crate::domain::buildings::core::Position;
 use crate::domain::buildings::factory::BuildingDefinition;
+use crate::domain::buildings::productivity::{
+    BuildingProductivityCalculator, LocationProductivity,
+};
 use crate::domain::economy::resource::ResourceType;
 use crate::domain::economy::resource_allocation::{
     AllocationRecipient, AllocationResult, DemandRequest,
 };
 use crate::domain::ids::BuildingId;
+use crate::domain::world_data::map::Map;
+use crate::services::algorithms::path_finder::PathFinder;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct BuildingManager {
-    pub(super) hub_buildings: Vec<Building>,
-    pub(super) spoke_buildings: Vec<Building>,
+    pub(super) buildings: Vec<Building>,
+    productivity_calculator: Option<BuildingProductivityCalculator>,
 }
 
 impl BuildingManager {
     pub fn new() -> Self {
         Self {
-            hub_buildings: Vec::new(),
-            spoke_buildings: Vec::new(),
+            buildings: Vec::new(),
+            productivity_calculator: None,
         }
     }
 
-    pub fn construct_building(&mut self, building: Building) -> Result<(), BuildingId> {
+    pub fn construct_building(
+        &mut self,
+        mut building: Building,
+        map: &Map,
+        finder: &mut PathFinder,
+    ) -> Result<(), BuildingId> {
         if self.contains(building.instance_id()) {
             return Err(building.instance_id());
         }
-        match building.location() {
-            BuildingLocation::Hub => self.hub_buildings.push(building),
-            BuildingLocation::Spoke => self.spoke_buildings.push(building),
-        }
+        building.set_location_productivity(self.productivity_at(building.position(), map, finder));
+        self.buildings.push(building);
         Ok(())
     }
 
+    pub fn productivity_calculator(&self) -> Option<BuildingProductivityCalculator> {
+        self.productivity_calculator
+    }
+
+    pub fn set_productivity_calculator(
+        &mut self,
+        calculator: Option<BuildingProductivityCalculator>,
+        map: &Map,
+        finder: &mut PathFinder,
+    ) {
+        self.productivity_calculator = calculator;
+        self.refresh_productivity(map, finder);
+    }
+
+    pub fn refresh_productivity(&mut self, map: &Map, finder: &mut PathFinder) {
+        let calculator = self.productivity_calculator;
+        for building in &mut self.buildings {
+            let productivity = calculator.map_or(LocationProductivity::FULL, |calculator| {
+                calculator.multiplier_at(building.position(), map, finder)
+            });
+            building.set_location_productivity(productivity);
+        }
+    }
+
+    fn productivity_at(
+        &self,
+        position: Position,
+        map: &Map,
+        finder: &mut PathFinder,
+    ) -> LocationProductivity {
+        self.productivity_calculator
+            .map_or(LocationProductivity::FULL, |calculator| {
+                calculator.multiplier_at(position, map, finder)
+            })
+    }
+
     pub fn contains(&self, id: BuildingId) -> bool {
-        self.hub_buildings
+        self.buildings
             .iter()
-            .chain(&self.spoke_buildings)
             .any(|building| building.instance_id() == id)
     }
 
     /// A completed project receives a building ID independent of its project ID.
     pub fn next_available_id(&self) -> BuildingId {
         let used: std::collections::HashSet<_> = self
-            .hub_buildings
+            .buildings
             .iter()
-            .chain(&self.spoke_buildings)
             .map(|building| building.instance_id())
             .collect();
         (0..=u32::MAX)
@@ -60,9 +103,8 @@ impl BuildingManager {
         new_def: Arc<BuildingDefinition>,
     ) -> bool {
         if let Some(building) = self
-            .hub_buildings
+            .buildings
             .iter_mut()
-            .chain(self.spoke_buildings.iter_mut())
             .find(|b| b.instance_id() == target_id)
         {
             building.upgrade(new_def).is_ok()
@@ -72,9 +114,8 @@ impl BuildingManager {
     }
 
     pub fn generate_requests(&self) -> Vec<DemandRequest> {
-        self.hub_buildings
+        self.buildings
             .iter()
-            .chain(self.spoke_buildings.iter())
             .filter_map(|b| {
                 let demand = b.calculate_demand();
                 if demand.is_empty() {
@@ -96,11 +137,7 @@ impl BuildingManager {
         let mut all_produced = HashMap::new();
         let mut all_returned = HashMap::new();
 
-        for building in self
-            .hub_buildings
-            .iter_mut()
-            .chain(self.spoke_buildings.iter_mut())
-        {
+        for building in self.buildings.iter_mut() {
             let grants = allocations.get(&AllocationRecipient::Building(building.instance_id()));
             let update_result = building.resolve_allocation(grants);
 
@@ -120,28 +157,42 @@ impl BuildingManager {
 
 #[cfg(test)]
 mod tests {
+    fn test_map() -> Map {
+        Map::new(
+            1,
+            1,
+            vec![crate::domain::geography::area::Area::new(0.5, 0.5)],
+            vec![0],
+        )
+    }
+    fn test_finder() -> PathFinder {
+        PathFinder::new(1, 1)
+    }
+
     use super::*;
-    use crate::domain::buildings::core::{Building, BuildingLocation, Position};
+    use crate::domain::buildings::core::{Building, Position};
     use crate::domain::buildings::factory::{BuildingBehavior, BuildingDefinition};
     use crate::domain::economy::resource::ResourceType;
     use std::collections::HashMap;
     use std::sync::Arc;
 
     #[test]
-    fn duplicate_building_ids_are_rejected_across_locations() {
+    fn duplicate_building_ids_are_rejected() {
         let mut manager = BuildingManager::new();
         let def = create_test_definition("test", 1, vec![]);
         manager
-            .construct_building(create_active_building(
-                7,
-                BuildingLocation::Hub,
-                def.clone(),
-            ))
+            .construct_building(
+                create_active_building(7, def.clone()),
+                &test_map(),
+                &mut test_finder(),
+            )
             .unwrap();
-        let duplicate = create_active_building(7, BuildingLocation::Spoke, def);
-        assert_eq!(manager.construct_building(duplicate), Err(BuildingId(7)));
-        assert_eq!(manager.hub_buildings.len(), 1);
-        assert!(manager.spoke_buildings.is_empty());
+        let duplicate = create_active_building(7, def);
+        assert_eq!(
+            manager.construct_building(duplicate, &test_map(), &mut test_finder()),
+            Err(BuildingId(7))
+        );
+        assert_eq!(manager.buildings.len(), 1);
     }
 
     // --- Helpers ---
@@ -161,53 +212,39 @@ mod tests {
         })
     }
 
-    fn create_active_building(
-        instance_id: u32,
-        location: BuildingLocation,
-        def: Arc<BuildingDefinition>,
-    ) -> Building {
-        let mut building = Building::new(
-            BuildingId(instance_id),
-            Position { x: 0, y: 0 },
-            location,
-            def,
-        )
-        .unwrap();
+    fn create_active_building(instance_id: u32, def: Arc<BuildingDefinition>) -> Building {
+        let mut building =
+            Building::new(BuildingId(instance_id), Position { x: 0, y: 0 }, def).unwrap();
         // Important: default is 0.0, which means no demand and no production.
         // We set it to 1.0 to simulate a fully functioning building.
-        building.set_target_efficiency(1.0).unwrap();
+        building.set_target_load(1.0).unwrap();
         building
     }
 
     // --- Tests ---
 
     #[test]
-    fn test_construct_building_routes_to_correct_location() {
+    fn construction_preserves_building_insertion_order() {
         // Arrange
         let mut manager = BuildingManager::new();
         let def = create_test_definition("house", 0, vec![]);
 
-        let hub_building = create_active_building(1, BuildingLocation::Hub, Arc::clone(&def));
-        let spoke_building = create_active_building(2, BuildingLocation::Spoke, Arc::clone(&def));
+        let first = create_active_building(1, Arc::clone(&def));
+        let second = create_active_building(2, Arc::clone(&def));
 
         // Act
-        manager.construct_building(hub_building).unwrap();
-        manager.construct_building(spoke_building).unwrap();
+        manager
+            .construct_building(first, &test_map(), &mut test_finder())
+            .unwrap();
+        manager
+            .construct_building(second, &test_map(), &mut test_finder())
+            .unwrap();
 
         // Assert
-        assert_eq!(
-            manager.hub_buildings.len(),
-            1,
-            "Hub building should go to hub_buildings array"
-        );
-        assert_eq!(manager.hub_buildings[0].instance_id(), BuildingId(1));
+        assert_eq!(manager.buildings.len(), 2);
+        assert_eq!(manager.buildings[0].instance_id(), BuildingId(1));
 
-        assert_eq!(
-            manager.spoke_buildings.len(),
-            1,
-            "Spoke building should go to spoke_buildings array"
-        );
-        assert_eq!(manager.spoke_buildings[0].instance_id(), BuildingId(2));
+        assert_eq!(manager.buildings[1].instance_id(), BuildingId(2));
     }
 
     #[test]
@@ -218,7 +255,11 @@ mod tests {
         let new_def = create_test_definition("tier_2", 10, vec![]);
 
         manager
-            .construct_building(create_active_building(1, BuildingLocation::Hub, old_def))
+            .construct_building(
+                create_active_building(1, old_def),
+                &test_map(),
+                &mut test_finder(),
+            )
             .unwrap();
 
         // Act
@@ -227,7 +268,7 @@ mod tests {
         // Assert
         assert!(result, "Upgrade should return true for existing building");
         assert!(
-            std::ptr::eq(manager.hub_buildings[0].definition(), new_def.as_ref()),
+            std::ptr::eq(manager.buildings[0].definition(), new_def.as_ref()),
             "Building definition should be successfully replaced"
         );
     }
@@ -238,7 +279,11 @@ mod tests {
         let mut manager = BuildingManager::new();
         let def = create_test_definition("tier_1", 5, vec![]);
         manager
-            .construct_building(create_active_building(1, BuildingLocation::Hub, def))
+            .construct_building(
+                create_active_building(1, def),
+                &test_map(),
+                &mut test_finder(),
+            )
             .unwrap();
 
         let new_def = create_test_definition("tier_2", 10, vec![]);
@@ -258,20 +303,28 @@ mod tests {
         // Arrange
         let mut manager = BuildingManager::new();
 
-        // Building 1: Hub, wants 5 Labour
+        // Building 1 wants 5 Labour.
         let def1 = create_test_definition("house", 5, vec![]);
         manager
-            .construct_building(create_active_building(1, BuildingLocation::Hub, def1))
+            .construct_building(
+                create_active_building(1, def1),
+                &test_map(),
+                &mut test_finder(),
+            )
             .unwrap();
 
-        // Building 2: Spoke, wants 10 Labour + 10 Wood (via Production behavior)
+        // Building 2 wants 10 Labour + 10 Wood (via Production behavior).
         let prod_behavior = BuildingBehavior::Production {
             inputs: vec![(ResourceType::Wood, 10)],
             outputs: vec![(ResourceType::Stone, 20)],
         };
         let def2 = create_test_definition("lumber", 10, vec![prod_behavior]);
         manager
-            .construct_building(create_active_building(2, BuildingLocation::Spoke, def2))
+            .construct_building(
+                create_active_building(2, def2),
+                &test_map(),
+                &mut test_finder(),
+            )
             .unwrap();
 
         // Act
@@ -315,14 +368,18 @@ mod tests {
 
         // Add two identical buildings
         manager
-            .construct_building(create_active_building(
-                1,
-                BuildingLocation::Hub,
-                Arc::clone(&def),
-            ))
+            .construct_building(
+                create_active_building(1, Arc::clone(&def)),
+                &test_map(),
+                &mut test_finder(),
+            )
             .unwrap();
         manager
-            .construct_building(create_active_building(2, BuildingLocation::Spoke, def))
+            .construct_building(
+                create_active_building(2, def),
+                &test_map(),
+                &mut test_finder(),
+            )
             .unwrap();
 
         // Setup AllocationResult

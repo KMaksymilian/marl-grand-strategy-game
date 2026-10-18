@@ -1,16 +1,18 @@
 # Economy Roadmap
 
-. This document preserves the earlier resource, population need and building designs. The entries below are not an implemented game configuration.
+Status: proposals. This document preserves earlier resource, population need and building designs. The entries below are not an implemented game configuration.
 
-The current implementation is described in [economy](economic.md) and [settlements](settlements.md). Code does not register a complete game building catalog or population need thresholds.
+The current implementation is described in [economy](../architecture/economy.md) and [settlements](../architecture/settlements.md). Code does not register a complete game building catalog or population need thresholds.
 
-## Trading and Logistics — Proposal
+## Trading and Logistics — Target Design
+
+Prototype trade logs, currency and caravan routing now exist in the domain library. See [trading](../architecture/trading.md) for current behavior and limitations. The market boards, delayed observations and global scheduling described below remain proposals.
 
 Settlements are intended to publish buy and sell offers on local market boards and dispatch caravans to other settlements. A caravan should carry goods and a market information snapshot containing the turn number and source settlement ID. Delivering the snapshot when the caravan arrives would support delayed observability in MARL.
 
 The proposed currency would be stored separately from materials without occupying warehouse or cargo capacity.
 
-Buildings now use one collection and optional A* travel-cost output penalties; see [building_productivity.md](building_productivity.md). Territorial ownership, building limits, roads and physical cargo transport remain future work. Trading requires a shared world turn cycle and settlement placement on the map. Warehouse overflow accounting is already implemented.
+Buildings now use one collection and optional A* travel-cost output penalties; see [building_productivity.md](../architecture/building_productivity.md). Territorial ownership, building limits, roads and complete cargo integration remain future work. Trading requires a shared world turn cycle and settlement placement on the map. Local warehouse overflow accounting is implemented, but trade returns do not yet participate in that reporting.
 
 
 ## Proposed Resources

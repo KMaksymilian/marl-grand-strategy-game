@@ -1,5 +1,5 @@
-use crate::domain::buildings::core::Position;
-use crate::domain::buildings::factory::BuildingDefinition;
+use crate::domain::buildings::Position;
+use crate::domain::buildings::definition::BuildingDefinition;
 use crate::domain::economy::resource::ResourceType;
 use crate::domain::economy::resource_allocation::{AllocationRecipient, DemandRequest};
 use crate::domain::ids::{BuildingId, ProjectId};
@@ -12,7 +12,7 @@ pub enum ProjectError {
     MissingBuilding(BuildingId),
     DuplicateBuilding(BuildingId),
     UnsupportedRecruitment,
-    InvalidDefinition(crate::domain::buildings::factory::DefinitionError),
+    InvalidDefinition(crate::domain::buildings::definition::DefinitionError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

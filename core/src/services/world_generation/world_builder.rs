@@ -1,18 +1,13 @@
-use crate::{
-    domain::{
-        geography::{area::Area, elevation::Elevation},
-        world_data::{map::Map, point::Point, province::Province, world::World},
-    },
-    services::world_generation::{
-        config::{
-            ElevationTuningFineConfig, NoiseConfig, SeedConfig, VoronoiConfig, WarpConfig,
-            WorldDimensions,
-        },
-        noise_manager::NoiseManager,
-        world_builder_functions::WorldBuilderFunctions,
-    },
+//! World builder state, initialization and generation pipeline.
+mod provinces;
+mod terrain;
+
+use super::config::{
+    ElevationTuningFineConfig, NoiseConfig, SeedConfig, VoronoiConfig, WarpConfig, WorldDimensions,
 };
-use rayon::prelude::*;
+use super::noise_manager::NoiseManager;
+use crate::domain::geography::area::Area;
+use crate::domain::world_data::{map::Map, world::World};
 
 pub struct WorldBuilder {
     pub map: Map,
@@ -80,144 +75,5 @@ impl WorldBuilder {
         builder.edge_alignment(&mut provinces);
         builder.ocean_set();
         World::new(builder.map, provinces)
-    }
-
-    fn build_elevation(
-        &mut self,
-        world_dimensions: &WorldDimensions,
-        noise_config: &NoiseConfig,
-        warp_config: &WarpConfig,
-        fine_config: &ElevationTuningFineConfig,
-    ) {
-        self.map
-            .terrain
-            .par_chunks_mut(world_dimensions.width)
-            .enumerate()
-            .for_each(|(y, row)| {
-                for (x, area) in row.iter_mut().enumerate() {
-                    let (warped_x, warped_y) = self.warp_noise_manager.get_warp_value(
-                        warp_config.warp_scale,
-                        warp_config.warp_intensity,
-                        (x, y),
-                    );
-                    let elevation_val: f32 = self
-                        .elevation_noise_manager
-                        .get_island_elevation_noise_value(
-                            noise_config.elevation_scale,
-                            noise_config.min_max,
-                            (warped_x, warped_y),
-                            world_dimensions.width,
-                            world_dimensions.height,
-                            fine_config,
-                        );
-                    area.elevation_val = elevation_val;
-                }
-            });
-    }
-
-    fn build_moisture(
-        &mut self,
-        world_dimensions: &WorldDimensions,
-        noise_config: &NoiseConfig,
-        warp_config: &WarpConfig,
-    ) {
-        self.map
-            .terrain
-            .par_chunks_mut(world_dimensions.width)
-            .enumerate()
-            .for_each(|(y, row)| {
-                for (x, area) in row.iter_mut().enumerate() {
-                    let (warped_x, warped_y) = self.warp_noise_manager.get_warp_value(
-                        warp_config.warp_scale,
-                        warp_config.warp_intensity,
-                        (x, y),
-                    );
-                    let moisture_val: f32 = self.moisture_noise_manager.get_noise_value(
-                        noise_config.moisture_scale,
-                        noise_config.min_max,
-                        (warped_x, warped_y),
-                    );
-                    area.moisture_val = moisture_val;
-                }
-            });
-    }
-
-    fn build_provinces(
-        &mut self,
-        world_dimensions: &WorldDimensions,
-        voronoi_config: &VoronoiConfig,
-        warp_config: &WarpConfig,
-        seed_config: &SeedConfig,
-    ) -> (Vec<(usize, usize)>, Vec<Province>, Vec<Point>) {
-        let points: Vec<Point> = WorldBuilderFunctions::generate_random_points(
-            voronoi_config.province_count,
-            world_dimensions.width,
-            world_dimensions.height,
-            seed_config.points_seed_option,
-        );
-
-        let mut provinces: Vec<Province> = Vec::new();
-        for idx in 0..points.len() {
-            provinces.push(Province::new(idx));
-        }
-
-        let warp_field: Vec<(usize, usize)> = (0..world_dimensions.height)
-            .into_par_iter()
-            .flat_map(|y| {
-                let mut row = Vec::with_capacity(world_dimensions.width);
-                for x in 0..world_dimensions.width {
-                    row.push(self.border_noise_manager.get_warp_value(
-                        warp_config.warp_scale,
-                        warp_config.warp_intensity,
-                        (x, y),
-                    ));
-                }
-                row
-            })
-            .collect();
-
-        (warp_field, provinces, points)
-    }
-
-    pub fn build_voronoi(
-        &mut self,
-        warp_field: Vec<(usize, usize)>,
-        provinces: &mut [Province],
-        mut points: Vec<Point>,
-        voronoi_config: &VoronoiConfig,
-    ) {
-        for _ in 0..voronoi_config.iteration_count {
-            WorldBuilderFunctions::apply_voronoi(&warp_field, &mut self.map, provinces, &points);
-            points = WorldBuilderFunctions::calculate_centroids(provinces);
-        }
-    }
-
-    fn edge_alignment(&mut self, provinces: &mut [Province]) {
-        let ocean_level: f32 = Elevation::OCEAN_LEVEL;
-        for province in provinces {
-            let mut is_ocean: bool = false;
-            for point in &province.territory {
-                if self.map.terrain[point.1 * self.map.width + point.0].elevation_val < ocean_level
-                {
-                    is_ocean = true;
-                    break;
-                }
-            }
-            if is_ocean {
-                for point in &province.territory {
-                    self.map.terrain[point.1 * self.map.width + point.0].elevation_val = 0.0;
-                }
-            }
-        }
-    }
-
-    fn ocean_set(&mut self) {
-        let ocean_level: f32 = Elevation::OCEAN_LEVEL;
-        for area in &mut self.map.terrain {
-            if area.elevation_val < ocean_level {
-                area.elevation_val = 0.0;
-                area.moisture_val = 1.0;
-            }
-        }
     }
 }

@@ -14,14 +14,14 @@ fn test_map() -> core_map::Map {
 fn test_finder() -> test_path::PathFinder {
     test_path::PathFinder::new(64, 8)
 }
-use core::domain::buildings::core::{Building, Position};
-use core::domain::buildings::factory::{BuildingBehavior, BuildingDefinition};
+use core::domain::buildings::definition::{BuildingBehavior, BuildingDefinition};
 use core::domain::buildings::productivity::{
     BuildingProductivityCalculator, TravelCostEfficiencyPolicy,
 };
+use core::domain::buildings::{Building, Position};
 use core::domain::economy::resource::ResourceType;
 use core::domain::ids::{BuildingId, ProjectId};
-use core::domain::settlement::core::Settlement;
+use core::domain::settlement::Settlement;
 use core::domain::settlement::projects::{ProjectCompletion, ProjectCost};
 use std::sync::Arc;
 

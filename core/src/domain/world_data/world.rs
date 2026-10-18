@@ -1,4 +1,5 @@
-use crate::domain::world_data::{caravan::Caravan, map::Map, point::Point, province::Province};
+use crate::domain::trade::caravan::Caravan;
+use crate::domain::world_data::{map::Map, point::Point, province::Province};
 pub struct World {
     pub map: Map,
     pub provinces: Vec<Province>,

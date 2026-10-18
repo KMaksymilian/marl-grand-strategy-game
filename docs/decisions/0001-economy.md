@@ -2,7 +2,7 @@
 
 Date: October 13, 2026. Status: record of implemented solutions, including `fix/economy` (`9d24d16`), integer population needs and validated project reporting. Open questions are listed separately and are not presented as approved game rules.
 
-Related documents: [economy](../architecture/economic.md), [settlements](../architecture/settlements.md), [roadmap](../architecture/economy_roadmap.md).
+Related documents: [economy](../architecture/economy.md), [settlements](../architecture/settlements.md), [roadmap](../planning/economy_roadmap.md).
 
 ## Context
 
@@ -102,18 +102,18 @@ Existing stock is retained. No eviction or automatic shrinking loss is introduce
 | Project duration | Decreases without materials | Elapsed time since ordering or work time after funding |
 | Failed projects and refunds | Invalid effects are reported before further spending; earlier costs remain spent | Refund and cancellation rules |
 | Quantity limits | State and many aggregate quantities use `u32` | Definition validation and boundary behavior |
-| Public state | Manager validation can be bypassed | Controlled operations and population API exports |
+| Public state | Runtime managers are private; controlled commands validate mutations | Additional population and trade commands as integration develops |
 
 ## Evidence in Code
 
 - [ids.rs](../../core/src/domain/ids.rs) and [resource_allocation.rs](../../core/src/domain/economy/resource_allocation.rs): D1–D3.
-- [buildings/core.rs](../../core/src/domain/buildings/core.rs): D4.
-- [settlement/core.rs](../../core/src/domain/settlement/core.rs) and [settlement_inventory_manager.rs](../../core/src/domain/settlement/settlement_inventory_manager.rs): D5.
-- [demographics.rs](../../core/src/domain/settlement/demographics.rs): D6, including integer needs, tier aggregation, large quantities and excess-grant tests.
-- [projects.rs](../../core/src/domain/settlement/projects.rs), [turn_report.rs](../../core/src/domain/settlement/turn_report.rs) and [settlement/core.rs](../../core/src/domain/settlement/core.rs): D7, normalized costs, command validation and project outcomes.
-- [resource.rs](../../core/src/domain/economy/resource.rs), [settlement_inventory_manager.rs](../../core/src/domain/settlement/settlement_inventory_manager.rs) and [turn_report.rs](../../core/src/domain/settlement/turn_report.rs): D8, capacity validation, loss reporting and material balance.
-- [storage_order.rs](../../core/src/domain/economy/storage_order.rs) and [settlement/core.rs](../../core/src/domain/settlement/core.rs): D9/D10, explicit settlement storage order.
-- [turn_tests.rs](../../core/src/domain/settlement/turn_tests.rs): ID collisions, single-material allocation, large costs, shared inputs and products becoming usable in the next turn.
+- [buildings/building.rs](../../core/src/domain/buildings/building.rs): D4.
+- [settlement/mod.rs](../../core/src/domain/settlement/mod.rs) and [inventory_manager.rs](../../core/src/domain/settlement/inventory_manager.rs): D5.
+- [population.rs](../../core/src/domain/settlement/population.rs): D6, including integer needs, tier aggregation, large quantities and excess-grant tests.
+- [projects.rs](../../core/src/domain/settlement/projects.rs), [turn_report.rs](../../core/src/domain/settlement/turn_report.rs), [project commands](../../core/src/domain/settlement/commands/projects.rs) and [project_lifecycle.rs](../../core/src/domain/settlement/project_lifecycle.rs): D7, normalized costs, command validation and project outcomes.
+- [resource.rs](../../core/src/domain/economy/resource.rs), [inventory_manager.rs](../../core/src/domain/settlement/inventory_manager.rs) and [turn_report.rs](../../core/src/domain/settlement/turn_report.rs): D8, capacity validation, loss reporting and material balance.
+- [storage_order.rs](../../core/src/domain/economy/storage_order.rs), [settlement/mod.rs](../../core/src/domain/settlement/mod.rs) and [inventory commands](../../core/src/domain/settlement/commands/inventory.rs): D9/D10, explicit settlement storage order.
+- [turn.rs](../../core/src/domain/settlement/turn.rs): ID collisions, single-material allocation, large costs, shared inputs and products becoming usable in the next turn.
 
 Update this record and the architecture documents when the code changes, especially tie rules, recipe order or project duration semantics.
 
@@ -121,6 +121,6 @@ Update this record and the architecture documents when the code changes, especia
 
 Storage preferences use a variable-length ordered list, without numerical weights or fixed-size array APIs. It must contain each material in the centralized `ResourceType::MATERIALS` catalogue exactly once. Validation is atomic. This keeps caller and future AI actions expressed as resource orderings, while preserving admission behavior and the returns-first phase rule.
 
-Building definitions are validated at registration and every application boundary. Per-resource recipe totals and maximum-staffed stat modifiers must fit `u32`; labour belongs to staffing, not recipe material entries. Target efficiency must be finite and within 0�1. Invalid updates preserve the previous valid state.
+Building definitions are validated at registration and every application boundary. Per-resource recipe totals and maximum-staffed stat modifiers must fit `u32`; labour belongs to staffing, not recipe material entries. Target load must be finite and within 0–1. Invalid updates preserve the previous valid state.
 
 Inventory maps and building fields are private. Settlement owns private managers; their internal collections are restricted to the settlement implementation. Public collection views are immutable. Controlled commands enforce capacity, ID uniqueness and definition validity. Configuration drafts and detached reports remain ordinary public data. No fixed-point conversion, interpreter or new simulation dependency is introduced.

@@ -68,7 +68,7 @@ Given an existing `map`, reusable `finder` and settlement:
 
 ```rust
 use core::configuration::Configuration;
-use core::domain::buildings::core::Position;
+use core::domain::buildings::Position;
 use core::domain::buildings::productivity::BuildingProductivityCalculator;
 
 let configuration = Configuration::load("configuration.toml").unwrap();

@@ -1,6 +1,6 @@
-use crate::domain::buildings::core::Building;
-use crate::domain::buildings::core::Position;
-use crate::domain::buildings::factory::BuildingDefinition;
+use crate::domain::buildings::Building;
+use crate::domain::buildings::Position;
+use crate::domain::buildings::definition::BuildingDefinition;
 use crate::domain::buildings::productivity::{
     BuildingProductivityCalculator, LocationProductivity,
 };
@@ -170,8 +170,8 @@ mod tests {
     }
 
     use super::*;
-    use crate::domain::buildings::core::{Building, Position};
-    use crate::domain::buildings::factory::{BuildingBehavior, BuildingDefinition};
+    use crate::domain::buildings::definition::{BuildingBehavior, BuildingDefinition};
+    use crate::domain::buildings::{Building, Position};
     use crate::domain::economy::resource::ResourceType;
     use std::collections::HashMap;
     use std::sync::Arc;

@@ -1,6 +1,6 @@
 # Settlements: Model and Turn Lifecycle
 
-This document describes the implementation including `fix/economy` (`9d24d16`). Accounting rules are documented in [economic.md](economic.md); future features are in [economy_roadmap.md](economy_roadmap.md). The diagrams below represent current types and execution flow.
+This document describes the implemented settlement model. Accounting rules are documented in [economy.md](economy.md); prototype trade behavior is described in [trading.md](trading.md), and future features are in [economy_roadmap.md](../planning/economy_roadmap.md). See the [code map](code_map.md) for file responsibilities and method descriptions.
 
 ## 1. Scope
 
@@ -65,9 +65,13 @@ classDiagram
 
 `Settlement::new(id, initial_capacity, initial_population, need_registry)` creates an empty warehouse and buffer with the requested capacity, no buildings or projects, no distance penalty (`BuildingManager.productivity_calculator = None`), and a population manager with a shared `Arc<NeedRegistry>`.
 
-Each settlement owns an independent ordered storage list. `set_storage_order(materials: impl AsRef<[ResourceType]>)` validates it against the material catalogue; `storage_order()` returns a read-only slice. No numerical priority weights are stored. See [economic.md](economic.md).
+Each settlement owns an independent ordered storage list. `set_storage_order(materials: impl AsRef<[ResourceType]>)` validates it against the material catalogue; `storage_order()` returns a read-only slice. No numerical priority weights are stored. See [economy.md](economy.md).
 
 Settlement fields and manager modules are private implementation details. Public reads use `id()`, `population()`, `inventory()`, `pending_inventory()`, `buildings()` and `active_projects()`. Building and project views expose immutable identity, definitions and remaining costs through accessors. There is no mutable collection getter.
+
+The model, constructor and read-only views live in `settlement/mod.rs`. Mutation commands live in the private `commands/` directory, grouped by inventory, buildings and projects. `turn.rs` contains turn orchestration and `project_lifecycle.rs` contains validation/finalization. These files implement methods directly on the same `Settlement` type. Import it as `core::domain::settlement::Settlement`.
+
+The aggregate also owns a `GoldInventory` and `TradeLog`, both initially empty. The diagram focuses on local economy managers; trade reservations/returns occur around the allocation cycle described below.
 
 Use `deposit()`, `withdraw()` and `set_inventory_capacity()` to change warehouse stock or capacity. Add validated buildings through `add_building()`; duplicate IDs are rejected. Change a managed building through `set_building_load()` or `set_building_active()`, which reject missing IDs. Queue projects through `queue_construction()` and `queue_upgrade()`, which validate definitions before any allocation. `NeedRegistry` and `NeedTier` are re-exported for external needs configuration.
 
@@ -77,12 +81,14 @@ Use `deposit()`, `withdraw()` and `set_inventory_capacity()` to change warehouse
 
 0. **Refresh building productivity:** compute current A* travel costs from the capital using the configured policy. Then **validate projects:** remove unsupported projects and upgrades without a target, recording their errors before allocation.
 1. **Refresh labour:** set `main[Labour] = population`.
+   Then reserve materials and gold requested by `TradeLog` through `TradeAllocationEngine`, before local demand allocation.
 2. **Gather requests:** population needs, remaining project costs, building inputs and labour.
 3. **Allocate:** distribute resources proportionally with remainder allocation; withdraw materials from `main`.
 4. **Evaluate and execute:** population evaluates its grant, projects reduce costs, buildings produce and return unused materials.
 5. **Account for inventory:** return unused materials to `main`, put products in `pending_production`, then drain the buffer into `main`.
 6. **Finalize projects:** remove completed projects, check their effects again and report construction, upgrade or failure.
-7. **Return the report:** return population satisfaction and project outcomes without changing the population count automatically.
+7. **Return trade resources:** drain purchased/unsold goods and remaining gold from the trade log into settlement inventories. The closing inventory snapshot currently precedes this step; trade transfers/losses are not included in local inventory accounting.
+8. **Return the report:** return population satisfaction, project outcomes and local inventory accounting without changing the population count automatically.
 
 ```mermaid
 sequenceDiagram
@@ -93,10 +99,12 @@ sequenceDiagram
     participant Q as ProjectManager
     participant B as BuildingManager
     participant A as AllocationEngine
+    participant T as TradeAllocationEngine
     Note over S,B: Refresh A* travel costs from the current map
     S->>Q: validate active project effects
     Note over S,Q: Reject invalid projects before material allocation
     S->>I: refresh_labor_capacity(population)
+    S->>T: reserve trade materials and gold
     S->>P: generate_requests()
     P-->>S: Population demands
     S->>Q: generate_requests()
@@ -118,6 +126,7 @@ sequenceDiagram
     S->>B: construct or upgrade buildings
     Note over S,Q: Completion and failure enter TurnReport.projects
     Note over S,B: New buildings can work in a later turn
+    S->>T: return remaining goods and gold
 ```
 
 Request gathering order does not establish population priority over industry or projects. The allocator considers all demands together. Population takes precedence only when remainders are equal under recipient ordering.
@@ -199,7 +208,7 @@ Queue errors are returned immediately and do not enter the active list. At turn 
 
 If an upgrade target disappears after earlier partial payment, the next turn reports failure without further allocation. Previously paid materials remain spent; this stage does not introduce refund or cancellation rules.
 
-`inventory` records material stock, production, internal returns, consumption categories and stage-specific overflow losses. `inventory.is_balanced()` checks conservation separately for each material, excluding renewed labour. The detailed policy and balance equation are documented in [economic.md](economic.md).
+`inventory` records local material stock, production, internal returns, consumption categories and stage-specific overflow losses. `inventory.is_balanced()` checks this accounting separately for each material, excluding renewed labour. Trade reservations/returns are not accounted for, so this check does not establish conservation for nonempty trade activity. The local balance equation is documented in [economy.md](economy.md); trade limitations are in [trading.md](trading.md).
 
 ## 8. Limitations and Open Questions
 
@@ -211,4 +220,4 @@ These limitations describe current code rather than approving final game rules. 
 
 ## 9. Sources
 
-Model and coordinator: [settlement/core.rs](../../core/src/domain/settlement/core.rs). Managers: [building_manager.rs](../../core/src/domain/settlement/building_manager.rs), [project_manager.rs](../../core/src/domain/settlement/project_manager.rs). Projects: [projects.rs](../../core/src/domain/settlement/projects.rs). Turn tests: [turn_tests.rs](../../core/src/domain/settlement/turn_tests.rs).
+Model and views: [settlement/mod.rs](../../core/src/domain/settlement/mod.rs). Commands: [inventory](../../core/src/domain/settlement/commands/inventory.rs), [buildings](../../core/src/domain/settlement/commands/buildings.rs), [projects](../../core/src/domain/settlement/commands/projects.rs). Turn processing and inline unit tests: [turn.rs](../../core/src/domain/settlement/turn.rs). Project effects: [project_lifecycle.rs](../../core/src/domain/settlement/project_lifecycle.rs). Managers: [building_manager.rs](../../core/src/domain/settlement/building_manager.rs), [project_manager.rs](../../core/src/domain/settlement/project_manager.rs), [inventory_manager.rs](../../core/src/domain/settlement/inventory_manager.rs), [population.rs](../../core/src/domain/settlement/population.rs). Projects: [projects.rs](../../core/src/domain/settlement/projects.rs).

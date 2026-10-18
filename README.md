@@ -43,56 +43,44 @@ graph TD
 ```
 ---
 
-## Current implementation and documentation
+## Current implementation
 
-The Rust application generates and displays a map. The domain library implements settlement inventories, population needs, production, resource allocation and construction/upgrade projects. The application does not yet run settlement turns or connect settlements to the world map. Domain settlement turns accept the current map and use its A* movement costs for optional building productivity penalties. The application reads and validates `configuration.toml` from its working directory at startup; run it from the repository root. Changes to that file take effect after reloading the configuration or restarting the application. Trading, caravans, nations and AI training remain planned features.
+The Rust application generates and displays a map, with camera controls and A*/Dijkstra
+overlays. The domain library implements settlement inventories, population needs,
+production, construction/upgrade projects, configurable travel-cost productivity,
+and prototype trade logs and caravans. Settlement turns, trade and transport are
+not wired into a global simulation loop. Nations and AI training remain future work.
 
-The economy documentation describes the implementation including the changes from `fix/economy` (`9d24d16`):
+Run from the repository root so the application can load `configuration.toml`:
 
-- [Economy: resources, allocation and production](docs/architecture/economic.md)
-- [Settlements: managers, turn lifecycle and projects](docs/architecture/settlements.md)
-- [Economy decisions and unresolved policies](docs/decisions/0001-economy.md)
-- [Economy roadmap and proposed game content](docs/architecture/economy_roadmap.md)
-- [Target aggregate architecture](docs/architecture/agregates.md)
-
-## Project Structure
-
-The tree below describes the intended structure; some directories are placeholders or planned components.
-
+```sh
+cargo run -p marl_grand_strategy
 ```
-marl_grand_strategy/
-├── .github/workflows/ci.yml
-│
-├── docs/                          # Documentation
-│   ├── architecture/              # Diagrams and architecture overview
-│   ├── ai/                        # Models
-│   ├── api/                       # Communication
-|   ├── decisions/                 # Key development decisions      
-│   └── thesis/                    
-│
-├── tests/                         # End-to-end tests
-│   ├── rust/          
-│   └── python/         
-│
-├── core/                          # [RUST] Domain and Buisness Logic
-│   └── src/
-│       ├── domain/                # Model
-│       ├── ports/                 # Interfaces
-│       └── services/              # Controller
-│
-├── adapters/                      # [RUST] Infrastructure
-│   ├── Cargo.toml
-│   └── src/
-│       ├── ai_client/             # Port for ai
-│       └── view/                  # View
-│          
-├── ml_brain/                      # [PYTHON] MARL/HRL
-│   └── src/
-│       ├── env/                   # Environment
-│       ├── models/                # Model
-│       └── trainers/              # Controller
-│
-└── main_app/                      # [RUST] Entry point
-    └── src/
-        └── main.rs               
-```
+
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Project structure and organization rules](docs/architecture/project_structure.md)
+- [Source files, types and method descriptions](docs/architecture/code_map.md)
+- [Economy](docs/architecture/economy.md)
+- [Settlements and turn processing](docs/architecture/settlements.md)
+- [Building productivity](docs/architecture/building_productivity.md)
+- [Trading and caravans: implementation and limitations](docs/architecture/trading.md)
+- [Recorded decisions](docs/decisions/0001-economy.md)
+- [Future economy design](docs/planning/economy_roadmap.md)
+- [Target simulation aggregates](docs/planning/aggregates.md)
+
+## Workspace
+
+| Directory | Responsibility |
+| --- | --- |
+| `core/` | Domain model, economic rules, configuration and spatial services |
+| `core/tests/` | Public-interface integration tests; unit tests stay inline with implementation |
+| `adapters/` | Macroquad camera, map rendering and input |
+| `main_app/` | Executable composition and rendering loop |
+| `ml_brain/` | Python dependency placeholder; training is not implemented |
+| `docs/` | Current architecture, decisions, future plans and historical reviews |
+
+See the [structure guide](docs/architecture/project_structure.md) for the complete
+source layout and import changes. Current code and future proposals are documented
+separately.

@@ -1,4 +1,4 @@
-use super::core::Position;
+use super::Position;
 use crate::domain::world_data::map::Map;
 use crate::services::algorithms::{a_star::AStar, path_finder::PathFinder};
 

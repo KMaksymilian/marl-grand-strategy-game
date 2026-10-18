@@ -1,12 +1,14 @@
 # Economy: Resources, Allocation and Production
 
-This document describes the implementation including the first economy fixes in `fix/economy` (`9d24d16`) and consistent population demand evaluation. Its scope is the local economy of one settlement. Trading, currency, transport and AI models remain in the [roadmap](economy_roadmap.md). The settlement structure and turn lifecycle are described in [settlements.md](settlements.md); the rationale is recorded in [decisions](../decisions/0001-economy.md).
+This document describes the implemented local resource economy of one settlement. Prototype currency, trade logs and caravans are described separately in [trading.md](trading.md); global trade scheduling and AI remain future work. The settlement structure and turn lifecycle are described in [settlements.md](settlements.md); the rationale is recorded in [decisions](../decisions/0001-economy.md).
 
 ## 1. Resources and Units
 
 | Type     | Role                                                                       | Uses warehouse capacity |
 | -------- | -------------------------------------------------------------------------- | ----------------------- |
 | `Wood`   | Recipe input, project cost or consumption good, depending on configuration | Yes                     |
+| `Stone`  | Material available to recipes, projects and configured needs               | Yes                     |
+| `Grain`  | Material available to recipes, projects and configured needs               | Yes                     |
 | `Labour` | Available workers for the turn                                             | No, in `total_amount()` |
 
 Material roles come from recipe definitions, population needs and project costs
@@ -186,10 +188,11 @@ Per-capita needs must currently be whole numbers; fractional rates such as 0.5 a
 | --- | --- |
 | Resources and capacity | [resource.rs](../../core/src/domain/economy/resource.rs) |
 | Recipients and remainders | [resource_allocation.rs](../../core/src/domain/economy/resource_allocation.rs) |
-| Production | [buildings/core.rs](../../core/src/domain/buildings/core.rs) |
-| Definitions and factory | [factory.rs](../../core/src/domain/buildings/factory.rs) |
-| Population needs | [demographics.rs](../../core/src/domain/settlement/demographics.rs) |
-| Warehouse and buffer | [settlement_inventory_manager.rs](../../core/src/domain/settlement/settlement_inventory_manager.rs) |
+| Production | [buildings/building.rs](../../core/src/domain/buildings/building.rs) |
+| Definitions and validation | [definition.rs](../../core/src/domain/buildings/definition.rs) |
+| Shared blueprint registry | [factory.rs](../../core/src/domain/buildings/factory.rs) |
+| Population needs | [population.rs](../../core/src/domain/settlement/population.rs) |
+| Warehouse and buffer | [inventory_manager.rs](../../core/src/domain/settlement/inventory_manager.rs) |
 
 
 Run verification with `cargo test --workspace` and `cargo clippy --workspace --all-targets --all-features -- -D warnings`.

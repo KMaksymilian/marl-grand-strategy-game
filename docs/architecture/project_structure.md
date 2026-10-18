@@ -1,139 +1,153 @@
 # Project Structure
 
-This guide describes the implemented repository. Proposed systems belong in
-[planning](../planning/aggregates.md). Use the [code map](code_map.md) to locate
-individual types and methods.
+The simulation is organized by functional area. `core/` contains the Rust package
+**`simulation_core`**; the directory keeps its workspace location while imports
+use the unambiguous package name. See the [code map](code_map.md) for every source
+file and explicitly implemented runtime method.
 
-## Workspace
+## Workspace and dependencies
 
 ```text
 .
-├── Cargo.toml                       Rust workspace membership
+├── Cargo.toml                       Workspace: core, adapters, main_app
 ├── Cargo.lock                       Resolved dependencies
-├── configuration.toml               Runtime economy configuration
-├── core/
+├── configuration.toml               Runtime economy thresholds
+├── core/                            Package: simulation_core
 │   ├── src/
-│   │   ├── configuration.rs         TOML parsing and validation
-│   │   ├── domain/
-│   │   │   ├── buildings/           Instances, definitions, registry, productivity
-│   │   │   ├── economy/             Stock, currency, allocation, storage order
-│   │   │   ├── geography/           Terrain classification
-│   │   │   ├── settlement/          Settlement state, commands, turns and managers
-│   │   │   ├── trade/               Offers, matching, reservations and caravans
-│   │   │   ├── world_data/          Map, provinces, coordinates and world state
-│   │   │   └── ids.rs               Typed building and project identifiers
-│   │   └── services/
-│   │       ├── algorithms/          A*, Dijkstra and reusable search buffers
-│   │       └── world_generation/    Terrain generation, noise and Voronoi
-│   └── tests/                       Tests through the public domain interface
-├── adapters/src/view/map/           Macroquad input, textures and rendering
-├── main_app/src/main.rs             Configuration loading and application loop
-├── ml_brain/src/requirements.txt    Empty Python dependency placeholder
-├── docs/                           Documentation; see docs/README.md
+│   │   ├── lib.rs                   Public functional modules
+│   │   ├── configuration.rs         Runtime TOML parsing and validation
+│   │   ├── world/                   Spatial data and operations
+│   │   │   ├── mod.rs               Public world exports
+│   │   │   ├── state.rs             World state and caravan collection
+│   │   │   ├── map.rs               Terrain/territory buffers
+│   │   │   ├── province.rs          Province tiles and centroid
+│   │   │   ├── coordinates.rs       Point indices and signed Position
+│   │   │   ├── terrain/             Area, elevation, moisture and biome
+│   │   │   ├── generation/          WorldBuilder, noise and Voronoi
+│   │   │   └── pathfinding/         A*, Dijkstra and search buffers
+│   │   ├── economy/                 Resources, inventory, currency and allocation
+│   │   ├── buildings/               Instances, definitions, catalogue, productivity
+│   │   ├── settlement/              Aggregate state, commands, managers and turns
+│   │   ├── trade/                   Offers, trade books, matching and caravans
+│   │   └── ids.rs                   Typed building and project identifiers
+│   └── tests/                       Public-interface integration tests
+├── adapters/src/view/map/           Macroquad rendering and input
+├── main_app/src/main.rs             Application composition and frame loop
+├── ml_brain/src/requirements.txt    Python dependency placeholder
+├── docs/                           Architecture, decisions, plans and history
 └── .github/workflows/               Rust CI definition
 ```
 
-`main_app` composes `core` and `adapters`. `adapters` reads the domain to render
-it; `core` has no dependency on Macroquad. Configuration parsing lives at the
-core crate boundary. Spatial calculations live in services and are used by
-domain productivity and caravan routing.
+`main_app` composes `simulation_core` and `adapters`. `adapters` reads simulation
+state for rendering; `simulation_core` does not depend on Macroquad. The executable
+currently displays a generated map and interactive pathfinding overlays. Settlement
+turns and trade primitives are not connected to a global simulation loop.
 
-The executable displays a generated world and interactive pathfinding overlays.
-Settlement turns and trading primitives exist in the library; they are not wired
-into a global simulation loop. AI training and communication ports are future work.
-
-## File responsibilities
-
-- `mod.rs` declares a module and exposes its intended public surface. The
-  settlement root also owns its aggregate state, constructor and read-only views.
-- `settlement/commands/` groups inventory, building and project commands in three
-  files. They implement methods directly on `Settlement`. `settlement/turn.rs`
-  contains the turn sequence; `project_lifecycle.rs` contains validation and
-  completion effects. There is no separate API wrapper or borrowed API object.
-- Managers remain private children of `settlement`, with access limited to the
-  aggregate's implementation. Commands preserve their existing return types.
-- `buildings/building.rs` owns runtime building state. `definition.rs` owns shared
-  blueprints, behavior data and validation. `factory.rs` owns their registry.
-  `building/production.rs` holds demand, allocation and recipe execution methods.
-- `trade/caravan.rs` owns trade transport. `World` retains the collection of
-  caravans, while `world_data` contains spatial and world state.
-  `trade_log.rs` owns offer/funding state; `trade_log/matching.rs` owns the matching
-  algorithm and transaction methods.
-- `configuration.rs` parses runtime TOML. `world_generation/config.rs` contains
-  generation parameter types and Rust defaults; it is a different concern.
-  `world_builder.rs` keeps state, initialization and pipeline orchestration;
-  `world_builder/terrain.rs` generates terrain and `world_builder/provinces.rs`
-  handles seeds, Voronoi relaxation and coast alignment.
+`domain/`, `services/`, `world_data/` and the separate top-level `geography/`
+directories are removed. World-related models, generation and navigation now live
+together, so finding pathfinding or terrain code does not require switching between
+technical layers.
 
 ## Finding an operation
 
 ```text
-domain/settlement/
-├── mod.rs                     Aggregate state, constructor and read-only views
+settlement/
+├── mod.rs                     State, constructor and read-only views
 ├── commands/
-│   ├── mod.rs                 Command module declarations
+│   ├── mod.rs                 Private command groups
 │   ├── inventory.rs           Deposit, withdrawal, capacity and storage order
-│   ├── buildings.rs           Registration, load, activity and productivity policy
+│   ├── buildings.rs           Registration, load, activity and productivity
 │   └── projects.rs            Queue construction and upgrades
-├── turn.rs                    process_turn and inline aggregate tests
+├── turn.rs                    Turn sequence and inline aggregate tests
 ├── project_lifecycle.rs       Validate, reject and finalize projects
-└── *_manager.rs               Internal collection/allocation operations
+└── *_manager.rs               Internal collections and allocation
 
-domain/buildings/
-├── building.rs                Instance state, lifecycle, settings and views
+buildings/
+├── building.rs                Runtime instance, settings and views
 ├── building/production.rs     Demand, grants and recipe execution
 ├── definition.rs              Blueprint data and validation
-├── factory.rs                 Shared definition registry
-└── productivity.rs            Travel-cost policy and exact output multiplier
+├── catalog.rs                 BuildingCatalog: shared blueprint registry
+└── productivity.rs            Travel-cost policy and exact multipliers
 
-domain/trade/
-├── trade_log.rs               Offers, funding and resource collection
-├── trade_log/matching.rs      Matching, budget distribution and transactions
-├── trade_offer.rs             Buy/sell offer state and demand
-├── trade_allocation_engine.rs Reserve and return inventory resources
-└── caravan.rs                 Trade transport state and movement
+economy/
+├── resources.rs               ResourceType and material catalogue
+├── inventory.rs               ResourceInventory and admission/capacity results
+├── allocation.rs              Proportional local demand allocation
+├── storage_order.rs           Ordered material admission policy
+└── gold_inventory.rs          Currency counter
 
-services/world_generation/
-├── world_builder.rs          Builder state, initialization and pipeline
-├── world_builder/terrain.rs  Elevation, moisture and ocean normalization
-├── world_builder/provinces.rs Seeds, Voronoi relaxation and coast alignment
-├── world_builder_functions.rs Reusable geometry/seed helpers
-├── noise_manager.rs          Noise sampling and coordinate warp
-└── config.rs                 Generation parameter types and defaults
+trade/
+├── book.rs                    TradeBook: offers, funds and resource collection
+├── book/matching.rs           Bilateral matching and transactions
+├── offer.rs                   Buy/sell offer state and demand
+├── allocation.rs              Reserve and return resources
+└── caravan.rs                 Route and transport state
+
+world/generation/
+├── world_builder.rs           Builder state, initialization and pipeline
+├── world_builder/terrain.rs   Elevation, moisture and ocean normalization
+├── world_builder/provinces.rs Seeds, Voronoi passes and coast alignment
+├── voronoi.rs                 Voronoi: seed/assignment/centroid helpers
+├── noise_manager.rs           Noise sampling and coordinate warp
+└── config.rs                  Generation parameters and Rust defaults
 ```
 
-Use the owning type to call a method regardless of the implementation file:
+Private child modules add methods to their owning type; callers still use
 `settlement.deposit(...)`, `building.resolve_allocation(...)`,
-`trade_log.trade(...)`, `WorldBuilder::generate(...)`. Private child modules group
-the implementation without adding objects or changing public import paths.
+`trade_book.trade(...)` and `WorldBuilder::generate(...)`. `Settlement` is the
+public settlement interface. There is no borrowed API wrapper or extra object
+needed to call these operations. Managers remain private implementation details.
 
-## Imports after the organization change
+## Shared concepts and dependency boundaries
 
-| Previous path | Current path |
+`world::coordinates` owns both coordinate types. `Point(usize, usize)` is used for
+nonnegative grid indices; `Position { x: i32, y: i32 }` retains the signed placement
+contract. They are not merged and no implicit conversion is introduced.
+
+`World` (implemented in `world/state.rs`) owns caravans, but `Caravan` no longer depends on `World`.
+Construction accepts a map, search buffer, explicit start/end points, participant
+IDs and a `TradeBook`. Callers resolve coordinates; the caravan does not look up
+province indices. Missing routes produce `None` rather than a pathfinding panic.
+
+`configuration.rs` parses runtime economy TOML. `world/generation/config.rs`
+contains generation parameters and defaults; it remains a separate concern.
+
+## Import and name migration
+
+| Previous | Current |
 | --- | --- |
-| `core::domain::settlement::core::Settlement` | `core::domain::settlement::Settlement` |
-| `core::domain::settlement::core::BuildingCommandError` | `core::domain::settlement::BuildingCommandError` |
-| `core::domain::buildings::core::{Building, Position, ...}` | `core::domain::buildings::{Building, Position, ...}` |
-| `core::domain::buildings::factory::{BuildingDefinition, BuildingBehavior, DefinitionError}` | `core::domain::buildings::definition::{BuildingDefinition, BuildingBehavior, DefinitionError}` |
-| `core::domain::world_data::caravan::{Caravan, CaravanState}` | `core::domain::trade::caravan::{Caravan, CaravanState}` |
+| Package `core` | Package/import name `simulation_core`, still at `core/` |
+| `core::domain::settlement::Settlement` | `simulation_core::settlement::Settlement` |
+| `core::domain::buildings::Building` | `simulation_core::buildings::Building` |
+| `core::domain::buildings::Position` | `simulation_core::world::Position` |
+| `core::domain::world_data::point::Point` | `simulation_core::world::Point` |
+| `core::domain::world_data::world::World` | `simulation_core::world::World` |
+| `core::domain::geography` | `simulation_core::world::terrain` |
+| `core::services::algorithms` | `simulation_core::world::pathfinding` |
+| `core::services::world_generation` | `simulation_core::world::generation` |
+| `economy::resource::{ResourceType, ResourceInventory}` | `simulation_core::economy::{ResourceType, ResourceInventory}` |
+| `buildings::factory::BuildingFactory` | `simulation_core::buildings::catalog::BuildingCatalog` |
+| `trade::trade_log::TradeLog` | `simulation_core::trade::book::TradeBook` |
+| `trade::trade_offer` | `simulation_core::trade::offer` |
+| `trade::trade_allocation_engine` | `simulation_core::trade::allocation` |
+| `world_builder_functions::WorldBuilderFunctions` | `simulation_core::world::generation::voronoi::Voronoi` |
 
-`BuildingFactory` remains in `buildings::factory`. Public method signatures and
-simulation rules are unchanged. External callers must migrate the listed module
-paths; the old `core` modules are removed. Private file renames are
-`demographics.rs` → `population.rs` and
-`settlement_inventory_manager.rs` → `inventory_manager.rs`.
+The old technical namespaces are removed, without compatibility aliases. External
+callers must migrate imports. Matching rules, production arithmetic, allocation,
+turn timing and productivity formulas are unchanged. Caravan construction is the
+explicit constructor-contract change described above.
 
-## Tests and documentation maintenance
+## Tests and documentation
 
-Keep unit tests inline in the file implementing their feature, under
-`#[cfg(test)] mod tests`. The turn tests remain inside `turn.rs`, including tests
-that inspect private aggregate state. Cross-feature/public-interface tests belong
-in `core/tests/`. Compile-fail examples protect encapsulation in rustdoc.
+Keep unit tests inline under `#[cfg(test)] mod tests` alongside the feature being
+verified. Public integration tests live in `core/tests/`; compile-fail rustdoc
+examples protect encapsulation. Tests of caravan construction are inline in
+`trade/caravan.rs`.
 
-When adding or moving a source file, update its entry in [code_map.md](code_map.md),
-including methods and a short responsibility description. Record current behavior
-in `architecture/`, proposals in `planning/`, and decisions in `decisions/`.
-Historical analyses retain their dated paths and conclusions.
+Use `architecture/` for implemented behavior, `planning/` for proposals,
+`decisions/` for rationale and `analysis/` for dated reviews. Update the
+[source map](code_map.md) and [documentation index](../README.md) when files or
+methods move. Historical analyses retain their original paths and findings.
 
 Run from the repository root:
 
@@ -144,5 +158,3 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 cargo doc --workspace --no-deps
 ```
-
-The executable package is named `marl_grand_strategy`.

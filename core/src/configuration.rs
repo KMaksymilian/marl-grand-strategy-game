@@ -1,4 +1,4 @@
-use crate::domain::buildings::productivity::{InvalidTravelCosts, TravelCostEfficiencyPolicy};
+use crate::buildings::productivity::{InvalidTravelCosts, TravelCostEfficiencyPolicy};
 use serde::Deserialize;
 use std::fmt;
 use std::path::Path;

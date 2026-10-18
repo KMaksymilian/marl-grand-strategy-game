@@ -6,9 +6,9 @@ version = 4
 name = "adapters"
 version = "0.1.0"
 dependencies = [
- "core",
  "macroquad",
  "rand 0.10.2",
+ "simulation_core",
 ]
 
 [[package]]
@@ -69,19 +69,6 @@ name = "color_quant"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
-
-[[package]]
-name = "core"
-version = "0.1.0"
-dependencies = [
- "noise",
- "ordered-float",
- "priority-queue",
- "rand 0.10.2",
- "rayon",
- "serde",
- "toml",
-]
 
 [[package]]
 name = "cpufeatures"
@@ -271,8 +258,8 @@ name = "marl_grand_strategy"
 version = "0.1.0"
 dependencies = [
  "adapters",
- "core",
  "macroquad",
+ "simulation_core",
 ]
 
 [[package]]
@@ -506,6 +493,19 @@ name = "simd-adler32"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214"
+
+[[package]]
+name = "simulation_core"
+version = "0.1.0"
+dependencies = [
+ "noise",
+ "ordered-float",
+ "priority-queue",
+ "rand 0.10.2",
+ "rayon",
+ "serde",
+ "toml",
+]
 
 [[package]]
 name = "syn"

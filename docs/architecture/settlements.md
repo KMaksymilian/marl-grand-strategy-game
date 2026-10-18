@@ -69,9 +69,9 @@ Each settlement owns an independent ordered storage list. `set_storage_order(mat
 
 Settlement fields and manager modules are private implementation details. Public reads use `id()`, `population()`, `inventory()`, `pending_inventory()`, `buildings()` and `active_projects()`. Building and project views expose immutable identity, definitions and remaining costs through accessors. There is no mutable collection getter.
 
-The model, constructor and read-only views live in `settlement/mod.rs`. Mutation commands live in the private `commands/` directory, grouped by inventory, buildings and projects. `turn.rs` contains turn orchestration and `project_lifecycle.rs` contains validation/finalization. These files implement methods directly on the same `Settlement` type. Import it as `core::domain::settlement::Settlement`.
+The model, constructor and read-only views live in `settlement/mod.rs`. Mutation commands live in the private `commands/` directory, grouped by inventory, buildings and projects. `turn.rs` contains turn orchestration and `project_lifecycle.rs` contains validation/finalization. These files implement methods directly on the same `Settlement` type. Import it as `simulation_core::settlement::Settlement`.
 
-The aggregate also owns a `GoldInventory` and `TradeLog`, both initially empty. The diagram focuses on local economy managers; trade reservations/returns occur around the allocation cycle described below.
+The aggregate also owns a `GoldInventory` and `TradeBook`, both initially empty. The diagram focuses on local economy managers; trade reservations/returns occur around the allocation cycle described below.
 
 Use `deposit()`, `withdraw()` and `set_inventory_capacity()` to change warehouse stock or capacity. Add validated buildings through `add_building()`; duplicate IDs are rejected. Change a managed building through `set_building_load()` or `set_building_active()`, which reject missing IDs. Queue projects through `queue_construction()` and `queue_upgrade()`, which validate definitions before any allocation. `NeedRegistry` and `NeedTier` are re-exported for external needs configuration.
 
@@ -81,13 +81,13 @@ Use `deposit()`, `withdraw()` and `set_inventory_capacity()` to change warehouse
 
 0. **Refresh building productivity:** compute current A* travel costs from the capital using the configured policy. Then **validate projects:** remove unsupported projects and upgrades without a target, recording their errors before allocation.
 1. **Refresh labour:** set `main[Labour] = population`.
-   Then reserve materials and gold requested by `TradeLog` through `TradeAllocationEngine`, before local demand allocation.
+   Then reserve materials and gold requested by `TradeBook` through `TradeAllocationEngine`, before local demand allocation.
 2. **Gather requests:** population needs, remaining project costs, building inputs and labour.
 3. **Allocate:** distribute resources proportionally with remainder allocation; withdraw materials from `main`.
 4. **Evaluate and execute:** population evaluates its grant, projects reduce costs, buildings produce and return unused materials.
 5. **Account for inventory:** return unused materials to `main`, put products in `pending_production`, then drain the buffer into `main`.
 6. **Finalize projects:** remove completed projects, check their effects again and report construction, upgrade or failure.
-7. **Return trade resources:** drain purchased/unsold goods and remaining gold from the trade log into settlement inventories. The closing inventory snapshot currently precedes this step; trade transfers/losses are not included in local inventory accounting.
+7. **Return trade resources:** drain purchased/unsold goods and remaining gold from the trade book into settlement inventories. The closing inventory snapshot currently precedes this step; trade transfers/losses are not included in local inventory accounting.
 8. **Return the report:** return population satisfaction, project outcomes and local inventory accounting without changing the population count automatically.
 
 ```mermaid
@@ -135,7 +135,7 @@ Products created during a turn cannot satisfy its earlier demands. Construction 
 
 ## 4. Building Definitions and Instances
 
-`BuildingDefinition` contains `id: String`, `name`, `tier`, `max_workers`, `behaviors` and `construction_cost`. `BuildingFactory::register` stores a definition under its string ID; registration under an existing ID replaces the entry. `get_blueprint(id)` returns `Option<Arc<BuildingDefinition>>`. Existing buildings retain their previous `Arc`; registering a replacement does not upgrade them automatically.
+`BuildingDefinition` contains `id: String`, `name`, `tier`, `max_workers`, `behaviors` and `construction_cost`. `BuildingCatalog::register` stores a definition under its string ID; registration under an existing ID replaces the entry. `get_blueprint(id)` returns `Option<Arc<BuildingDefinition>>`. Existing buildings retain their previous `Arc`; registering a replacement does not upgrade them automatically.
 
 `Building` holds a `BuildingId`, `Position { x: i32, y: i32 }`, a shared definition, activity, target load, location productivity and current worker count. The string definition ID identifies a building type; `instance_id` identifies a particular building.
 
@@ -187,7 +187,7 @@ Validation applies to commands. Collections and runtime fields are protected fro
 
 ## 7. Turn Report and Project Outcomes
 
-The public report is defined in [turn_report.rs](../../core/src/domain/settlement/turn_report.rs):
+The public report is defined in [turn_report.rs](../../core/src/settlement/turn_report.rs):
 
 ```rust
 pub struct TurnReport {
@@ -220,4 +220,4 @@ These limitations describe current code rather than approving final game rules. 
 
 ## 9. Sources
 
-Model and views: [settlement/mod.rs](../../core/src/domain/settlement/mod.rs). Commands: [inventory](../../core/src/domain/settlement/commands/inventory.rs), [buildings](../../core/src/domain/settlement/commands/buildings.rs), [projects](../../core/src/domain/settlement/commands/projects.rs). Turn processing and inline unit tests: [turn.rs](../../core/src/domain/settlement/turn.rs). Project effects: [project_lifecycle.rs](../../core/src/domain/settlement/project_lifecycle.rs). Managers: [building_manager.rs](../../core/src/domain/settlement/building_manager.rs), [project_manager.rs](../../core/src/domain/settlement/project_manager.rs), [inventory_manager.rs](../../core/src/domain/settlement/inventory_manager.rs), [population.rs](../../core/src/domain/settlement/population.rs). Projects: [projects.rs](../../core/src/domain/settlement/projects.rs).
+Model and views: [settlement/mod.rs](../../core/src/settlement/mod.rs). Commands: [inventory](../../core/src/settlement/commands/inventory.rs), [buildings](../../core/src/settlement/commands/buildings.rs), [projects](../../core/src/settlement/commands/projects.rs). Turn processing and inline unit tests: [turn.rs](../../core/src/settlement/turn.rs). Project effects: [project_lifecycle.rs](../../core/src/settlement/project_lifecycle.rs). Managers: [building_manager.rs](../../core/src/settlement/building_manager.rs), [project_manager.rs](../../core/src/settlement/project_manager.rs), [inventory_manager.rs](../../core/src/settlement/inventory_manager.rs), [population.rs](../../core/src/settlement/population.rs). Projects: [projects.rs](../../core/src/settlement/projects.rs).

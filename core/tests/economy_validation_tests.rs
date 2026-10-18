@@ -1,6 +1,6 @@
-use core::domain::geography::area as test_area;
-use core::domain::world_data::map as core_map;
-use core::services::algorithms::path_finder as test_path;
+use simulation_core::world::map as core_map;
+use simulation_core::world::pathfinding::path_finder as test_path;
+use simulation_core::world::terrain::area as test_area;
 
 fn test_map() -> core_map::Map {
     core_map::Map::new(
@@ -14,14 +14,17 @@ fn test_map() -> core_map::Map {
 fn test_finder() -> test_path::PathFinder {
     test_path::PathFinder::new(64, 8)
 }
-use core::domain::buildings::definition::{BuildingBehavior, BuildingDefinition, DefinitionError};
-use core::domain::buildings::factory::BuildingFactory;
-use core::domain::buildings::{Building, Position};
-use core::domain::economy::resource::ResourceType::{self, Grain, Stone, Wood};
-use core::domain::economy::storage_order::StorageOrderError;
-use core::domain::ids::{BuildingId, ProjectId};
-use core::domain::settlement::projects::{ProjectCost, ProjectError};
-use core::domain::settlement::{BuildingCommandError, Settlement};
+use simulation_core::buildings::Building;
+use simulation_core::buildings::catalog::BuildingCatalog;
+use simulation_core::buildings::definition::{
+    BuildingBehavior, BuildingDefinition, DefinitionError,
+};
+use simulation_core::economy::ResourceType::{self, Grain, Stone, Wood};
+use simulation_core::economy::storage_order::StorageOrderError;
+use simulation_core::ids::{BuildingId, ProjectId};
+use simulation_core::settlement::projects::{ProjectCost, ProjectError};
+use simulation_core::settlement::{BuildingCommandError, Settlement};
+use simulation_core::world::coordinates::Position;
 use std::sync::Arc;
 
 fn definition(
@@ -62,7 +65,7 @@ fn rejects_totals_across_duplicate_entries_and_recipes() {
 
 #[test]
 fn invalid_registration_and_upgrade_preserve_existing_definition() {
-    let mut factory = BuildingFactory::default();
+    let mut factory = BuildingCatalog::default();
     factory
         .register(definition(vec![], vec![(Grain, 1)]))
         .unwrap();
@@ -162,7 +165,7 @@ fn variable_length_storage_order_is_validated_atomically() {
 fn rejects_invalid_staffing_data_and_direct_construction() {
     let mut blueprint = definition(vec![], vec![]);
     blueprint.behaviors = vec![BuildingBehavior::StatModifier {
-        stat: core::domain::settlement::stat::StatType::HousingCapacity,
+        stat: simulation_core::settlement::stat::StatType::HousingCapacity,
         base_amount: u32::MAX,
         per_worker_amount: 1,
     }];

@@ -34,10 +34,10 @@ package and dependencies. `Cargo.lock` records their resolved versions.
 
 ## Buildings
 
-### [core/src/domain/buildings/building.rs](../../core/src/domain/buildings/building.rs)
+### [core/src/buildings/building.rs](../../core/src/buildings/building.rs)
 
-Runtime `Building`, signed `Position`, `LoadError`, `BuildingUpdateResult` and
-`ProductionResult`. Types are re-exported from `domain::buildings`. This file owns
+Runtime `Building`, `LoadError`, `BuildingUpdateResult` and
+`ProductionResult`. Types are re-exported from `simulation_core::buildings`. This file owns
 state, lifecycle, settings and read-only views; recipe processing is a child module.
 
 | Method on `Building` | Purpose |
@@ -51,7 +51,7 @@ state, lifecycle, settings and read-only views; recipe processing is a child mod
 | `set_location_productivity` | Internally replace the exact cached multiplier. |
 | `upgrade` | Validate and replace the shared definition while retaining instance state. |
 
-### [core/src/domain/buildings/building/production.rs](../../core/src/domain/buildings/building/production.rs)
+### [core/src/buildings/building/production.rs](../../core/src/buildings/building/production.rs)
 
 Additional methods on the same `Building` type, grouped around the production cycle.
 
@@ -61,19 +61,19 @@ Additional methods on the same `Building` type, grouped around the production cy
 | `resolve_allocation` | Set staffing and return production, unused grants and update data. |
 | `execute_production` | Apply worker/material bottlenecks and exact output scaling. |
 
-### [core/src/domain/buildings/definition.rs](../../core/src/domain/buildings/definition.rs)
+### [core/src/buildings/definition.rs](../../core/src/buildings/definition.rs)
 
 Contains `BuildingDefinition`, composed `BuildingBehavior` variants and
 `DefinitionError`. `BuildingDefinition::validate()` checks recipe sums, forbids
 labour in material recipes and validates stat arithmetic.
 
-### [core/src/domain/buildings/factory.rs](../../core/src/domain/buildings/factory.rs)
+### [core/src/buildings/catalog.rs](../../core/src/buildings/catalog.rs)
 
-`BuildingFactory` stores blueprints as shared `Arc<BuildingDefinition>` values.
+`BuildingCatalog` stores blueprints as shared `Arc<BuildingDefinition>` values.
 `register()` validates and inserts/replaces a definition by string ID;
 `get_blueprint()` clones its shared reference or returns `None`.
 
-### [core/src/domain/buildings/productivity.rs](../../core/src/domain/buildings/productivity.rs)
+### [core/src/buildings/productivity.rs](../../core/src/buildings/productivity.rs)
 
 | Type / method | Purpose |
 | --- | --- |
@@ -93,26 +93,26 @@ labour in material recipes and validates stat arithmetic.
 
 ## Settlement
 
-### [core/src/domain/settlement/mod.rs](../../core/src/domain/settlement/mod.rs)
+### [core/src/settlement/mod.rs](../../core/src/settlement/mod.rs)
 
 Owns `Settlement`, `BuildingCommandError`, module visibility and re-exports of
-`NeedRegistry` and `NeedTier`. It holds private managers, gold and the trade log.
+`NeedRegistry` and `NeedTier`. It holds private managers, gold and the trade book.
 
 | Method on `Settlement` | Purpose |
 | --- | --- |
-| `new` | Create managers, empty inventories/buildings/projects and an empty trade log. |
+| `new` | Create managers, empty inventories/buildings/projects and an empty trade book. |
 | `id`, `population` | Read settlement identity and population size. |
 | `inventory`, `pending_inventory` | Borrow read-only warehouse and production-buffer views. |
 | `buildings`, `active_projects` | Inspect buildings and ongoing projects without mutable collection access. |
 | `building_productivity_calculator` | Inspect the optional travel-cost configuration. |
 | `storage_order` | Borrow the ordered material storage policy. |
 
-### [core/src/domain/settlement/commands/mod.rs](../../core/src/domain/settlement/commands/mod.rs)
+### [core/src/settlement/commands/mod.rs](../../core/src/settlement/commands/mod.rs)
 
 Declares the three private command groups below; it contains no methods.
 Every public command remains a method on the same `Settlement` type.
 
-### [core/src/domain/settlement/commands/inventory.rs](../../core/src/domain/settlement/commands/inventory.rs)
+### [core/src/settlement/commands/inventory.rs](../../core/src/settlement/commands/inventory.rs)
 
 Warehouse mutations and storage admission policy.
 
@@ -123,7 +123,7 @@ Warehouse mutations and storage admission policy.
 | `set_inventory_capacity` | Change capacity, rejecting a limit below stored materials. |
 | `set_storage_order` | Validate and replace the complete ordered material list. |
 
-### [core/src/domain/settlement/commands/buildings.rs](../../core/src/domain/settlement/commands/buildings.rs)
+### [core/src/settlement/commands/buildings.rs](../../core/src/settlement/commands/buildings.rs)
 
 Building registration and operational settings.
 
@@ -134,7 +134,7 @@ Building registration and operational settings.
 | `set_building_load` | Find a building and validate its requested utilization. |
 | `set_building_active` | Find a building and toggle activity. |
 
-### [core/src/domain/settlement/commands/projects.rs](../../core/src/domain/settlement/commands/projects.rs)
+### [core/src/settlement/commands/projects.rs](../../core/src/settlement/commands/projects.rs)
 
 Requests that create construction/upgrade projects.
 
@@ -143,7 +143,7 @@ Requests that create construction/upgrade projects.
 | `queue_construction` | Validate a blueprint and register a construction project. |
 | `queue_upgrade` | Validate a replacement blueprint/target and register an upgrade project. |
 
-### [core/src/domain/settlement/turn.rs](../../core/src/domain/settlement/turn.rs)
+### [core/src/settlement/turn.rs](../../core/src/settlement/turn.rs)
 
 | Method on `Settlement` | Purpose |
 | --- | --- |
@@ -151,7 +151,7 @@ Requests that create construction/upgrade projects.
 
 Contains inline unit tests of turn behavior and private aggregate invariants.
 
-### [core/src/domain/settlement/project_lifecycle.rs](../../core/src/domain/settlement/project_lifecycle.rs)
+### [core/src/settlement/project_lifecycle.rs](../../core/src/settlement/project_lifecycle.rs)
 
 Internal project validation and effects on the same `Settlement` type.
 
@@ -162,7 +162,7 @@ Internal project validation and effects on the same `Settlement` type.
 | `resolve_completed_projects` | Extract finished projects and collect their finalization outcomes. |
 | `finalize_project` | Apply construction/upgrade effects or return an explicit failure. |
 
-### [core/src/domain/settlement/building_manager.rs](../../core/src/domain/settlement/building_manager.rs)
+### [core/src/settlement/building_manager.rs](../../core/src/settlement/building_manager.rs)
 
 Private `BuildingManager` owns instances and the optional productivity calculator.
 
@@ -180,7 +180,7 @@ Private `BuildingManager` owns instances and the optional productivity calculato
 | `generate_requests` | Create nonempty building demands with typed recipients. |
 | `process_allocations` | Execute each building and aggregate production/returns into `u64` totals. |
 
-### [core/src/domain/settlement/inventory_manager.rs](../../core/src/domain/settlement/inventory_manager.rs)
+### [core/src/settlement/inventory_manager.rs](../../core/src/settlement/inventory_manager.rs)
 
 Private `SettlementInventoryManager` owns main/pending inventories and storage order.
 
@@ -193,7 +193,7 @@ Private `SettlementInventoryManager` owns main/pending inventories and storage o
 | `commit_pending_production` | Drain the buffer into the warehouse and report transfer losses. |
 | `add_in_order` | Insert a batch according to the settlement's material priority. |
 
-### [core/src/domain/settlement/population.rs](../../core/src/domain/settlement/population.rs)
+### [core/src/settlement/population.rs](../../core/src/settlement/population.rs)
 
 `NeedTier` defines a population threshold and per-capita needs; `ConsumptionResult`
 records satisfaction. `PopulationManager` is private; needs types are public via
@@ -208,14 +208,14 @@ the settlement root and the consumption result via `turn_report`.
 | `calculate_demand` | Sum active per-capita needs and multiply by population using checked integers. |
 | `process_allocation` | Evaluate satisfaction from each resource's delivered fraction. |
 
-### [core/src/domain/settlement/project_manager.rs](../../core/src/domain/settlement/project_manager.rs)
+### [core/src/settlement/project_manager.rs](../../core/src/settlement/project_manager.rs)
 
 Private `ProjectManager` owns active projects. `new()` initializes the list;
 `add_project()` normalizes costs and rejects duplicate IDs; `generate_requests()`
 creates nonempty demands; `process_allocation()` advances every project;
 `extract_completed()` removes and returns completed projects in collection order.
 
-### [core/src/domain/settlement/projects.rs](../../core/src/domain/settlement/projects.rs)
+### [core/src/settlement/projects.rs](../../core/src/settlement/projects.rs)
 
 Contains `Project`, `ProjectCost`, `ProjectResult`, `ProjectError`,
 `ProjectCompletion` and `ProjectOutcome`.
@@ -230,7 +230,7 @@ Contains `Project`, `ProjectCost`, `ProjectResult`, `ProjectError`,
 | `resolve_allocation` | Reduce material costs and advance elapsed turn time. |
 | `is_completed` | Report whether both material and time costs are paid. |
 
-### [core/src/domain/settlement/turn_report.rs](../../core/src/domain/settlement/turn_report.rs)
+### [core/src/settlement/turn_report.rs](../../core/src/settlement/turn_report.rs)
 
 Contains `TurnReport`, `InventoryTurnReport`, `MaterialTotals`, `InventoryLoss`,
 `InventoryLossStage`, and the `ConsumptionResult` re-export.
@@ -240,17 +240,17 @@ records outputs and removes unused inputs from consumption;
 `is_balanced()` checks material conservation separately for each resource.
 Trade transfers are currently outside that accounting model; see [trading](trading.md).
 
-### [core/src/domain/settlement/stat.rs](../../core/src/domain/settlement/stat.rs)
+### [core/src/settlement/stat.rs](../../core/src/settlement/stat.rs)
 
 `StatType` lists housing, inventory and trade capacities. Data only; no methods or
 runtime stat aggregation is implemented.
 
 ## Economy
 
-### [core/src/domain/economy/resource.rs](../../core/src/domain/economy/resource.rs)
+### [core/src/economy/inventory.rs](../../core/src/economy/inventory.rs)
 
-Contains `ResourceType`, capacity-aware `ResourceInventory`, `InventoryAddResult`
-and `CapacityError`. `ResourceType::MATERIALS` is the complete storage catalogue.
+Contains capacity-aware `ResourceInventory`, `InventoryAddResult` and
+`CapacityError`. The types are also re-exported from `simulation_core::economy`.
 
 | Method on `ResourceInventory` | Purpose |
 | --- | --- |
@@ -264,33 +264,38 @@ and `CapacityError`. `ResourceType::MATERIALS` is the complete storage catalogue
 | `reset_labour` | Internally reset labour without warehouse capacity constraints. |
 | `take_all` | Internally drain all stock for a transfer. |
 
-### [core/src/domain/economy/resource_allocation.rs](../../core/src/domain/economy/resource_allocation.rs)
+### [core/src/economy/resources.rs](../../core/src/economy/resources.rs)
+
+Contains `ResourceType` and `ResourceType::MATERIALS`, the complete material
+catalogue used to validate storage orders. No explicit methods.
+
+### [core/src/economy/allocation.rs](../../core/src/economy/allocation.rs)
 
 `AllocationRecipient` distinguishes population, buildings and projects;
 `DemandRequest` and `AllocationResult` carry typed demand/grant maps.
 `AllocationEngine::execute()` combines demands, allocates scarce resources
 proportionally with deterministic remainder handling, and withdraws material grants.
 
-### [core/src/domain/economy/storage_order.rs](../../core/src/domain/economy/storage_order.rs)
+### [core/src/economy/storage_order.rs](../../core/src/economy/storage_order.rs)
 
 `StorageOrder` stores a validated ordered material list; `StorageOrderError`
 identifies invalid lists. `default()` follows the material catalogue; `set()`
 rejects missing/duplicate/unsupported entries; `get()` returns the order;
 `compare()` orders two materials by their positions in the list.
 
-### [core/src/domain/economy/gold_inventory.rs](../../core/src/domain/economy/gold_inventory.rs)
+### [core/src/economy/gold_inventory.rs](../../core/src/economy/gold_inventory.rs)
 
 `GoldInventory::new()` sets initial currency; `add()` increments it; `consume()`
 spends only when sufficient; `consume_available()` drains it; `default()` starts
 at zero. Currency is separate from warehouse materials.
 
-### [core/src/domain/ids.rs](../../core/src/domain/ids.rs)
+### [core/src/ids.rs](../../core/src/ids.rs)
 
 `BuildingId` and `ProjectId` are distinct `u32` tuple types. No explicit methods.
 
 ## Trade and transport
 
-### [core/src/domain/trade/trade_offer.rs](../../core/src/domain/trade/trade_offer.rs)
+### [core/src/trade/offer.rs](../../core/src/trade/offer.rs)
 
 Contains `TradeOffer`, `TradeDemand`, `SellTradeOffer` and `BuyTradeOffer`.
 
@@ -307,40 +312,42 @@ Contains `TradeOffer`, `TradeDemand`, `SellTradeOffer` and `BuyTradeOffer`.
 | `get_maximum_price_per_unit`, `get_remaining_amount_to_buy` | Read price ceiling and outstanding demand. |
 | `add_bought_amount` | Record purchases and reduce outstanding demand. |
 
-### [core/src/domain/trade/trade_log.rs](../../core/src/domain/trade/trade_log.rs)
+### [core/src/trade/book.rs](../../core/src/trade/book.rs)
 
-`TradeLog` owns reserved gold and offers keyed by resource.
+`TradeBook` owns reserved gold and offers keyed by resource.
 
 | Method | Purpose |
 | --- | --- |
-| `new`, `default` | Initialize explicit offers/funds or an empty log. |
+| `new`, `default` | Initialize explicit offers/funds or an empty book. |
 | `add_gold_amount` | Add reserved funds. |
 | `update_sell_resource_amount` | Update funding for an existing sell offer. |
 | `calculate_demand` | Aggregate material and currency reservations requested by offers. |
 | `return_resources` | Drain purchased/unsold goods and remaining gold. |
 
-### [core/src/domain/trade/trade_log/matching.rs](../../core/src/domain/trade/trade_log/matching.rs)
+### [core/src/trade/book/matching.rs](../../core/src/trade/book/matching.rs)
 
-Bilateral matching and transaction methods on the same `TradeLog` type.
+Bilateral matching and transaction methods on the same `TradeBook` type.
 
 | Method | Purpose |
 | --- | --- |
-| `trade` | Match opposing offers in two logs using midpoint prices. |
+| `trade` | Match opposing offers in two books using midpoint prices. |
 | `transaction` | Execute one purchase direction, scaling quantities to funds and spending remainders. |
 | `execute_single_trade` | Debit the buyer and update buyer/seller quantities. |
 
-### [core/src/domain/trade/trade_allocation_engine.rs](../../core/src/domain/trade/trade_allocation_engine.rs)
+### [core/src/trade/allocation.rs](../../core/src/trade/allocation.rs)
 
 `TradeAllocationEngine::execute()` reserves materials and gold from inventories;
-`execute_gold_allocation()` funds the log up to the available amount;
+`execute_gold_allocation()` funds the book up to the available amount;
 `execute_remained_resources()` returns remaining currency and goods to inventories.
 It currently ignores the result of material admission.
 
-### [core/src/domain/trade/caravan.rs](../../core/src/domain/trade/caravan.rs)
+### [core/src/trade/caravan.rs](../../core/src/trade/caravan.rs)
 
-`Caravan` carries a trade log, route, sender/receiver IDs and a `CaravanState`.
-`new()` builds an A* route between province centroids; `travel()` dispatches the
-movement state; `trade()` matches logs on arrival and starts the return journey;
+`Caravan` carries a trade book, route, sender/receiver IDs and a `CaravanState`.
+`new(map, finder, sender_id, receiver_id, start, end, book)` builds an A* route
+between explicit points and returns `Option<Caravan>`; it does not read a `World`
+or interpret participant IDs as province indices. `travel()` dispatches the
+movement state; `trade()` matches books on arrival and starts the return journey;
 `travel_to()` and `travel_back()` advance along the stored path.
 See [current limitations](trading.md) before using this prototype in a simulation.
 
@@ -348,29 +355,29 @@ See [current limitations](trading.md) before using this prototype in a simulatio
 
 | File | Types and explicit methods |
 | --- | --- |
-| [geography/area.rs](../../core/src/domain/geography/area.rs) | `Area::new` stores elevation/moisture; `default` sets both to zero; `determine_biome`, `determine_elevation`, `determine_moisture` classify its values. |
-| [geography/biome.rs](../../core/src/domain/geography/biome.rs) | `Biome::determine` maps elevation/moisture categories to a biome. |
-| [geography/elevation.rs](../../core/src/domain/geography/elevation.rs) | `Elevation` and threshold constants; `determine` classifies elevation. |
-| [geography/moisture.rs](../../core/src/domain/geography/moisture.rs) | `Moisture` and threshold constants; `determine` classifies moisture. |
-| [world_data/map.rs](../../core/src/domain/world_data/map.rs) | `Map::new` stores dimensions, terrain and province-index buffers without validation. |
-| [world_data/point.rs](../../core/src/domain/world_data/point.rs) | `Point(usize, usize)` coordinates; no explicit methods. |
-| [world_data/province.rs](../../core/src/domain/world_data/province.rs) | `Province::new` creates an empty territory; `centroid` averages tile coordinates and requires nonempty territory. |
-| [world_data/world.rs](../../core/src/domain/world_data/world.rs) | `World::new` stores map/provinces and starts with no caravans; `caravan_travel` advances them; `centroid` reads a province's centroid by vector index. |
+| [world/terrain/area.rs](../../core/src/world/terrain/area.rs) | `Area::new` stores elevation/moisture; `default` sets both to zero; `determine_biome`, `determine_elevation`, `determine_moisture` classify its values. |
+| [world/terrain/biome.rs](../../core/src/world/terrain/biome.rs) | `Biome::determine` maps elevation/moisture categories to a biome. |
+| [world/terrain/elevation.rs](../../core/src/world/terrain/elevation.rs) | `Elevation` and threshold constants; `determine` classifies elevation. |
+| [world/terrain/moisture.rs](../../core/src/world/terrain/moisture.rs) | `Moisture` and threshold constants; `determine` classifies moisture. |
+| [world/map.rs](../../core/src/world/map.rs) | `Map::new` stores dimensions, terrain and province-index buffers without validation. |
+| [world/coordinates.rs](../../core/src/world/coordinates.rs) | `Point(usize, usize)` grid indices and signed `Position { x: i32, y: i32 }` placement coordinates; no explicit methods. |
+| [world/province.rs](../../core/src/world/province.rs) | `Province::new` creates an empty territory; `centroid` averages tile coordinates and requires nonempty territory. |
+| [world/state.rs](../../core/src/world/state.rs) | `World::new` stores map/provinces and starts with no caravans; `caravan_travel` advances them; `centroid` reads a province's centroid by vector index. |
 
 ## Pathfinding services
 
-### [core/src/services/algorithms/a_star.rs](../../core/src/services/algorithms/a_star.rs)
+### [core/src/world/pathfinding/a_star.rs](../../core/src/world/pathfinding/a_star.rs)
 
 `AStar::a_star()` returns the reconstructed `Vec<Point>` route;
 `travel_cost()` runs the shared search and returns its minimum directed cost
 without path allocation; private `heuristic()` computes the octile lower bound.
 
-### [core/src/services/algorithms/dijkstra_flood.rs](../../core/src/services/algorithms/dijkstra_flood.rs)
+### [core/src/world/pathfinding/dijkstra_flood.rs](../../core/src/world/pathfinding/dijkstra_flood.rs)
 
 `DijkstraFlood::dijkstra_flood()` returns the land points reachable within a
 movement-cost budget using the shared buffer and movement rules.
 
-### [core/src/services/algorithms/path_finder.rs](../../core/src/services/algorithms/path_finder.rs)
+### [core/src/world/pathfinding/path_finder.rs](../../core/src/world/pathfinding/path_finder.rs)
 
 `PathFinder` owns reusable private `Node` state. Movement constants define straight,
 diagonal and slope costs.
@@ -394,7 +401,7 @@ diagonal and slope costs.
 
 ## World generation services
 
-### [core/src/services/world_generation/config.rs](../../core/src/services/world_generation/config.rs)
+### [core/src/world/generation/config.rs](../../core/src/world/generation/config.rs)
 
 Parameter data and six explicit `Default::default` implementations:
 `WorldDimensions` sets map size, `VoronoiConfig` province count/relaxation passes,
@@ -402,7 +409,7 @@ Parameter data and six explicit `Default::default` implementations:
 `SeedConfig` point/noise seeds, and `ElevationTuningFineConfig` island falloff.
 These defaults are independent of runtime economy TOML.
 
-### [core/src/services/world_generation/world_builder.rs](../../core/src/services/world_generation/world_builder.rs)
+### [core/src/world/generation/world_builder.rs](../../core/src/world/generation/world_builder.rs)
 
 | Method on `WorldBuilder` | Purpose |
 | --- | --- |
@@ -410,7 +417,7 @@ These defaults are independent of runtime economy TOML.
 | `new` | Allocate terrain/territory and initialize noise managers. |
 | `generate` | Coordinate terrain, province relaxation and ocean cleanup. |
 
-### [core/src/services/world_generation/world_builder/terrain.rs](../../core/src/services/world_generation/world_builder/terrain.rs)
+### [core/src/world/generation/world_builder/terrain.rs](../../core/src/world/generation/world_builder/terrain.rs)
 
 Terrain generation methods on the same `WorldBuilder` type.
 
@@ -419,7 +426,7 @@ Terrain generation methods on the same `WorldBuilder` type.
 | `build_elevation`, `build_moisture` | Fill terrain channels using warped noise. |
 | `ocean_set` | Normalize ocean tiles to zero elevation and full moisture. |
 
-### [core/src/services/world_generation/world_builder/provinces.rs](../../core/src/services/world_generation/world_builder/provinces.rs)
+### [core/src/world/generation/world_builder/provinces.rs](../../core/src/world/generation/world_builder/provinces.rs)
 
 Province generation methods on the same `WorldBuilder` type.
 
@@ -429,13 +436,13 @@ Province generation methods on the same `WorldBuilder` type.
 | `build_voronoi` | Repeat territory assignment and centroid relaxation. |
 | `edge_alignment` | Turn a whole province into ocean if any of its tiles is ocean. |
 
-### [core/src/services/world_generation/world_builder_functions.rs](../../core/src/services/world_generation/world_builder_functions.rs)
+### [core/src/world/generation/voronoi.rs](../../core/src/world/generation/voronoi.rs)
 
-`WorldBuilderFunctions::generate_random_points()` generates unique seeded grid
+`Voronoi::generate_random_points()` generates unique seeded grid
 points; `apply_voronoi()` assigns tiles to the nearest warped seed and rebuilds
 province territories; `calculate_centroids()` maps provinces to their centroids.
 
-### [core/src/services/world_generation/noise_manager.rs](../../core/src/services/world_generation/noise_manager.rs)
+### [core/src/world/generation/noise_manager.rs](../../core/src/world/generation/noise_manager.rs)
 
 `NoiseManager::new()` initializes four-octave Perlin FBM using a supplied/random
 seed; `get_noise_value()` samples/clamps noise;
@@ -478,15 +485,13 @@ the default camera; `update()` handles WASD movement and wheel zoom;
 The following files only declare/export modules; they contain no explicit methods:
 
 - [core/src/lib.rs](../../core/src/lib.rs)
-- [core/src/domain/mod.rs](../../core/src/domain/mod.rs)
-- [core/src/domain/buildings/mod.rs](../../core/src/domain/buildings/mod.rs)
-- [core/src/domain/economy/mod.rs](../../core/src/domain/economy/mod.rs)
-- [core/src/domain/geography/mod.rs](../../core/src/domain/geography/mod.rs)
-- [core/src/domain/trade/mod.rs](../../core/src/domain/trade/mod.rs)
-- [core/src/domain/world_data/mod.rs](../../core/src/domain/world_data/mod.rs)
-- [core/src/services/mod.rs](../../core/src/services/mod.rs)
-- [core/src/services/algorithms/mod.rs](../../core/src/services/algorithms/mod.rs)
-- [core/src/services/world_generation/mod.rs](../../core/src/services/world_generation/mod.rs)
+- [core/src/buildings/mod.rs](../../core/src/buildings/mod.rs)
+- [core/src/economy/mod.rs](../../core/src/economy/mod.rs)
+- [core/src/world/terrain/mod.rs](../../core/src/world/terrain/mod.rs)
+- [core/src/trade/mod.rs](../../core/src/trade/mod.rs)
+- [core/src/world/mod.rs](../../core/src/world/mod.rs)
+- [core/src/world/pathfinding/mod.rs](../../core/src/world/pathfinding/mod.rs)
+- [core/src/world/generation/mod.rs](../../core/src/world/generation/mod.rs)
 - [adapters/src/lib.rs](../../adapters/src/lib.rs)
 - [adapters/src/view/mod.rs](../../adapters/src/view/mod.rs)
 - [adapters/src/view/map/mod.rs](../../adapters/src/view/map/mod.rs)

@@ -2,6 +2,10 @@
 
 Status: implemented on `fix/code-organization`, based on develop `8335e26`.
 
+The initial file grouping remains in use. Its technical directory layout is
+superseded by [functional modules](0003-functional-modules.md); consult the
+[current structure guide](../architecture/project_structure.md) for imports.
+
 ## Decision
 
 Organize the existing modules by responsibility while preserving simulation
@@ -14,7 +18,7 @@ Its state and reads live at the module root; commands are grouped under
 Expose the runtime building model from `buildings`, separate validated definition
 data from the factory registry, and locate caravan transport within `trade`.
 Group production methods under `building/production.rs`, matching methods under
-`trade_log/matching.rs`, and terrain/province generation under
+`book/matching.rs`, and terrain/province generation under
 `world_builder/{terrain,provinces}.rs`. Keep type state and pipeline orchestration
 in their parent modules. Move existing method bodies without changing algorithms;
 only private visibility is widened to the owning module where cross-file calls

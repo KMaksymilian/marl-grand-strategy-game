@@ -48,7 +48,7 @@ graph TD
 The Rust application generates and displays a map, with camera controls and A*/Dijkstra
 overlays. The domain library implements settlement inventories, population needs,
 production, construction/upgrade projects, configurable travel-cost productivity,
-and prototype trade logs and caravans. Settlement turns, trade and transport are
+and prototype trade books and caravans. Settlement turns, trade and transport are
 not wired into a global simulation loop. Nations and AI training remain future work.
 
 Run from the repository root so the application can load `configuration.toml`:
@@ -74,7 +74,7 @@ cargo run -p marl_grand_strategy
 
 | Directory | Responsibility |
 | --- | --- |
-| `core/` | Domain model, economic rules, configuration and spatial services |
+| `core/` | The `simulation_core` package: world, economy, buildings, settlements and trade |
 | `core/tests/` | Public-interface integration tests; unit tests stay inline with implementation |
 | `adapters/` | Macroquad camera, map rendering and input |
 | `main_app/` | Executable composition and rendering loop |

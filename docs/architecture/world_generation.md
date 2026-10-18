@@ -1,7 +1,8 @@
 # World Generation
 
-`WorldBuilder` in `core/src/services/world_generation/` generates a flat grid map
-with terrain and provinces. It is independent of Macroquad. Individual source
+`WorldBuilder` in `core/src/world/generation/` generates a flat grid map
+with terrain and provinces. It belongs to the `simulation_core::world::generation`
+module and is independent of Macroquad. Individual source
 files and methods are indexed in the [code map](code_map.md).
 
 ## Configuration
@@ -33,7 +34,7 @@ FBM and supplies noise samples, coordinate warp and island elevation falloff.
 6. Apply `ocean_set()`: normalize ocean elevation to zero and moisture to one.
 7. Return `World` with map, provinces and an empty caravan collection.
 
-Terrain filling and tile assignment use Rayon. `WorldBuilderFunctions` holds
+Terrain filling and tile assignment use Rayon. `Voronoi` holds
 seed generation, Voronoi assignment and centroid helpers.
 
 ## Terrain data

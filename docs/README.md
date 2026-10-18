@@ -27,6 +27,7 @@ Start with the [project structure](architecture/project_structure.md) and the
 
 - [Economy decisions](decisions/0001-economy.md)
 - [Code organization](decisions/0002-code-organization.md)
+- [Functional modules and caravan dependencies](decisions/0003-functional-modules.md)
 - [Target simulation aggregates](planning/aggregates.md)
 - [Economy roadmap](planning/economy_roadmap.md)
 - [Historical review: 2026-10-13](analysis/2026-10-13.md)

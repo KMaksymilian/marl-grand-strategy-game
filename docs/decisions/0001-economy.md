@@ -106,14 +106,14 @@ Existing stock is retained. No eviction or automatic shrinking loss is introduce
 
 ## Evidence in Code
 
-- [ids.rs](../../core/src/domain/ids.rs) and [resource_allocation.rs](../../core/src/domain/economy/resource_allocation.rs): D1–D3.
-- [buildings/building.rs](../../core/src/domain/buildings/building.rs): D4.
-- [settlement/mod.rs](../../core/src/domain/settlement/mod.rs) and [inventory_manager.rs](../../core/src/domain/settlement/inventory_manager.rs): D5.
-- [population.rs](../../core/src/domain/settlement/population.rs): D6, including integer needs, tier aggregation, large quantities and excess-grant tests.
-- [projects.rs](../../core/src/domain/settlement/projects.rs), [turn_report.rs](../../core/src/domain/settlement/turn_report.rs), [project commands](../../core/src/domain/settlement/commands/projects.rs) and [project_lifecycle.rs](../../core/src/domain/settlement/project_lifecycle.rs): D7, normalized costs, command validation and project outcomes.
-- [resource.rs](../../core/src/domain/economy/resource.rs), [inventory_manager.rs](../../core/src/domain/settlement/inventory_manager.rs) and [turn_report.rs](../../core/src/domain/settlement/turn_report.rs): D8, capacity validation, loss reporting and material balance.
-- [storage_order.rs](../../core/src/domain/economy/storage_order.rs), [settlement/mod.rs](../../core/src/domain/settlement/mod.rs) and [inventory commands](../../core/src/domain/settlement/commands/inventory.rs): D9/D10, explicit settlement storage order.
-- [turn.rs](../../core/src/domain/settlement/turn.rs): ID collisions, single-material allocation, large costs, shared inputs and products becoming usable in the next turn.
+- [ids.rs](../../core/src/ids.rs) and [allocation.rs](../../core/src/economy/allocation.rs): D1–D3.
+- [buildings/building.rs](../../core/src/buildings/building.rs): D4.
+- [settlement/mod.rs](../../core/src/settlement/mod.rs) and [inventory_manager.rs](../../core/src/settlement/inventory_manager.rs): D5.
+- [population.rs](../../core/src/settlement/population.rs): D6, including integer needs, tier aggregation, large quantities and excess-grant tests.
+- [projects.rs](../../core/src/settlement/projects.rs), [turn_report.rs](../../core/src/settlement/turn_report.rs), [project commands](../../core/src/settlement/commands/projects.rs) and [project_lifecycle.rs](../../core/src/settlement/project_lifecycle.rs): D7, normalized costs, command validation and project outcomes.
+- [inventory.rs](../../core/src/economy/inventory.rs), [inventory_manager.rs](../../core/src/settlement/inventory_manager.rs) and [turn_report.rs](../../core/src/settlement/turn_report.rs): D8, capacity validation, loss reporting and material balance.
+- [storage_order.rs](../../core/src/economy/storage_order.rs), [settlement/mod.rs](../../core/src/settlement/mod.rs) and [inventory commands](../../core/src/settlement/commands/inventory.rs): D9/D10, explicit settlement storage order.
+- [turn.rs](../../core/src/settlement/turn.rs): ID collisions, single-material allocation, large costs, shared inputs and products becoming usable in the next turn.
 
 Update this record and the architecture documents when the code changes, especially tie rules, recipe order or project duration semantics.
 

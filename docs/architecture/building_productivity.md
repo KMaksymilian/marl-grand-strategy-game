@@ -67,9 +67,9 @@ Multipliers are stored as exact fractions. Output combines work and location fra
 Given an existing `map`, reusable `finder` and settlement:
 
 ```rust
-use core::configuration::Configuration;
-use core::domain::buildings::Position;
-use core::domain::buildings::productivity::BuildingProductivityCalculator;
+use simulation_core::configuration::Configuration;
+use simulation_core::world::Position;
+use simulation_core::buildings::productivity::BuildingProductivityCalculator;
 
 let configuration = Configuration::load("configuration.toml").unwrap();
 let calculator = BuildingProductivityCalculator::new(

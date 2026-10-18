@@ -1,6 +1,6 @@
 # Economy: Resources, Allocation and Production
 
-This document describes the implemented local resource economy of one settlement. Prototype currency, trade logs and caravans are described separately in [trading.md](trading.md); global trade scheduling and AI remain future work. The settlement structure and turn lifecycle are described in [settlements.md](settlements.md); the rationale is recorded in [decisions](../decisions/0001-economy.md).
+This document describes the implemented local resource economy of one settlement. Prototype currency, trade books and caravans are described separately in [trading.md](trading.md); global trade scheduling and AI remain future work. The settlement structure and turn lifecycle are described in [settlements.md](settlements.md); the rationale is recorded in [decisions](../decisions/0001-economy.md).
 
 ## 1. Resources and Units
 
@@ -43,7 +43,7 @@ assert_eq!(settlement.storage_order()[0], ResourceType::Grain);
 
 `set_storage_order(materials: impl AsRef<[ResourceType]>)` accepts vectors, slices and arrays. Every material from `ResourceType::MATERIALS` must occur exactly once. Duplicate materials, missing materials and `Labour` return `StorageOrderError` without changing the previous list. The catalogue is centralized; adding a material requires extending it, without changing this API's signature. The list is not consumed as a FIFO queue.
 
-Warehouse, production buffer and returned batches use the same order. Changing it affects future admissions without evicting existing stock or changing demand allocation. Returns still precede new products as a turn phase rule. Single-resource deposits have no batch to reorder. The implementation is in [storage_order.rs](../../core/src/domain/economy/storage_order.rs).
+Warehouse, production buffer and returned batches use the same order. Changing it affects future admissions without evicting existing stock or changing demand allocation. Returns still precede new products as a turn phase rule. Single-resource deposits have no batch to reorder. The implementation is in [storage_order.rs](../../core/src/economy/storage_order.rs).
 
 The inventory manager reports `InventoryLoss { resource, amount, stage }` for `Returns`, `ProductionBuffer` and `Warehouse`. It accepts aggregate production/returns in `u64`, admitting only what the `u32` inventory can store. Building-manager aggregate totals also use `u64`; no resource unit conversion is introduced. Materials retain their existing whole-unit scale.
 
@@ -186,19 +186,19 @@ Per-capita needs must currently be whole numbers; fractional rates such as 0.5 a
 
 | Area | Code |
 | --- | --- |
-| Resources and capacity | [resource.rs](../../core/src/domain/economy/resource.rs) |
-| Recipients and remainders | [resource_allocation.rs](../../core/src/domain/economy/resource_allocation.rs) |
-| Production | [buildings/building.rs](../../core/src/domain/buildings/building.rs) |
-| Definitions and validation | [definition.rs](../../core/src/domain/buildings/definition.rs) |
-| Shared blueprint registry | [factory.rs](../../core/src/domain/buildings/factory.rs) |
-| Population needs | [population.rs](../../core/src/domain/settlement/population.rs) |
-| Warehouse and buffer | [inventory_manager.rs](../../core/src/domain/settlement/inventory_manager.rs) |
+| Resources and capacity | [inventory.rs](../../core/src/economy/inventory.rs) |
+| Recipients and remainders | [allocation.rs](../../core/src/economy/allocation.rs) |
+| Production | [buildings/building.rs](../../core/src/buildings/building.rs) |
+| Definitions and validation | [definition.rs](../../core/src/buildings/definition.rs) |
+| Shared blueprint registry | [catalog.rs](../../core/src/buildings/catalog.rs) |
+| Population needs | [population.rs](../../core/src/settlement/population.rs) |
+| Warehouse and buffer | [inventory_manager.rs](../../core/src/settlement/inventory_manager.rs) |
 
 
 Run verification with `cargo test --workspace` and `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
 
 ### Definition Validation
 
-`BuildingDefinition::validate()` checks per-resource input and output totals across all recipes, including duplicate entries, using checked `u32` arithmetic. Recipe entries cannot contain `Labour`, which is supplied through `max_workers`. Each stat modifier must fit `u32` at maximum staffing. Invalid definitions return `DefinitionError` before registration, construction, upgrade or project queueing. Registration and upgrade preserve existing state on failure. `Building::new()` and `BuildingFactory::register()` now return `Result`; callers must handle invalid configuration. Upgrades clamp current workers to the new staffing limit.
+`BuildingDefinition::validate()` checks per-resource input and output totals across all recipes, including duplicate entries, using checked `u32` arithmetic. Recipe entries cannot contain `Labour`, which is supplied through `max_workers`. Each stat modifier must fit `u32` at maximum staffing. Invalid definitions return `DefinitionError` before registration, construction, upgrade or project queueing. Registration and upgrade preserve existing state on failure. `Building::new()` and `BuildingCatalog::register()` now return `Result`; callers must handle invalid configuration. Upgrades clamp current workers to the new staffing limit.
 
 Definitions and project costs remain editable configuration drafts. Live building state is private, and its shared definition is exposed only as `&BuildingDefinition`. Turn reports remain detached, publicly readable data.

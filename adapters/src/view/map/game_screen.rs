@@ -1,6 +1,6 @@
-use core::{
-    domain::world_data::{point::Point, world::World},
-    services::algorithms::{a_star::AStar, dijkstra_flood::DijkstraFlood, path_finder::PathFinder},
+use simulation_core::{
+    world::pathfinding::{a_star::AStar, dijkstra_flood::DijkstraFlood, path_finder::PathFinder},
+    world::{Point, World},
 };
 
 use crate::view::map::{map_camera::MapCamera, map_texture::MapTextureData};

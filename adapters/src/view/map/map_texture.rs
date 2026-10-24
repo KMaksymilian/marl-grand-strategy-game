@@ -1,10 +1,10 @@
 use ::rand::RngExt;
 use ::rand::prelude::ThreadRng;
-use core::domain::{
-    geography::{biome::Biome, elevation::Elevation},
-    world_data::{map::Map, world::World},
-};
 use macroquad::prelude::*;
+use simulation_core::{
+    world::terrain::{biome::Biome, elevation::Elevation},
+    world::{Map, World},
+};
 
 pub struct MapTextureData {
     pub images: Vec<Image>,

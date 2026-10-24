@@ -1,25 +1,39 @@
-# Dokumentacja techniczna Kamery
+# Map Rendering and Camera
 
-Kamera jest strukturą służącą do obserwacji postępu symulacji przeprowadzanej na mapie.
-Wszelka jej obsługa oraz obserwacja świata jest umożliwiona dzięki bibliotece *macroquad*
+The Macroquad adapter is in `adapters/src/view/map/`. It reads `core` world state
+and keeps rendering/input state separate from the domain. Source files and methods
+are indexed in the [code map](code_map.md).
 
-## 1. Inicjalizacja
+## Composition
 
-### Struktura MapView
-Struktura ***MapView*** na podstawie utworzonej mapy generuje prostą teksturę 2D (***Texture2D***). 
+`ViewGenerator::generate()` builds `MapTextureData` and `MapCamera`, then creates
+a `GameScreen`. Texture creation requires an active Macroquad graphics context.
+There are no `MapView` or `MapRenderer` types in the current implementation.
 
-- Dla każdej komórki mapy wyliczany jest odpowiedni kolor na podstawie biomu, który się tam znajduje. Każdy z nich dostaje unikalny kolor, dzięki czemu istnieje widoczne rozróżnienie między nimi.
-- Ponadto dodany jest prosty shader, który na podstawie różnicy wysokości dodaje bądź odejmuje poziom natężenia światła poprzez zmianę składowych palety koloru *RGB*.
-- Dodane są również krawędzie między prowincjami jak i na obrzeżach mapy.
+`MapTextureData::generate_from_world()` builds two CPU images and GPU textures:
+geography uses biome colors, elevation lighting, random color variation and
+province/map borders; elevation uses a continuous height color mapping. Textures
+use nearest filtering. Cosmetic random variation is not tied to the world seed.
 
-### Struktura MapCamera
-Struktura ***MapCamera*** posiada pola *speed* oraz *camera*, gdzie ta druga jest wbudowaną strukturą ***Camera2D*** z biblioteki *macroquad*. Ten obiekt odpowiada za główną obsługę kamery tj. przybliżanie (*zoom*) oraz przesuwanie punktu widzenia kamery (*target*) za pomocą przycisków *W,S,A,D*. Pole *speed* reguluje szybkość obługi kamery.
+`MapCamera` wraps a Macroquad `Camera2D`, initially framed to the map rectangle.
+`begin()` selects it and `end()` restores the default camera.
 
-## 2. Działanie
+## Frame loop and controls
 
-### Struktura MapRenderer
-Struktura pomocnicza, odostępniająca metodę `draw(...)` rysująca teksturę mapy na ekranie.
+`main_app` clears the background and calls `GameScreen::run()` each frame before
+awaiting `next_frame()`. The screen updates camera/input, computes requested
+pathfinding overlays and draws the selected texture and overlays.
 
-### Struktura GameScreen
-Struktura ogólna, posiadająca struktury ***MapView*** oraz ***MapCamera***. Odpowiada za obsługę całej funkcjonalności w najwyższej możliwej abstrakcji poprzez metodę `run(...)`.
-W ogólności mapa jest rysowana w nieskończonej abstrakcyjnej przestrzeni (klasyczny układ współrzędnych z zamienionymi zwrotami osi pionowej), a obiekt ***Camera2D*** z biblioteki *macroquad* odpowiada za wycięcie odpowiedniej części tej przestrzeni i narysowanie jej wprost na monitorze (metody `set_camera(...)` oraz `camera_default(...)`).
+| Input | Behavior |
+| --- | --- |
+| W/A/S/D | Pan, scaled by frame time and current zoom |
+| Mouse wheel | Zoom in/out |
+| 1 / keypad 1 | Geography texture |
+| 2 / keypad 2 | Elevation texture |
+| Left click | Select the last two map points and show their A* route in red |
+| Right click | Show a Dijkstra reachable area with budget 1000 in purple |
+
+Mouse positions are converted from screen to world coordinates and checked against
+map texture bounds. An unreachable A* query clears its previous path. The shared
+pathfinder is borrowed sequentially for queries. Rendering does not advance the
+economy or caravan states.

@@ -1,7 +1,7 @@
 use crate::view::map::{
     game_screen::GameScreen, map_camera::MapCamera, map_texture::MapTextureData,
 };
-use core::domain::world_data::world::World;
+use simulation_core::world::World;
 
 pub struct ViewGenerator;
 

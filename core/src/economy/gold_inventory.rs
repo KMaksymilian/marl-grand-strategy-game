@@ -9,6 +9,10 @@ impl GoldInventory {
         GoldInventory { amount }
     }
 
+    pub fn amount(&self) -> u32 {
+        self.amount
+    }
+
     pub fn add(&mut self, amount: u32) {
         self.amount += amount;
     }

@@ -1,16 +1,25 @@
 //! Settlement turn sequence and inline tests of aggregate behavior.
 use super::Settlement;
-use super::turn_report::{InventoryTurnReport, TurnReport};
-use crate::economy::ResourceType;
+use super::turn_report::{InventoryTurnReport, TradeTurnReport, TurnReport};
 use crate::economy::allocation::{AllocationEngine, AllocationRecipient};
-use crate::trade::allocation::TradeAllocationEngine;
+use crate::trade::caravan::Caravan;
 use crate::world::map::Map;
 use crate::world::pathfinding::path_finder::PathFinder;
-use std::collections::HashMap;
 
 impl Settlement {
     /// Refreshes route costs from the current map before any economic allocation.
     pub fn process_turn(&mut self, map: &Map, finder: &mut PathFinder) -> TurnReport {
+        self.process_turn_with_visitors(map, finder, &mut [])
+    }
+
+    /// Full turn including trade with caravans that arrived at this settlement.
+    /// Visitors in another state or addressed elsewhere are left untouched.
+    pub fn process_turn_with_visitors(
+        &mut self,
+        map: &Map,
+        finder: &mut PathFinder,
+        visitors: &mut [&mut Caravan],
+    ) -> TurnReport {
         self.building_manager.refresh_productivity(map, finder);
         let opening_stock = InventoryTurnReport::snapshot(
             &self.inventory_manager.main,
@@ -22,14 +31,12 @@ impl Settlement {
         self.inventory_manager
             .refresh_labor_capacity(self.population_manager.population);
 
-        // 0. TradeBook phase
-        let demands: (HashMap<ResourceType, u32>, u32) = self.book.calculate_demand();
-        TradeAllocationEngine::execute(
-            &mut self.book,
-            &mut self.gold_inventory,
-            &mut self.inventory_manager.main,
-            demands,
-        );
+        // 0. Trade phase: fund the market book and new caravans, then serve visitors.
+        //    Purchases stay in the book until the returns phase.
+        let mut trade = TradeTurnReport::default();
+        self.reserve_market(&mut trade);
+        self.fund_caravan_orders(&mut trade);
+        self.trade_with_visitors(visitors, &mut trade);
 
         // 1. Demand phase
         let mut requests = Vec::new();
@@ -56,26 +63,26 @@ impl Settlement {
         inventory
             .losses
             .extend(self.inventory_manager.commit_pending_production());
-        inventory.closing_stock = InventoryTurnReport::snapshot(
-            &self.inventory_manager.main,
-            &self.inventory_manager.pending_production,
-        );
 
         // 5. Project finalization phase
         projects.extend(self.resolve_completed_projects(map, finder));
 
-        // 6. TradeBook remaining resources phase
-        let returned: (HashMap<ResourceType, u32>, u32) = self.book.return_resources();
-        TradeAllocationEngine::execute_remained_resources(
-            &mut self.gold_inventory,
-            &mut self.inventory_manager.main,
-            returned,
+        // 6. Trade returns phase: market book and returned caravans, in storage order.
+        inventory
+            .losses
+            .extend(self.collect_trade_returns(&mut trade));
+        inventory.trade_reserved = trade.reserved();
+        inventory.trade_received = trade.received.clone();
+        inventory.closing_stock = InventoryTurnReport::snapshot(
+            &self.inventory_manager.main,
+            &self.inventory_manager.pending_production,
         );
 
         TurnReport {
             consumption: consumption_result,
             projects,
             inventory,
+            trade,
         }
     }
 }

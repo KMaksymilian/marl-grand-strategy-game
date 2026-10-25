@@ -3,3 +3,6 @@
 mod buildings;
 mod inventory;
 mod projects;
+mod trade;
+
+pub use trade::TradeCommandError;

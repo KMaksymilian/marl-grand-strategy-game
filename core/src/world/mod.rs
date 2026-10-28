@@ -6,8 +6,9 @@ pub mod pathfinding;
 pub mod province;
 mod state;
 pub mod terrain;
+pub mod territory;
 
 pub use coordinates::{Point, Position};
 pub use map::Map;
 pub use province::Province;
-pub use state::World;
+pub use state::{TileView, World, WorldError};

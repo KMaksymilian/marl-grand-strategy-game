@@ -129,7 +129,7 @@ Building registration and operational settings.
 
 | Method on `Settlement` | Purpose |
 | --- | --- |
-| `add_building` | Reject duplicate IDs and initialize map-based productivity before insertion. |
+| `add_building` | Validate ID, land and vacant slot, register spatial occupancy and initialize productivity. |
 | `set_building_productivity_calculator` | Replace/disable the policy and refresh all building multipliers. |
 | `set_building_load` | Find a building and validate its requested utilization. |
 | `set_building_active` | Find a building and toggle activity. |
@@ -140,8 +140,9 @@ Requests that create construction/upgrade projects.
 
 | Method on `Settlement` | Purpose |
 | --- | --- |
-| `queue_construction` | Validate a blueprint and register a construction project. |
+| `queue_construction` | Validate a blueprint and land position; reserve the tile and register a project. |
 | `queue_upgrade` | Validate a replacement blueprint/target and register an upgrade project. |
+| `cancel_project` | Release the exact construction reservation and remove the project; preserve upgrades' buildings and already paid costs. |
 
 ### [core/src/settlement/turn.rs](../../core/src/settlement/turn.rs)
 
@@ -161,6 +162,8 @@ Internal project validation and effects on the same `Settlement` type.
 | `reject_invalid_projects` | Remove invalid active projects before they receive allocations. |
 | `resolve_completed_projects` | Extract finished projects and collect their finalization outcomes. |
 | `finalize_project` | Apply construction/upgrade effects or return an explicit failure. |
+| `validate_project_site` | Validate construction coordinates, land and matching reservation. |
+| `release_project_site` | Release only a rejected project's own construction reservation. |
 
 ### [core/src/settlement/building_manager.rs](../../core/src/settlement/building_manager.rs)
 
@@ -359,10 +362,56 @@ See [current limitations](trading.md) before using this prototype in a simulatio
 | [world/terrain/biome.rs](../../core/src/world/terrain/biome.rs) | `Biome::determine` maps elevation/moisture categories to a biome. |
 | [world/terrain/elevation.rs](../../core/src/world/terrain/elevation.rs) | `Elevation` and threshold constants; `determine` classifies elevation. |
 | [world/terrain/moisture.rs](../../core/src/world/terrain/moisture.rs) | `Moisture` and threshold constants; `determine` classifies moisture. |
-| [world/map.rs](../../core/src/world/map.rs) | `Map::new` stores dimensions, terrain and province-index buffers without validation. |
+| [world/map.rs](../../core/src/world/map.rs) | `Map::new` stores buffers; `tile_index` checks coordinates/layer bounds; `province_at` resolves a province ID; `validate_building_position` enforces valid land. |
 | [world/coordinates.rs](../../core/src/world/coordinates.rs) | `Point(usize, usize)` grid indices and signed `Position { x: i32, y: i32 }` placement coordinates; no explicit methods. |
 | [world/province.rs](../../core/src/world/province.rs) | `Province::new` creates an empty territory; `centroid` averages tile coordinates and requires nonempty territory. |
-| [world/state.rs](../../core/src/world/state.rs) | `World::new` stores map/provinces and starts with no caravans; `caravan_travel` advances them; `centroid` reads a province's centroid by vector index. |
+| [world/state.rs](../../core/src/world/state.rs) | `World`, registries, province membership and checked tile reads; methods detailed below. |
+
+### [core/src/world/state.rs](../../core/src/world/state.rs)
+
+| Method on `World` | Purpose |
+| --- | --- |
+| `new` | Store map/provinces and initialize empty caravans, settlements and territory. |
+| `add_settlement` | Register an empty settlement in exactly one existing, unoccupied province. |
+| `settlement`, `settlements` | Read settlement instances; hash-map iteration order is unspecified. |
+| `territory` | Read the global occupancy registry without mutation access. |
+| `province_settlement` | Return the optional settlement ID in an existing province. |
+| `province_at` | Resolve valid map coordinates to an existing province ID. |
+| `settlement_at` | Resolve a tile to its province's optional settlement. |
+| `tile_at` | Read occupancy after checking map coordinates and province. |
+| `validate_settlement_position` | Require a position in the registered settlement's province. |
+| `caravan_travel` | Advance every caravan's travel state. |
+| `centroid` | Read a province centroid by the legacy vector index. |
+
+### [core/src/world/territory.rs](../../core/src/world/territory.rs)
+
+Contains `Tile`, `TileOccupancy`, settlement-qualified references and `TerritoryError`.
+
+| Method | Purpose |
+| --- | --- |
+| `Tile::occupancy` | Read the structural state. |
+| `TerritoryManager::tile_at` | Return an occupancy snapshot; absent entries are empty, without bounds checks. |
+| `register_building` | Register a completed building only on an empty slot. |
+| `reserve_construction` | Reserve an empty slot for a project. |
+| `cancel_construction` | Release an exactly matching reservation. |
+| `finish_construction` | Replace a matching reservation with its settlement's completed building. |
+| `validate_reservation` | Check project and settlement identity without mutation. |
+
+### [core/src/world/state/construction.rs](../../core/src/world/state/construction.rs)
+
+| Method on `World` | Purpose |
+| --- | --- |
+| `queue_construction` | Validate province membership and delegate construction with the shared map/registry. |
+| `add_building` | Validate province membership and delegate completed-building registration. |
+| `queue_upgrade` | Validate the target's province and delegate the upgrade. |
+| `cancel_project` | Delegate cancellation using the shared registry, even after map edits. |
+| `process_settlement_turn` | Recheck project membership and advance one settlement with shared spatial state. |
+
+### [core/src/world/state/inspection.rs](../../core/src/world/state/inspection.rs)
+
+`World::inspect_tile` returns `TileView`: terrain, province, optional settlement,
+occupancy and borrowed building/new-construction objects. It validates coordinates
+and province existence. This authoritative read does not filter agent knowledge.
 
 ## Pathfinding services
 
@@ -500,6 +549,8 @@ The following files only declare/export modules; they contain no explicit method
 | --- | --- |
 | [core/tests/economy_validation_tests.rs](../../core/tests/economy_validation_tests.rs) | Public-interface tests of definition validation, commands and allocation integrity. |
 | [core/tests/building_productivity_tests.rs](../../core/tests/building_productivity_tests.rs) | Public-interface tests of travel costs, configuration, output scaling and settlement isolation. |
+| [core/tests/territory_construction_tests.rs](../../core/tests/territory_construction_tests.rs) | World construction, overlap rejection, placement, upgrades and atomic failures. |
+| [core/tests/project_cancellation_tests.rs](../../core/tests/project_cancellation_tests.rs) | Cancellation, no refunds, upgrade preservation, reservation matching and identifier reuse. |
 | Inline `#[cfg(test)]` modules | Unit tests alongside the feature they verify, including turn tests in `settlement/turn.rs`. |
 | [.github/workflows/ci.yml](../../.github/workflows/ci.yml) | Rust formatting, Clippy and workspace test checks. |
 | [ml_brain/src/requirements.txt](../../ml_brain/src/requirements.txt) | Empty dependency placeholder; no Python runtime implementation exists yet. |

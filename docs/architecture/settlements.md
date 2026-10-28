@@ -214,7 +214,7 @@ If an upgrade target disappears after earlier partial payment, the next turn rep
 
 `World` owns the global `TerritoryManager` and registers each settlement in exactly one province with `add_settlement(province_id, settlement)`. A province may have no settlement. Register settlements before adding buildings or projects; importing existing structures is not supported yet.
 
-For registered settlements, use `World::queue_construction`, `World::add_building`, `World::queue_upgrade`, `World::cancel_project` and `World::process_settlement_turn`. These entry points validate the settlement and its province, then delegate lifecycle changes to `Settlement`. The world's registry and settlements have no public mutable getters.
+For registered settlements, use `World::queue_construction`, `World::add_building`, `World::queue_upgrade`, `World::cancel_project` and `World::process_settlement_turn`. Construction entry points validate the settlement and its province, then delegate lifecycle changes to `Settlement`; cancellation only requires the settlement and its matching reservation. The world's registry and settlements have no public mutable getters. `World::inspect_tile(position)` combines terrain, province, optional settlement and occupancy with borrowed building/project data; see [territory.md](territory.md).
 
 Standalone settlement construction receives both `&Map` and `&mut TerritoryManager`; `add_building` and `process_turn` also use that same registry. The caller must retain and reuse it. Project and building references include the settlement ID because their local IDs can overlap across settlements.
 

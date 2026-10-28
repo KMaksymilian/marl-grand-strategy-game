@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 mod construction;
+mod inspection;
+pub use inspection::TileView;
 
 use super::territory::{TerritoryManager, Tile};
 use crate::settlement::Settlement;

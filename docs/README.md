@@ -17,6 +17,7 @@ Start with the [project structure](architecture/project_structure.md) and the
 - [Source files, types and methods](architecture/code_map.md)
 - [Economy](architecture/economy.md)
 - [Settlements and turn processing](architecture/settlements.md)
+- [Territory, construction and tile inspection](architecture/territory.md)
 - [Building productivity and configuration](architecture/building_productivity.md)
 - [Trading and caravans](architecture/trading.md)
 - [Pathfinding](architecture/algorithms.md)

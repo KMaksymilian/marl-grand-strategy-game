@@ -1,6 +1,7 @@
 use simulation_core::world::map as core_map;
 use simulation_core::world::pathfinding::path_finder as test_path;
 use simulation_core::world::terrain::area as test_area;
+use simulation_core::world::territory::TerritoryManager;
 
 fn test_map() -> core_map::Map {
     core_map::Map::new(
@@ -88,6 +89,7 @@ fn invalid_registration_and_upgrade_preserve_existing_definition() {
 
 #[test]
 fn invalid_efficiencies_do_not_change_existing_target() {
+    let mut territory = TerritoryManager::default();
     let mut settlement = Settlement::new(1, 10, 1, Arc::default());
     let mut building = Building::new(
         BuildingId(1),
@@ -101,7 +103,7 @@ fn invalid_efficiencies_do_not_change_existing_target() {
         assert_eq!(building.target_load(), 0.5);
     }
     settlement
-        .add_building(building, &test_map(), &mut test_finder())
+        .add_building(building, &test_map(), &mut test_finder(), &mut territory)
         .unwrap();
     assert_eq!(
         settlement.set_building_load(BuildingId(1), f32::NAN),
@@ -116,6 +118,7 @@ fn invalid_efficiencies_do_not_change_existing_target() {
 
 #[test]
 fn invalid_project_is_rejected_before_queueing_or_spending() {
+    let mut territory = TerritoryManager::default();
     let mut settlement = Settlement::new(1, 10, 1, Arc::default());
     settlement.deposit(Wood, 10);
     let invalid = Arc::new(definition(vec![], vec![(Grain, u32::MAX), (Grain, 1)]));
@@ -124,7 +127,9 @@ fn invalid_project_is_rejected_before_queueing_or_spending() {
             ProjectId(1),
             Position { x: 0, y: 0 },
             invalid,
-            ProjectCost::default()
+            ProjectCost::default(),
+            &test_map(),
+            &mut territory
         ),
         Err(ProjectError::InvalidDefinition(
             DefinitionError::OutputOverflow(Grain)
@@ -134,7 +139,7 @@ fn invalid_project_is_rejected_before_queueing_or_spending() {
     assert_eq!(settlement.inventory().amount(Wood), 10);
     assert!(
         settlement
-            .process_turn(&test_map(), &mut test_finder())
+            .process_turn(&test_map(), &mut test_finder(), &mut territory)
             .inventory
             .is_balanced()
     );

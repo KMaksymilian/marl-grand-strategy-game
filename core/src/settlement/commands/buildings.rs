@@ -5,6 +5,7 @@ use crate::buildings::productivity::BuildingProductivityCalculator;
 use crate::ids::BuildingId;
 use crate::world::map::Map;
 use crate::world::pathfinding::path_finder::PathFinder;
+use crate::world::territory::{BuildingReference, TerritoryManager};
 
 impl Settlement {
     pub fn add_building(
@@ -12,9 +13,29 @@ impl Settlement {
         building: Building,
         map: &Map,
         finder: &mut PathFinder,
-    ) -> Result<(), BuildingId> {
+        territory: &mut TerritoryManager,
+    ) -> Result<(), BuildingCommandError> {
+        let id = building.instance_id();
+        let position = building.position();
+        if self.building_manager.contains(id) {
+            return Err(BuildingCommandError::DuplicateBuilding(id));
+        }
+        map.validate_building_position(position)
+            .map_err(BuildingCommandError::Territory)?;
+        territory
+            .register_building(
+                position,
+                BuildingReference {
+                    settlement_id: self.id(),
+                    building_id: id,
+                },
+            )
+            .map_err(BuildingCommandError::Territory)?;
+        // The duplicate check above makes registration infallible under this exclusive borrow.
         self.building_manager
             .construct_building(building, map, finder)
+            .expect("building ID was checked before spatial registration");
+        Ok(())
     }
 
     pub fn set_building_load(

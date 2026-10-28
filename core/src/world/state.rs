@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+mod construction;
 
 use super::territory::{TerritoryManager, Tile};
 use crate::settlement::Settlement;
@@ -7,6 +8,8 @@ use crate::world::{Position, coordinates::Point, map::Map, province::Province};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorldError {
+    Project(crate::settlement::projects::ProjectError),
+    Building(crate::settlement::BuildingCommandError),
     DuplicateSettlement(u32),
     MissingSettlement(u32),
     /// Importing existing structures requires spatial registration (a later stage).
@@ -155,13 +158,19 @@ mod tests {
     use crate::ids::ProjectId;
     use crate::settlement::projects::ProjectCost;
     use crate::world::terrain::area::Area;
+    use crate::world::territory::TerritoryManager;
     use crate::world::territory::TileOccupancy;
     use std::sync::Arc;
 
     fn world() -> World {
         // IDs deliberately differ from province vector indices.
         World::new(
-            Map::new(3, 2, vec![Area::default(); 6], vec![10, 20, 30, 10, 20, 30]),
+            Map::new(
+                3,
+                2,
+                vec![Area::new(0.5, 0.5); 6],
+                vec![10, 20, 30, 10, 20, 30],
+            ),
             vec![Province::new(30), Province::new(10), Province::new(20)],
         )
     }
@@ -262,6 +271,7 @@ mod tests {
 
     #[test]
     fn preexisting_projects_cannot_bypass_spatial_registration() {
+        let mut territory = TerritoryManager::default();
         let mut world = world();
         let mut settlement = settlement(1);
         let definition = Arc::new(BuildingDefinition {
@@ -278,6 +288,8 @@ mod tests {
                 Position { x: 0, y: 0 },
                 definition,
                 ProjectCost::default(),
+                &world.map,
+                &mut territory,
             )
             .unwrap();
         assert_eq!(
@@ -290,6 +302,7 @@ mod tests {
 
     #[test]
     fn preexisting_buildings_cannot_bypass_spatial_registration() {
+        let mut territory = TerritoryManager::default();
         use crate::buildings::Building;
         use crate::ids::BuildingId;
         use crate::world::pathfinding::path_finder::PathFinder;
@@ -307,7 +320,12 @@ mod tests {
         let position = Position { x: 0, y: 0 };
         let building = Building::new(BuildingId(1), position, definition).unwrap();
         settlement
-            .add_building(building, &world.map, &mut PathFinder::new(3, 2))
+            .add_building(
+                building,
+                &world.map,
+                &mut PathFinder::new(3, 2),
+                &mut territory,
+            )
             .unwrap();
         assert_eq!(
             world.add_settlement(10, settlement),

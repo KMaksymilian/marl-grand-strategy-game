@@ -1,6 +1,7 @@
 use simulation_core::world::map as core_map;
 use simulation_core::world::pathfinding::path_finder as test_path;
 use simulation_core::world::terrain::area as test_area;
+use simulation_core::world::territory::TerritoryManager;
 
 fn test_map() -> core_map::Map {
     core_map::Map::new(
@@ -47,12 +48,12 @@ fn calculator(capital_x: i32, full_steps: u32, zero_steps: u32) -> BuildingProdu
     )
 }
 
-fn settlement_at(position: Position) -> Settlement {
+fn settlement_at(position: Position, territory: &mut TerritoryManager) -> Settlement {
     let mut settlement = Settlement::new(1, 200, 10, Arc::default());
     let mut building = Building::new(BuildingId(7), position, definition(10, 10, 20)).unwrap();
     building.set_target_load(1.0).unwrap();
     settlement
-        .add_building(building, &test_map(), &mut test_finder())
+        .add_building(building, &test_map(), &mut test_finder(), territory)
         .unwrap();
     settlement.deposit(ResourceType::Wood, 100);
     settlement
@@ -60,14 +61,15 @@ fn settlement_at(position: Position) -> Settlement {
 
 #[test]
 fn distance_reduces_output_without_discounting_materials_or_workers() {
+    let mut territory = TerritoryManager::default();
     for (x, expected_output) in [(0, 20), (10, 20), (20, 10), (30, 0), (40, 0)] {
-        let mut settlement = settlement_at(Position { x, y: 0 });
+        let mut settlement = settlement_at(Position { x, y: 0 }, &mut territory);
         settlement.set_building_productivity_calculator(
             Some(calculator(0, 10, 30)),
             &test_map(),
             &mut test_finder(),
         );
-        let report = settlement.process_turn(&test_map(), &mut test_finder());
+        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
         assert_eq!(settlement.inventory().amount(ResourceType::Wood), 90);
         assert_eq!(
             settlement.inventory().amount(ResourceType::Stone),
@@ -84,6 +86,7 @@ fn distance_reduces_output_without_discounting_materials_or_workers() {
 
 #[test]
 fn configured_calculator_applies_to_buildings_added_later() {
+    let mut territory = TerritoryManager::default();
     let mut settlement = Settlement::new(1, 100, 10, Arc::default());
     settlement.set_building_productivity_calculator(
         Some(calculator(0, 10, 30)),
@@ -98,7 +101,7 @@ fn configured_calculator_applies_to_buildings_added_later() {
     .unwrap();
     building.set_target_load(1.0).unwrap();
     settlement
-        .add_building(building, &test_map(), &mut test_finder())
+        .add_building(building, &test_map(), &mut test_finder(), &mut territory)
         .unwrap();
     assert_eq!(
         settlement
@@ -109,14 +112,15 @@ fn configured_calculator_applies_to_buildings_added_later() {
         0.5
     );
     settlement.deposit(ResourceType::Wood, 10);
-    let report = settlement.process_turn(&test_map(), &mut test_finder());
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
     assert_eq!(settlement.inventory().amount(ResourceType::Stone), 10);
     assert!(report.inventory.is_balanced());
 }
 
 #[test]
 fn moving_capital_changing_policy_and_disabling_calculator_refresh_cached_productivity() {
-    let mut settlement = settlement_at(Position { x: 20, y: 0 });
+    let mut territory = TerritoryManager::default();
+    let mut settlement = settlement_at(Position { x: 20, y: 0 }, &mut territory);
     assert_eq!(settlement.building_productivity_calculator(), None);
     settlement.set_building_productivity_calculator(
         Some(calculator(0, 10, 30)),
@@ -164,21 +168,22 @@ fn moving_capital_changing_policy_and_disabling_calculator_refresh_cached_produc
             .location_productivity(),
         1.0
     );
-    let report = settlement.process_turn(&test_map(), &mut test_finder());
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
     assert_eq!(settlement.inventory().amount(ResourceType::Stone), 20);
     assert!(report.inventory.is_balanced());
 }
 
 #[test]
 fn load_and_material_shortage_remain_independent_of_location_productivity() {
-    let mut settlement = settlement_at(Position { x: 20, y: 0 });
+    let mut territory = TerritoryManager::default();
+    let mut settlement = settlement_at(Position { x: 20, y: 0 }, &mut territory);
     settlement.set_building_productivity_calculator(
         Some(calculator(0, 10, 30)),
         &test_map(),
         &mut test_finder(),
     );
     settlement.set_building_load(BuildingId(7), 0.5).unwrap();
-    let report = settlement.process_turn(&test_map(), &mut test_finder());
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
     assert_eq!(settlement.buildings().next().unwrap().current_workers(), 5);
     assert_eq!(report.inventory.production_consumed[&ResourceType::Wood], 5);
     assert_eq!(settlement.inventory().amount(ResourceType::Stone), 5);
@@ -186,7 +191,7 @@ fn load_and_material_shortage_remain_independent_of_location_productivity() {
 
     settlement.withdraw(ResourceType::Wood, 93);
     settlement.set_building_load(BuildingId(7), 1.0).unwrap();
-    let report = settlement.process_turn(&test_map(), &mut test_finder());
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
     assert_eq!(report.inventory.production_consumed[&ResourceType::Wood], 2);
     assert_eq!(settlement.inventory().amount(ResourceType::Stone), 7);
     assert!(report.inventory.is_balanced());
@@ -195,7 +200,8 @@ fn load_and_material_shortage_remain_independent_of_location_productivity() {
 #[test]
 fn zero_load_and_inactive_buildings_do_not_consume_materials() {
     for active in [true, false] {
-        let mut settlement = settlement_at(Position { x: 20, y: 0 });
+        let mut territory = TerritoryManager::default();
+        let mut settlement = settlement_at(Position { x: 20, y: 0 }, &mut territory);
         settlement.set_building_productivity_calculator(
             Some(calculator(0, 10, 30)),
             &test_map(),
@@ -208,7 +214,7 @@ fn zero_load_and_inactive_buildings_do_not_consume_materials() {
                 .set_building_active(BuildingId(7), false)
                 .unwrap();
         }
-        let report = settlement.process_turn(&test_map(), &mut test_finder());
+        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
         assert_eq!(settlement.inventory().amount(ResourceType::Wood), 100);
         assert_eq!(settlement.inventory().amount(ResourceType::Stone), 0);
         assert_eq!(settlement.buildings().next().unwrap().current_workers(), 0);
@@ -218,6 +224,7 @@ fn zero_load_and_inactive_buildings_do_not_consume_materials() {
 
 #[test]
 fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
+    let mut territory = TerritoryManager::default();
     let mut settlement = Settlement::new(1, 100, 10, Arc::default());
     settlement.set_building_productivity_calculator(
         Some(calculator(0, 10, 30)),
@@ -230,9 +237,11 @@ fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
             Position { x: 20, y: 0 },
             definition(10, 10, 20),
             ProjectCost::default(),
+            &test_map(),
+            &mut territory,
         )
         .unwrap();
-    let report = settlement.process_turn(&test_map(), &mut test_finder());
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
     assert_eq!(
         report.projects[0].result,
         Ok(ProjectCompletion::BuildingConstructed(BuildingId(0)))
@@ -250,7 +259,7 @@ fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
             ProjectCost::default(),
         )
         .unwrap();
-    let report = settlement.process_turn(&test_map(), &mut test_finder());
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
     assert_eq!(
         report.projects[0].result,
         Ok(ProjectCompletion::BuildingUpgraded(BuildingId(0)))
@@ -265,13 +274,14 @@ fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
             .location_productivity(),
         0.5
     );
-    let report = settlement.process_turn(&test_map(), &mut test_finder());
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
     assert_eq!(settlement.inventory().amount(ResourceType::Stone), 30);
     assert!(report.inventory.is_balanced());
 }
 
 #[test]
 fn output_rounds_once_after_combining_staffing_and_distance() {
+    let mut territory = TerritoryManager::default();
     let mut settlement = Settlement::new(1, 100, 1, Arc::default());
     settlement.set_building_productivity_calculator(
         Some(calculator(0, 0, 3)),
@@ -282,10 +292,10 @@ fn output_rounds_once_after_combining_staffing_and_distance() {
         Building::new(BuildingId(1), Position { x: 1, y: 0 }, definition(2, 2, 3)).unwrap();
     building.set_target_load(1.0).unwrap();
     settlement
-        .add_building(building, &test_map(), &mut test_finder())
+        .add_building(building, &test_map(), &mut test_finder(), &mut territory)
         .unwrap();
     settlement.deposit(ResourceType::Wood, 2);
-    let report = settlement.process_turn(&test_map(), &mut test_finder());
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
     assert_eq!(settlement.inventory().amount(ResourceType::Wood), 1);
     assert_eq!(settlement.inventory().amount(ResourceType::Stone), 1);
     assert_eq!(report.inventory.production_consumed[&ResourceType::Wood], 1);
@@ -294,8 +304,10 @@ fn output_rounds_once_after_combining_staffing_and_distance() {
 
 #[test]
 fn two_settlements_keep_independent_productivity_configuration() {
-    let mut first = settlement_at(Position { x: 20, y: 0 });
-    let mut second = settlement_at(Position { x: 20, y: 0 });
+    let mut territory = TerritoryManager::default();
+    let mut second_territory = TerritoryManager::default();
+    let mut first = settlement_at(Position { x: 20, y: 0 }, &mut territory);
+    let mut second = settlement_at(Position { x: 20, y: 0 }, &mut second_territory);
     first.set_building_productivity_calculator(
         Some(calculator(0, 10, 30)),
         &test_map(),
@@ -303,13 +315,13 @@ fn two_settlements_keep_independent_productivity_configuration() {
     );
     assert!(
         first
-            .process_turn(&test_map(), &mut test_finder())
+            .process_turn(&test_map(), &mut test_finder(), &mut territory)
             .inventory
             .is_balanced()
     );
     assert!(
         second
-            .process_turn(&test_map(), &mut test_finder())
+            .process_turn(&test_map(), &mut test_finder(), &mut second_territory)
             .inventory
             .is_balanced()
     );
@@ -319,6 +331,7 @@ fn two_settlements_keep_independent_productivity_configuration() {
 
 #[test]
 fn map_changes_update_output_using_the_current_astar_route_each_turn() {
+    let mut territory = TerritoryManager::default();
     let mut map = core_map::Map::new(3, 3, vec![test_area::Area::new(0.5, 0.5); 9], vec![0; 9]);
     let mut finder = test_path::PathFinder::new(3, 3);
     let mut settlement = Settlement::new(1, 200, 10, Arc::default());
@@ -335,11 +348,11 @@ fn map_changes_update_output_using_the_current_astar_route_each_turn() {
     .unwrap();
     building.set_target_load(1.0).unwrap();
     settlement
-        .add_building(building, &map, &mut finder)
+        .add_building(building, &map, &mut finder, &mut territory)
         .unwrap();
     settlement.deposit(ResourceType::Wood, 30);
 
-    let first = settlement.process_turn(&map, &mut finder);
+    let first = settlement.process_turn(&map, &mut finder, &mut territory);
     assert_eq!(first.inventory.produced[&ResourceType::Stone], 20);
     assert!(first.inventory.is_balanced());
     map.terrain[4].elevation_val = 0.0;
@@ -347,7 +360,7 @@ fn map_changes_update_output_using_the_current_astar_route_each_turn() {
         context.travel_cost_to(Position { x: 2, y: 1 }, &map, &mut finder),
         Some(28)
     );
-    let detour = settlement.process_turn(&map, &mut finder);
+    let detour = settlement.process_turn(&map, &mut finder, &mut territory);
     assert_eq!(detour.inventory.produced[&ResourceType::Stone], 10);
     assert_eq!(
         detour.inventory.production_consumed[&ResourceType::Wood],
@@ -357,7 +370,7 @@ fn map_changes_update_output_using_the_current_astar_route_each_turn() {
     for y in 0..3 {
         map.terrain[y * 3 + 1].elevation_val = 0.0;
     }
-    let blocked = settlement.process_turn(&map, &mut finder);
+    let blocked = settlement.process_turn(&map, &mut finder, &mut territory);
     assert_eq!(
         settlement
             .buildings()
@@ -406,9 +419,10 @@ fn uphill_routes_reduce_productivity_at_the_same_geometric_distance() {
 
 #[test]
 fn changing_toml_thresholds_changes_production_for_the_same_route() {
+    let mut territory = TerritoryManager::default();
     let map = test_map();
     let mut finder = test_finder();
-    let mut settlement = settlement_at(Position { x: 2, y: 0 });
+    let mut settlement = settlement_at(Position { x: 2, y: 0 }, &mut territory);
     for (zero_cost, output) in [(30, 10), (50, 15)] {
         let source = format!(
             "[economy.building_productivity]\nfull_productivity_cost = 10\nzero_productivity_cost = {zero_cost}"
@@ -422,7 +436,7 @@ fn changing_toml_thresholds_changes_production_for_the_same_route() {
             &map,
             &mut finder,
         );
-        let report = settlement.process_turn(&map, &mut finder);
+        let report = settlement.process_turn(&map, &mut finder, &mut territory);
         assert_eq!(report.inventory.produced[&ResourceType::Stone], output);
         assert_eq!(
             report.inventory.production_consumed[&ResourceType::Wood],

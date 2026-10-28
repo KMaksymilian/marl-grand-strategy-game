@@ -39,6 +39,8 @@ impl Tile {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerritoryError {
+    InvalidMapPosition(Position),
+    OceanTile(Position),
     Occupied {
         position: Position,
         occupancy: TileOccupancy,
@@ -62,6 +64,28 @@ pub struct TerritoryManager {
 }
 
 impl TerritoryManager {
+    /// Registers a completed building without allowing it to replace another occupant.
+    pub fn register_building(
+        &mut self,
+        position: Position,
+        building: BuildingReference,
+    ) -> Result<(), TerritoryError> {
+        let occupancy = self.tile_at(position).occupancy();
+        if occupancy != TileOccupancy::Empty {
+            return Err(TerritoryError::Occupied {
+                position,
+                occupancy,
+            });
+        }
+        self.tiles.insert(
+            position,
+            Tile {
+                occupancy: TileOccupancy::Building(building),
+            },
+        );
+        Ok(())
+    }
+
     /// Returns a read-only snapshot. This does not validate map coordinates.
     pub fn tile_at(&self, position: Position) -> Tile {
         self.tiles.get(&position).copied().unwrap_or_default()
@@ -120,7 +144,7 @@ impl TerritoryManager {
         Ok(())
     }
 
-    fn validate_reservation(
+    pub(crate) fn validate_reservation(
         &self,
         position: Position,
         expected: ProjectReference,

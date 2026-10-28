@@ -7,6 +7,22 @@ pub struct Map {
 }
 
 impl Map {
+    /// Current building types require land; use the terrain model's ocean boundary.
+    pub fn validate_building_position(
+        &self,
+        position: Position,
+    ) -> Result<(), super::territory::TerritoryError> {
+        use super::terrain::elevation::Elevation;
+        use super::territory::TerritoryError;
+        let index = self
+            .tile_index(position)
+            .ok_or(TerritoryError::InvalidMapPosition(position))?;
+        if self.terrain[index].determine_elevation() == Elevation::Ocean {
+            return Err(TerritoryError::OceanTile(position));
+        }
+        Ok(())
+    }
+
     /// Returns an index only for coordinates backed by both map layers.
     pub fn tile_index(&self, position: Position) -> Option<usize> {
         let x = usize::try_from(position.x).ok()?;

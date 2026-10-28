@@ -11,4 +11,4 @@ pub mod territory;
 pub use coordinates::{Point, Position};
 pub use map::Map;
 pub use province::Province;
-pub use state::World;
+pub use state::{World, WorldError};

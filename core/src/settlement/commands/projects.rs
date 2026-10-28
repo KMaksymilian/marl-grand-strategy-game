@@ -9,6 +9,37 @@ use crate::world::territory::{ProjectReference, TerritoryManager};
 use std::sync::Arc;
 
 impl Settlement {
+    /// Stops future spending. Already paid materials remain consumed.
+    /// Failed cancellation preserves both the project and the spatial registry.
+    pub fn cancel_project(
+        &mut self,
+        project_id: ProjectId,
+        territory: &mut TerritoryManager,
+    ) -> Result<(), ProjectError> {
+        let index = self
+            .project_manager
+            .active_projects
+            .iter()
+            .position(|project| project.id() == project_id)
+            .ok_or(ProjectError::MissingProject(project_id))?;
+        let project = &self.project_manager.active_projects[index];
+        if let ProjectResult::ConstructBuilding { position, .. } = project.result() {
+            territory
+                .cancel_construction(
+                    *position,
+                    ProjectReference {
+                        settlement_id: self.id(),
+                        project_id,
+                    },
+                )
+                .map_err(ProjectError::Territory)?;
+        }
+        // Releasing construction was the only fallible mutation. Upgrades retain
+        // their building and do not release its structural slot.
+        self.project_manager.active_projects.remove(index);
+        Ok(())
+    }
+
     /// Requests construction and reserves its position in the shared registry.
     #[allow(clippy::too_many_arguments)]
     pub fn queue_construction(

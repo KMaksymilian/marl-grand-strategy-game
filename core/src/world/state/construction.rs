@@ -9,6 +9,19 @@ use crate::settlement::turn_report::TurnReport;
 use crate::world::{Position, pathfinding::path_finder::PathFinder};
 
 impl World {
+    /// Cancellation belongs to the settlement and also works after map edits.
+    pub fn cancel_project(
+        &mut self,
+        settlement_id: u32,
+        project_id: ProjectId,
+    ) -> Result<(), WorldError> {
+        self.settlements
+            .get_mut(&settlement_id)
+            .ok_or(WorldError::MissingSettlement(settlement_id))?
+            .cancel_project(project_id, &mut self.territory)
+            .map_err(WorldError::Project)
+    }
+
     pub fn queue_construction(
         &mut self,
         settlement_id: u32,

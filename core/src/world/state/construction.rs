@@ -90,6 +90,15 @@ impl World {
         settlement_id: u32,
         finder: &mut PathFinder,
     ) -> Result<TurnReport, WorldError> {
+        self.validate_settlement_turn(settlement_id)?;
+        Ok(self
+            .settlements
+            .get_mut(&settlement_id)
+            .expect("settlement was validated")
+            .process_turn(&self.map, finder, &mut self.territory))
+    }
+
+    pub(crate) fn validate_settlement_turn(&self, settlement_id: u32) -> Result<(), WorldError> {
         let settlement = self
             .settlement(settlement_id)
             .ok_or(WorldError::MissingSettlement(settlement_id))?;
@@ -113,10 +122,6 @@ impl World {
                 ProjectResult::RecruitUnit { .. } => {}
             }
         }
-        Ok(self
-            .settlements
-            .get_mut(&settlement_id)
-            .expect("settlement was validated")
-            .process_turn(&self.map, finder, &mut self.territory))
+        Ok(())
     }
 }

@@ -38,6 +38,18 @@ pub struct World {
     province_settlements: HashMap<usize, u32>,
 }
 impl World {
+    /// Internal split borrow for coordinated phases; never exposes mutable collections publicly.
+    pub(crate) fn settlement_turn_parts(
+        &mut self,
+        settlement_id: u32,
+    ) -> Option<(&mut Settlement, &Map, &mut TerritoryManager)> {
+        Some((
+            self.settlements.get_mut(&settlement_id)?,
+            &self.map,
+            &mut self.territory,
+        ))
+    }
+
     pub fn new(map: Map, provinces: Vec<Province>) -> World {
         World {
             map,

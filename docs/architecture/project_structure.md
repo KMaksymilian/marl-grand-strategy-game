@@ -16,6 +16,7 @@ file and explicitly implemented runtime method.
 │   ├── src/
 │   │   ├── lib.rs                   Public functional modules
 │   │   ├── configuration.rs         Runtime TOML parsing and validation
+│   │   ├── simulation/              Global turns, decisions and reports
 │   │   ├── world/                   Spatial data and operations
 │   │   │   ├── mod.rs               Public world exports
 │   │   │   ├── state.rs             World, settlement registration and province membership
@@ -33,6 +34,7 @@ file and explicitly implemented runtime method.
 │   │   ├── settlement/              Aggregate state, commands, managers and turns
 │   │   ├── trade/                   Offers, trade books, matching and caravans
 │   │   └── ids.rs                   Typed building and project identifiers
+│   ├── examples/headless.rs         Simulation runner without graphics
 │   └── tests/                       Public-interface integration tests
 ├── adapters/src/view/map/           Macroquad rendering and input
 ├── main_app/src/main.rs             Application composition and frame loop
@@ -44,7 +46,8 @@ file and explicitly implemented runtime method.
 `main_app` composes `simulation_core` and `adapters`. `adapters` reads simulation
 state for rendering; `simulation_core` does not depend on Macroquad. The executable
 currently displays a generated map and interactive pathfinding overlays. Settlement
-turns and trade primitives are not connected to a global simulation loop.
+turns can run headlessly through `Simulation`; the graphical loop does not yet
+drive it. Trade matching and caravan travel remain outside the coordinator.
 
 `domain/`, `services/`, `world_data/` and the separate top-level `geography/`
 directories are removed. World-related models, generation and navigation now live
@@ -54,6 +57,12 @@ technical layers.
 ## Finding an operation
 
 ```text
+simulation/
+├── mod.rs                     State, validation, registry access and decision queue
+├── decisions.rs               Typed commands, dispatch and rejection outcomes
+├── turn.rs                    Global phase execution and turn progression
+└── turn_report.rs             Completed turn, settlement reports and execution trace
+
 settlement/
 ├── mod.rs                     State, constructor and read-only views
 ├── commands/
@@ -61,7 +70,7 @@ settlement/
 │   ├── inventory.rs           Deposit, withdrawal, capacity and storage order
 │   ├── buildings.rs           Registration, load, activity and productivity
 │   └── projects.rs            Queue construction/upgrades and cancel projects
-├── turn.rs                    Turn sequence and inline aggregate tests
+├── turn.rs                    Shared local/global phases and inline aggregate tests
 ├── project_lifecycle.rs       Validate, reject and finalize projects
 └── *_manager.rs               Internal collections and allocation
 

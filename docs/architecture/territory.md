@@ -87,8 +87,8 @@ missing map layers and unknown province IDs return explicit errors.
 
 This is authoritative world inspection for tools or a future map panel. It is not
 an agent observation and does not apply visibility or historical knowledge.
-Natural deposits, mobile units, the actual click panel and a global turn scheduler
-remain separate features. Adding them must preserve their independent layers:
+Natural deposits, mobile units, and the actual click panel remain separate features. Global turns are coordinated
+by [Simulation](simulation.md). Adding them must preserve their independent layers:
 clearing a construction slot must not remove deposits or units.
 
 Implementation: [registry](../../core/src/world/territory.rs),

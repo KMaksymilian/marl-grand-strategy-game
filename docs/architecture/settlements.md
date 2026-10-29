@@ -229,7 +229,7 @@ Construction sites are checked again before allocation and completion. Invalid c
 ## 8. Limitations and Open Questions
 
 - Recruitment remains unimplemented and is explicitly rejected.
-- There is no cost refund, population change or global turn scheduler. `World::process_settlement_turn` advances one registered settlement.
+- There is no cost refund or automatic population change. `Simulation::step` runs global phases; `World::process_settlement_turn` remains a local convenience entry point. See [simulation.md](simulation.md).
 - Overflow uses a configurable ordered material list. There is no automatic policy choosing this order. Resource maps are private; capacity changes use validated commands.
 
 These limitations describe current code rather than approving final game rules. Policies requiring further decisions are collected in [0001-economy.md](../decisions/0001-economy.md).

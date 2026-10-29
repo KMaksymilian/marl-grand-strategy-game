@@ -1,16 +1,39 @@
-//! Settlement turn sequence and inline tests of aggregate behavior.
+//! Settlement phases shared by local turns and the global coordinator.
 use super::Settlement;
-use super::turn_report::{InventoryTurnReport, TurnReport};
+use super::projects::ProjectOutcome;
+use super::turn_report::{ConsumptionResult, InventoryTurnReport, MaterialTotals, TurnReport};
 use crate::economy::ResourceType;
-use crate::economy::allocation::{AllocationEngine, AllocationRecipient};
+use crate::economy::allocation::{AllocationEngine, AllocationRecipient, AllocationResult};
 use crate::trade::allocation::TradeAllocationEngine;
 use crate::world::map::Map;
 use crate::world::pathfinding::path_finder::PathFinder;
 use crate::world::territory::TerritoryManager;
 use std::collections::HashMap;
 
+pub(crate) struct PreparedTurn {
+    projects: Vec<ProjectOutcome>,
+    opening_stock: MaterialTotals,
+}
+
+pub(crate) struct AllocatedTurn {
+    projects: Vec<ProjectOutcome>,
+    allocations: AllocationResult,
+    inventory: InventoryTurnReport,
+}
+
+pub(crate) struct ConsumedTurn {
+    allocated: AllocatedTurn,
+    consumption: ConsumptionResult,
+}
+
+pub(crate) struct ProducedTurn {
+    consumed: ConsumedTurn,
+    produced: HashMap<ResourceType, u64>,
+    returned: HashMap<ResourceType, u64>,
+}
+
 impl Settlement {
-    /// Refreshes route costs from the current map before any economic allocation.
+    /// Local convenience entry point using the same phases as Simulation.
     /// Reuse the same spatial registry supplied to construction commands.
     pub fn process_turn(
         &mut self,
@@ -18,45 +41,106 @@ impl Settlement {
         finder: &mut PathFinder,
         territory: &mut TerritoryManager,
     ) -> TurnReport {
+        let prepared = self.prepare_turn(map, finder, territory);
+        let allocated = self.allocate_turn(prepared);
+        let consumed = self.consume_turn(allocated);
+        self.progress_construction(&consumed);
+        let produced = self.produce_turn(consumed);
+        self.finish_turn(produced, map, finder, territory)
+    }
+
+    pub(crate) fn prepare_turn(
+        &mut self,
+        map: &Map,
+        finder: &mut PathFinder,
+        territory: &mut TerritoryManager,
+    ) -> PreparedTurn {
         self.building_manager.refresh_productivity(map, finder);
         let opening_stock = InventoryTurnReport::snapshot(
             &self.inventory_manager.main,
             &self.inventory_manager.pending_production,
         );
-        // Invalid projects must not participate in material allocation.
-        let mut projects = self.reject_invalid_projects(map, territory);
-        // Labour update
+        let projects = self.reject_invalid_projects(map, territory);
         self.inventory_manager
             .refresh_labor_capacity(self.population_manager.population);
-
-        // 0. TradeBook phase
-        let demands: (HashMap<ResourceType, u32>, u32) = self.book.calculate_demand();
+        let demands = self.book.calculate_demand();
         TradeAllocationEngine::execute(
             &mut self.book,
             &mut self.gold_inventory,
             &mut self.inventory_manager.main,
             demands,
         );
+        PreparedTurn {
+            projects,
+            opening_stock,
+        }
+    }
 
-        // 1. Demand phase
+    pub(crate) fn allocate_turn(&mut self, prepared: PreparedTurn) -> AllocatedTurn {
         let mut requests = Vec::new();
         requests.extend(self.population_manager.generate_requests());
         requests.extend(self.project_manager.generate_requests());
         requests.extend(self.building_manager.generate_requests());
-
-        // 2. Allocation phase
         let allocations = AllocationEngine::execute(&mut self.inventory_manager.main, requests);
-        let mut inventory = InventoryTurnReport::from_allocations(opening_stock, &allocations);
+        let inventory = InventoryTurnReport::from_allocations(prepared.opening_stock, &allocations);
+        AllocatedTurn {
+            projects: prepared.projects,
+            allocations,
+            inventory,
+        }
+    }
 
-        // 3. Consumption and production phase
-        let consumption_result = self
+    pub(crate) fn consume_turn(&mut self, allocated: AllocatedTurn) -> ConsumedTurn {
+        let consumption = self
             .population_manager
-            .process_allocation(allocations.get(&AllocationRecipient::Population));
-        self.project_manager.process_allocation(&allocations);
-        let (produced, returned) = self.building_manager.process_allocations(&allocations);
-        inventory.record_production(&produced, &returned);
+            .process_allocation(allocated.allocations.get(&AllocationRecipient::Population));
+        ConsumedTurn {
+            allocated,
+            consumption,
+        }
+    }
 
-        // 4. Collecting phase
+    pub(crate) fn progress_construction(&mut self, consumed: &ConsumedTurn) {
+        self.project_manager
+            .process_allocation(&consumed.allocated.allocations);
+    }
+
+    pub(crate) fn produce_turn(&mut self, mut consumed: ConsumedTurn) -> ProducedTurn {
+        let (produced, returned) = self
+            .building_manager
+            .process_allocations(&consumed.allocated.allocations);
+        consumed
+            .allocated
+            .inventory
+            .record_production(&produced, &returned);
+        ProducedTurn {
+            consumed,
+            produced,
+            returned,
+        }
+    }
+
+    pub(crate) fn finish_turn(
+        &mut self,
+        produced: ProducedTurn,
+        map: &Map,
+        finder: &mut PathFinder,
+        territory: &mut TerritoryManager,
+    ) -> TurnReport {
+        let ProducedTurn {
+            consumed,
+            produced,
+            returned,
+        } = produced;
+        let ConsumedTurn {
+            allocated,
+            consumption,
+        } = consumed;
+        let AllocatedTurn {
+            mut projects,
+            mut inventory,
+            ..
+        } = allocated;
         inventory.losses = self
             .inventory_manager
             .process_production_results(produced, returned);
@@ -67,20 +151,17 @@ impl Settlement {
             &self.inventory_manager.main,
             &self.inventory_manager.pending_production,
         );
-
-        // 5. Project finalization phase
         projects.extend(self.resolve_completed_projects(map, finder, territory));
-
-        // 6. TradeBook remaining resources phase
-        let returned: (HashMap<ResourceType, u32>, u32) = self.book.return_resources();
+        // Preserve the existing local accounting boundary: trade returns occur
+        // after the closing stock snapshot and are not covered by is_balanced().
+        let returned = self.book.return_resources();
         TradeAllocationEngine::execute_remained_resources(
             &mut self.gold_inventory,
             &mut self.inventory_manager.main,
             returned,
         );
-
         TurnReport {
-            consumption: consumption_result,
+            consumption,
             projects,
             inventory,
         }

@@ -1,4 +1,5 @@
 //! Run with: cargo run -p simulation_core --example headless -- 100
+use simulation_core::ids::SettlementId;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -28,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         min_population: 1,
         needs_per_capita: HashMap::from([(Grain, 1)]),
     }]));
-    let mut settlement = Settlement::new(1, 100, 1, needs);
+    let mut settlement = Settlement::new(SettlementId(1), 100, 1, needs);
     settlement.deposit(Grain, 1);
     world
         .add_settlement(0, settlement)
@@ -48,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("valid example building");
     building.set_target_load(1.0).expect("valid load");
     world
-        .add_building(1, building, &mut PathFinder::new(1, 1))
+        .add_building(SettlementId(1), building, &mut PathFinder::new(1, 1))
         .expect("valid example placement");
     let mut simulation = Simulation::new(world)?;
     for _ in 0..turns {
@@ -59,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         simulation.current_turn(),
         simulation
             .world()
-            .settlement(1)
+            .settlement(SettlementId(1))
             .expect("registered settlement")
             .inventory()
             .amount(Grain)

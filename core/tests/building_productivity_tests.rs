@@ -1,3 +1,4 @@
+use simulation_core::ids::SettlementId;
 use simulation_core::world::map as core_map;
 use simulation_core::world::pathfinding::path_finder as test_path;
 use simulation_core::world::terrain::area as test_area;
@@ -49,7 +50,7 @@ fn calculator(capital_x: i32, full_steps: u32, zero_steps: u32) -> BuildingProdu
 }
 
 fn settlement_at(position: Position, territory: &mut TerritoryManager) -> Settlement {
-    let mut settlement = Settlement::new(1, 200, 10, Arc::default());
+    let mut settlement = Settlement::new(SettlementId(1), 200, 10, Arc::default());
     let mut building = Building::new(BuildingId(7), position, definition(10, 10, 20)).unwrap();
     building.set_target_load(1.0).unwrap();
     settlement
@@ -87,7 +88,7 @@ fn distance_reduces_output_without_discounting_materials_or_workers() {
 #[test]
 fn configured_calculator_applies_to_buildings_added_later() {
     let mut territory = TerritoryManager::default();
-    let mut settlement = Settlement::new(1, 100, 10, Arc::default());
+    let mut settlement = Settlement::new(SettlementId(1), 100, 10, Arc::default());
     settlement.set_building_productivity_calculator(
         Some(calculator(0, 10, 30)),
         &test_map(),
@@ -225,7 +226,7 @@ fn zero_load_and_inactive_buildings_do_not_consume_materials() {
 #[test]
 fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
     let mut territory = TerritoryManager::default();
-    let mut settlement = Settlement::new(1, 100, 10, Arc::default());
+    let mut settlement = Settlement::new(SettlementId(1), 100, 10, Arc::default());
     settlement.set_building_productivity_calculator(
         Some(calculator(0, 10, 30)),
         &test_map(),
@@ -282,7 +283,7 @@ fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
 #[test]
 fn output_rounds_once_after_combining_staffing_and_distance() {
     let mut territory = TerritoryManager::default();
-    let mut settlement = Settlement::new(1, 100, 1, Arc::default());
+    let mut settlement = Settlement::new(SettlementId(1), 100, 1, Arc::default());
     settlement.set_building_productivity_calculator(
         Some(calculator(0, 0, 3)),
         &test_map(),
@@ -334,7 +335,7 @@ fn map_changes_update_output_using_the_current_astar_route_each_turn() {
     let mut territory = TerritoryManager::default();
     let mut map = core_map::Map::new(3, 3, vec![test_area::Area::new(0.5, 0.5); 9], vec![0; 9]);
     let mut finder = test_path::PathFinder::new(3, 3);
-    let mut settlement = Settlement::new(1, 200, 10, Arc::default());
+    let mut settlement = Settlement::new(SettlementId(1), 200, 10, Arc::default());
     let context = BuildingProductivityCalculator::new(
         Position { x: 0, y: 1 },
         TravelCostEfficiencyPolicy::new(20, 36).unwrap(),

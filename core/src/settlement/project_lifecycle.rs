@@ -4,6 +4,7 @@ use super::building_manager::BuildingManager;
 use super::projects::{ProjectCompletion, ProjectError, ProjectOutcome, ProjectResult};
 use crate::buildings::Building;
 use crate::ids::ProjectId;
+use crate::ids::SettlementId;
 use crate::world::map::Map;
 use crate::world::pathfinding::path_finder::PathFinder;
 use crate::world::territory::{
@@ -151,7 +152,7 @@ impl Settlement {
     }
 
     fn validate_project_site(
-        settlement_id: u32,
+        settlement_id: SettlementId,
         project_id: ProjectId,
         result: &ProjectResult,
         map: &Map,
@@ -174,7 +175,7 @@ impl Settlement {
     }
 
     fn release_project_site(
-        settlement_id: u32,
+        settlement_id: SettlementId,
         project_id: ProjectId,
         result: &ProjectResult,
         territory: &mut TerritoryManager,

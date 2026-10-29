@@ -11,7 +11,7 @@ This document describes the implemented settlement model. Accounting rules are d
 
 | `Settlement` field | Type | Responsibility |
 | --- | --- | --- |
-| `id` | `u32` | Settlement identity |
+| `id` | `SettlementId` | Immutable identity within the world's registry |
 | `inventory_manager` | `SettlementInventoryManager` | Warehouse and production buffer |
 | `building_manager` | `BuildingManager` | Building collection, productivity calculator, requests, production and upgrades |
 | `population_manager` | `PopulationManager` | Population count, needs registry and grant evaluation |
@@ -20,7 +20,7 @@ This document describes the implemented settlement model. Accounting rules are d
 ```mermaid
 classDiagram
     class Settlement {
-        -u32 id
+        -SettlementId id
         -SettlementInventoryManager inventory_manager
         -BuildingManager building_manager
         -PopulationManager population_manager
@@ -63,7 +63,7 @@ classDiagram
     ProjectManager *-- Project
 ```
 
-`Settlement::new(id, initial_capacity, initial_population, need_registry)` creates an empty warehouse and buffer with the requested capacity, no buildings or projects, no distance penalty (`BuildingManager.productivity_calculator = None`), and a population manager with a shared `Arc<NeedRegistry>`.
+`Settlement::new(id: SettlementId, initial_capacity, initial_population, need_registry)` creates an empty warehouse and buffer with the requested capacity, no buildings or projects, no distance penalty (`BuildingManager.productivity_calculator = None`), and a population manager with a shared `Arc<NeedRegistry>`. The world's `SettlementRegistry` rejects duplicate identities and supplies stable iteration. `Simulation::initialize_settlement` can allocate an unused ID and register a new settlement in one operation; see [simulation.md](simulation.md).
 
 Each settlement owns an independent ordered storage list. `set_storage_order(materials: impl AsRef<[ResourceType]>)` validates it against the material catalogue; `storage_order()` returns a read-only slice. No numerical priority weights are stored. See [economy.md](economy.md).
 

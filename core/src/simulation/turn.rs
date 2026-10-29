@@ -14,12 +14,11 @@ impl Simulation {
             .current_turn
             .checked_add(1)
             .ok_or(SimulationError::TurnOverflow)?;
-        let mut ids: Vec<_> = self
+        let ids: Vec<_> = self
             .world
             .settlements()
             .map(|settlement| settlement.id())
             .collect();
-        ids.sort_unstable();
         for &id in &ids {
             self.world
                 .validate_settlement_turn(id)
@@ -143,6 +142,7 @@ impl Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ids::SettlementId;
     use crate::world::{Map, Province, World, terrain::area::Area};
 
     #[test]
@@ -169,12 +169,12 @@ mod tests {
             construction_cost: ProjectCost::default(),
         });
         for (province, id, x) in [(10, 1, 0), (20, 2, 1)] {
-            let mut settlement = Settlement::new(id, 100, 0, Arc::default());
+            let mut settlement = Settlement::new(SettlementId(id), 100, 0, Arc::default());
             settlement.deposit(Wood, 5);
             world.add_settlement(province, settlement).unwrap();
             world
                 .queue_construction(
-                    id,
+                    SettlementId(id),
                     ProjectId(7),
                     Position { x, y: 0 },
                     definition.clone(),
@@ -188,18 +188,21 @@ mod tests {
         world.map.territory[1] = 10;
         let mut simulation = Simulation::new(world).unwrap();
         simulation
-            .queue_decision(1, SettlementDecision::CancelProject(ProjectId(7)))
+            .queue_decision(
+                SettlementId(1),
+                SettlementDecision::CancelProject(ProjectId(7)),
+            )
             .unwrap();
         for _ in 0..2 {
             assert!(matches!(
                 simulation.step(),
                 Err(SimulationError::World {
-                    settlement_id: 2,
+                    settlement_id: SettlementId(2),
                     error: WorldError::SettlementOutsideProvince { .. }
                 })
             ));
             assert_eq!(simulation.current_turn(), 0);
-            assert_eq!(simulation.pending_decisions[&1].len(), 1);
+            assert_eq!(simulation.pending_decisions[&SettlementId(1)].len(), 1);
             for settlement in simulation.settlements() {
                 assert_eq!(settlement.inventory().amount(Wood), 5);
                 assert_eq!(
@@ -215,13 +218,17 @@ mod tests {
         assert!(
             simulation
                 .world()
-                .settlement(1)
+                .settlement(SettlementId(1))
                 .unwrap()
                 .active_projects()
                 .is_empty()
         );
         assert_eq!(
-            simulation.world().settlement(2).unwrap().active_projects()[0]
+            simulation
+                .world()
+                .settlement(SettlementId(2))
+                .unwrap()
+                .active_projects()[0]
                 .remaining_cost()
                 .turn_cost,
             1
@@ -239,12 +246,17 @@ mod tests {
         simulation
             .add_settlement(
                 0,
-                crate::settlement::Settlement::new(1, 100, 0, std::sync::Arc::default()),
+                crate::settlement::Settlement::new(
+                    SettlementId(1),
+                    100,
+                    0,
+                    std::sync::Arc::default(),
+                ),
             )
             .unwrap();
         simulation
             .queue_decision(
-                1,
+                SettlementId(1),
                 super::super::SettlementDecision::CancelProject(crate::ids::ProjectId(7)),
             )
             .unwrap();
@@ -254,6 +266,6 @@ mod tests {
             SimulationError::TurnOverflow
         );
         assert_eq!(simulation.current_turn(), u64::MAX);
-        assert_eq!(simulation.pending_decisions[&1].len(), 1);
+        assert_eq!(simulation.pending_decisions[&SettlementId(1)].len(), 1);
     }
 }

@@ -1,31 +1,34 @@
+use crate::ids::SettlementId;
 use std::collections::HashMap;
 mod construction;
 mod inspection;
 pub use inspection::TileView;
 
 use super::territory::{TerritoryManager, Tile};
-use crate::settlement::Settlement;
+use crate::settlement::{NeedRegistry, Settlement, registry::SettlementRegistry};
 use crate::trade::caravan::Caravan;
 use crate::world::{Position, coordinates::Point, map::Map, province::Province};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorldError {
+    SettlementIdExhausted,
     Project(crate::settlement::projects::ProjectError),
     Building(crate::settlement::BuildingCommandError),
-    DuplicateSettlement(u32),
-    MissingSettlement(u32),
+    DuplicateSettlement(SettlementId),
+    MissingSettlement(SettlementId),
     /// Importing existing structures requires spatial registration (a later stage).
-    SettlementNotEmpty(u32),
+    SettlementNotEmpty(SettlementId),
     MissingProvince(usize),
     ProvinceOccupied {
         province_id: usize,
-        settlement_id: u32,
+        settlement_id: SettlementId,
     },
     InvalidMapPosition(Position),
     SettlementOutsideProvince {
         province_id: usize,
-        settlement_id: u32,
-        registered_settlement: Option<u32>,
+        settlement_id: SettlementId,
+        registered_settlement: Option<SettlementId>,
     },
 }
 
@@ -34,17 +37,41 @@ pub struct World {
     pub provinces: Vec<Province>,
     pub caravans: Vec<Caravan>,
     territory: TerritoryManager,
-    settlements: HashMap<u32, Settlement>,
-    province_settlements: HashMap<usize, u32>,
+    settlements: SettlementRegistry,
+    province_settlements: HashMap<usize, SettlementId>,
 }
 impl World {
+    /// Initializes and registers an empty settlement with an unused ID.
+    /// A failed registration does not consume that ID.
+    pub fn initialize_settlement(
+        &mut self,
+        province_id: usize,
+        initial_capacity: u32,
+        initial_population: u32,
+        need_registry: Arc<NeedRegistry>,
+    ) -> Result<SettlementId, WorldError> {
+        let id = self
+            .settlements
+            .next_id()
+            .ok_or(WorldError::SettlementIdExhausted)?;
+        self.add_settlement(
+            province_id,
+            Settlement::new(id, initial_capacity, initial_population, need_registry),
+        )?;
+        Ok(id)
+    }
+
+    pub fn settlement_registry(&self) -> &SettlementRegistry {
+        &self.settlements
+    }
+
     /// Internal split borrow for coordinated phases; never exposes mutable collections publicly.
     pub(crate) fn settlement_turn_parts(
         &mut self,
-        settlement_id: u32,
+        settlement_id: SettlementId,
     ) -> Option<(&mut Settlement, &Map, &mut TerritoryManager)> {
         Some((
-            self.settlements.get_mut(&settlement_id)?,
+            self.settlements.get_mut(settlement_id)?,
             &self.map,
             &mut self.territory,
         ))
@@ -56,7 +83,7 @@ impl World {
             provinces,
             caravans: Vec::new(),
             territory: TerritoryManager::default(),
-            settlements: HashMap::new(),
+            settlements: SettlementRegistry::default(),
             province_settlements: HashMap::new(),
         }
     }
@@ -69,7 +96,7 @@ impl World {
         settlement: Settlement,
     ) -> Result<(), WorldError> {
         let id = settlement.id();
-        if self.settlements.contains_key(&id) {
+        if self.settlements.get(id).is_some() {
             return Err(WorldError::DuplicateSettlement(id));
         }
         if let Some(settlement_id) = self.province_settlement(province_id)? {
@@ -81,17 +108,19 @@ impl World {
         if settlement.buildings().next().is_some() || !settlement.active_projects().is_empty() {
             return Err(WorldError::SettlementNotEmpty(id));
         }
-        self.settlements.insert(id, settlement);
+        self.settlements
+            .register(settlement)
+            .map_err(WorldError::DuplicateSettlement)?;
         self.province_settlements.insert(province_id, id);
         Ok(())
     }
 
-    pub fn settlement(&self, id: u32) -> Option<&Settlement> {
-        self.settlements.get(&id)
+    pub fn settlement(&self, id: SettlementId) -> Option<&Settlement> {
+        self.settlements.get(id)
     }
 
     pub fn settlements(&self) -> impl Iterator<Item = &Settlement> {
-        self.settlements.values()
+        self.settlements.iter()
     }
 
     /// Shared access only: mutations will be coordinated with settlements.
@@ -100,7 +129,10 @@ impl World {
     }
 
     /// Returns the settlement ID in a province, or None for an empty province.
-    pub fn province_settlement(&self, province_id: usize) -> Result<Option<u32>, WorldError> {
+    pub fn province_settlement(
+        &self,
+        province_id: usize,
+    ) -> Result<Option<SettlementId>, WorldError> {
         if !self
             .provinces
             .iter()
@@ -126,7 +158,7 @@ impl World {
         Ok(self
             .province_settlements
             .get(&province_id)
-            .and_then(|id| self.settlements.get(id)))
+            .and_then(|id| self.settlements.get(*id)))
     }
 
     /// Unlike the standalone registry, this read rejects invalid map positions.
@@ -138,10 +170,10 @@ impl World {
     /// Checks that the position belongs to the settlement's province.
     pub fn validate_settlement_position(
         &self,
-        settlement_id: u32,
+        settlement_id: SettlementId,
         position: Position,
     ) -> Result<(), WorldError> {
-        if !self.settlements.contains_key(&settlement_id) {
+        if self.settlements.get(settlement_id).is_none() {
             return Err(WorldError::MissingSettlement(settlement_id));
         }
         let province_id = self.province_at(position)?;
@@ -170,6 +202,7 @@ mod tests {
     use super::*;
     use crate::buildings::definition::BuildingDefinition;
     use crate::ids::ProjectId;
+    use crate::ids::SettlementId;
     use crate::settlement::projects::ProjectCost;
     use crate::world::terrain::area::Area;
     use crate::world::territory::TerritoryManager;
@@ -190,7 +223,7 @@ mod tests {
     }
 
     fn settlement(id: u32) -> Settlement {
-        Settlement::new(id, 100, 0, Arc::default())
+        Settlement::new(SettlementId(id), 100, 0, Arc::default())
     }
 
     #[test]
@@ -222,10 +255,10 @@ mod tests {
                 assert_eq!(world.province_at(position), Ok(province));
                 assert_eq!(
                     world.settlement_at(position).unwrap().unwrap().id(),
-                    settlement_id
+                    SettlementId(settlement_id)
                 );
                 assert_eq!(
-                    world.validate_settlement_position(settlement_id, position),
+                    world.validate_settlement_position(SettlementId(settlement_id), position),
                     Ok(())
                 );
             }
@@ -250,7 +283,7 @@ mod tests {
             world.add_settlement(10, settlement(2)),
             Err(WorldError::ProvinceOccupied {
                 province_id: 10,
-                settlement_id: 1
+                settlement_id: SettlementId(1)
             })
         );
         assert_eq!(
@@ -259,28 +292,28 @@ mod tests {
         );
         assert_eq!(world.province_settlements, before);
         assert_eq!(world.settlements().count(), 1);
-        assert!(world.settlement(2).is_none());
-        assert!(world.settlement(3).is_none());
+        assert!(world.settlement(SettlementId(2)).is_none());
+        assert!(world.settlement(SettlementId(3)).is_none());
     }
 
     #[test]
     fn settlement_cannot_be_registered_in_a_second_province() {
         let mut world = world();
         world
-            .add_settlement(10, Settlement::new(1, 100, 7, Arc::default()))
+            .add_settlement(10, Settlement::new(SettlementId(1), 100, 7, Arc::default()))
             .unwrap();
         for province_id in [10, 20] {
             assert_eq!(
                 world.add_settlement(province_id, settlement(1)),
-                Err(WorldError::DuplicateSettlement(1))
+                Err(WorldError::DuplicateSettlement(SettlementId(1)))
             );
         }
-        assert_eq!(world.settlement(1).unwrap().population(), 7);
+        assert_eq!(world.settlement(SettlementId(1)).unwrap().population(), 7);
         assert_eq!(world.settlements().count(), 1);
-        assert_eq!(world.province_settlement(10), Ok(Some(1)));
+        assert_eq!(world.province_settlement(10), Ok(Some(SettlementId(1))));
         assert_eq!(world.province_settlement(20), Ok(None));
         assert_eq!(world.province_settlements.len(), 1);
-        assert!(world.settlement(99).is_none());
+        assert!(world.settlement(SettlementId(99)).is_none());
     }
 
     #[test]
@@ -308,7 +341,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             world.add_settlement(10, settlement),
-            Err(WorldError::SettlementNotEmpty(1))
+            Err(WorldError::SettlementNotEmpty(SettlementId(1)))
         );
         assert_eq!(world.settlements().count(), 0);
         assert!(world.province_settlements.is_empty());
@@ -343,9 +376,9 @@ mod tests {
             .unwrap();
         assert_eq!(
             world.add_settlement(10, settlement),
-            Err(WorldError::SettlementNotEmpty(1))
+            Err(WorldError::SettlementNotEmpty(SettlementId(1)))
         );
-        assert!(world.settlement(1).is_none());
+        assert!(world.settlement(SettlementId(1)).is_none());
         assert_eq!(world.province_settlement(10), Ok(None));
         assert_eq!(
             world.tile_at(position).unwrap().occupancy(),
@@ -359,21 +392,21 @@ mod tests {
         world.add_settlement(30, settlement(1)).unwrap();
         world.add_settlement(10, settlement(2)).unwrap();
         for (position, province_id, registered_settlement) in [
-            (Position { x: 0, y: 0 }, 10, Some(2)),
+            (Position { x: 0, y: 0 }, 10, Some(SettlementId(2))),
             (Position { x: 1, y: 0 }, 20, None),
         ] {
             assert_eq!(
-                world.validate_settlement_position(1, position),
+                world.validate_settlement_position(SettlementId(1), position),
                 Err(WorldError::SettlementOutsideProvince {
                     province_id,
-                    settlement_id: 1,
+                    settlement_id: SettlementId(1),
                     registered_settlement
                 })
             );
         }
         assert_eq!(
-            world.validate_settlement_position(99, Position { x: 0, y: 0 }),
-            Err(WorldError::MissingSettlement(99))
+            world.validate_settlement_position(SettlementId(99), Position { x: 0, y: 0 }),
+            Err(WorldError::MissingSettlement(SettlementId(99)))
         );
     }
 

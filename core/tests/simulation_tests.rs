@@ -1,3 +1,4 @@
+use simulation_core::ids::SettlementId;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -42,7 +43,7 @@ fn world(order: &[u32]) -> World {
             min_population: 1,
             needs_per_capita: HashMap::from([(Grain, 1)]),
         }]));
-        let mut settlement = Settlement::new(id, 100, 1, registry);
+        let mut settlement = Settlement::new(SettlementId(id), 100, 1, registry);
         settlement.deposit(Wood, 10);
         world
             .add_settlement(if id == 1 { 10 } else { 20 }, settlement)
@@ -57,7 +58,9 @@ fn world(order: &[u32]) -> World {
         )
         .unwrap();
         building.set_target_load(1.0).unwrap();
-        world.add_building(id, building, &mut finder).unwrap();
+        world
+            .add_building(SettlementId(id), building, &mut finder)
+            .unwrap();
     }
     world
 }
@@ -82,7 +85,7 @@ fn global_phases_finish_for_all_settlements_in_stable_id_order() {
         TurnPhase::EconomicUpdates,
     ]
     .into_iter()
-    .flat_map(|phase| [(phase, 1), (phase, 2)])
+    .flat_map(|phase| [(phase, SettlementId(1)), (phase, SettlementId(2))])
     .collect();
     assert_eq!(actual, expected);
     assert_eq!(report.turn, 1);
@@ -104,13 +107,13 @@ fn insertion_order_does_not_change_reports_or_world_results() {
             assert_eq!(
                 first
                     .world()
-                    .settlement(id)
+                    .settlement(SettlementId(id))
                     .unwrap()
                     .inventory()
                     .amount(Grain),
                 second
                     .world()
-                    .settlement(id)
+                    .settlement(SettlementId(id))
                     .unwrap()
                     .inventory()
                     .amount(Grain)
@@ -128,10 +131,16 @@ fn global_pipeline_preserves_existing_local_turn_economy() {
         let global = simulation.step().unwrap();
         for id in [1, 2] {
             assert_eq!(
-                global.settlements[&id],
-                local.process_settlement_turn(id, &mut finder).unwrap()
+                global.settlements[&SettlementId(id)],
+                local
+                    .process_settlement_turn(SettlementId(id), &mut finder)
+                    .unwrap()
             );
-            assert!(global.settlements[&id].inventory.is_balanced());
+            assert!(
+                global.settlements[&SettlementId(id)]
+                    .inventory
+                    .is_balanced()
+            );
         }
     }
 }
@@ -141,13 +150,15 @@ fn production_is_available_to_consumption_on_the_next_turn() {
     let mut simulation = Simulation::new(world(&[1])).unwrap();
     let first = simulation.step().unwrap();
     assert_eq!(
-        first.settlements[&1].consumption.missing_resources,
+        first.settlements[&SettlementId(1)]
+            .consumption
+            .missing_resources,
         vec![Grain]
     );
     assert_eq!(
         simulation
             .world()
-            .settlement(1)
+            .settlement(SettlementId(1))
             .unwrap()
             .inventory()
             .amount(Grain),
@@ -155,19 +166,21 @@ fn production_is_available_to_consumption_on_the_next_turn() {
     );
     let second = simulation.step().unwrap();
     assert!(
-        second.settlements[&1]
+        second.settlements[&SettlementId(1)]
             .consumption
             .missing_resources
             .is_empty()
     );
     assert_eq!(
-        second.settlements[&1].inventory.population_consumed[&Grain],
+        second.settlements[&SettlementId(1)]
+            .inventory
+            .population_consumed[&Grain],
         1
     );
     assert_eq!(
         simulation
             .world()
-            .settlement(1)
+            .settlement(SettlementId(1))
             .unwrap()
             .inventory()
             .amount(Grain),
@@ -180,7 +193,7 @@ fn decisions_wait_for_step_apply_in_submission_order_and_are_not_replayed() {
     let mut simulation = Simulation::new(world(&[1])).unwrap();
     simulation
         .queue_decision(
-            1,
+            SettlementId(1),
             SettlementDecision::SetBuildingActive {
                 building_id: BuildingId(7),
                 active: false,
@@ -189,7 +202,7 @@ fn decisions_wait_for_step_apply_in_submission_order_and_are_not_replayed() {
         .unwrap();
     simulation
         .queue_decision(
-            1,
+            SettlementId(1),
             SettlementDecision::SetBuildingActive {
                 building_id: BuildingId(7),
                 active: true,
@@ -198,7 +211,7 @@ fn decisions_wait_for_step_apply_in_submission_order_and_are_not_replayed() {
         .unwrap();
     simulation
         .queue_decision(
-            1,
+            SettlementId(1),
             SettlementDecision::SetBuildingLoad {
                 building_id: BuildingId(7),
                 load: 0.0,
@@ -208,7 +221,7 @@ fn decisions_wait_for_step_apply_in_submission_order_and_are_not_replayed() {
     assert_eq!(
         simulation
             .world()
-            .settlement(1)
+            .settlement(SettlementId(1))
             .unwrap()
             .buildings()
             .next()
@@ -224,11 +237,16 @@ fn decisions_wait_for_step_apply_in_submission_order_and_are_not_replayed() {
             .iter()
             .all(|outcome| outcome.result.is_ok())
     );
-    assert!(report.settlements[&1].inventory.produced.is_empty());
+    assert!(
+        report.settlements[&SettlementId(1)]
+            .inventory
+            .produced
+            .is_empty()
+    );
     assert_eq!(
         simulation
             .world()
-            .settlement(1)
+            .settlement(SettlementId(1))
             .unwrap()
             .inventory()
             .amount(Wood),
@@ -242,7 +260,7 @@ fn invalid_decisions_are_reported_without_aborting_valid_commands_or_the_turn() 
     let mut simulation = Simulation::new(world(&[1])).unwrap();
     simulation
         .queue_decision(
-            1,
+            SettlementId(1),
             SettlementDecision::SetBuildingLoad {
                 building_id: BuildingId(99),
                 load: 1.0,
@@ -251,7 +269,7 @@ fn invalid_decisions_are_reported_without_aborting_valid_commands_or_the_turn() 
         .unwrap();
     simulation
         .queue_decision(
-            1,
+            SettlementId(1),
             SettlementDecision::SetBuildingLoad {
                 building_id: BuildingId(7),
                 load: f32::NAN,
@@ -260,7 +278,7 @@ fn invalid_decisions_are_reported_without_aborting_valid_commands_or_the_turn() 
         .unwrap();
     simulation
         .queue_decision(
-            1,
+            SettlementId(1),
             SettlementDecision::SetBuildingActive {
                 building_id: BuildingId(7),
                 active: false,
@@ -282,7 +300,12 @@ fn invalid_decisions_are_reported_without_aborting_valid_commands_or_the_turn() 
     );
     assert_eq!(report.decisions[2].result, Ok(()));
     assert_eq!(report.turn, 1);
-    assert!(report.settlements[&1].inventory.produced.is_empty());
+    assert!(
+        report.settlements[&SettlementId(1)]
+            .inventory
+            .produced
+            .is_empty()
+    );
 }
 
 #[test]
@@ -290,7 +313,7 @@ fn construction_progresses_once_per_global_turn_and_finishes_after_production() 
     let mut simulation = Simulation::new(world(&[1])).unwrap();
     simulation
         .queue_decision(
-            1,
+            SettlementId(1),
             SettlementDecision::SetBuildingActive {
                 building_id: BuildingId(7),
                 active: false,
@@ -299,7 +322,7 @@ fn construction_progresses_once_per_global_turn_and_finishes_after_production() 
         .unwrap();
     simulation
         .queue_decision(
-            1,
+            SettlementId(1),
             SettlementDecision::Construct {
                 project_id: ProjectId(9),
                 position: Position { x: 1, y: 0 },
@@ -312,22 +335,31 @@ fn construction_progresses_once_per_global_turn_and_finishes_after_production() 
         )
         .unwrap();
     let first = simulation.step().unwrap();
-    assert!(first.settlements[&1].projects.is_empty());
+    assert!(first.settlements[&SettlementId(1)].projects.is_empty());
     assert_eq!(
-        simulation.world().settlement(1).unwrap().active_projects()[0]
+        simulation
+            .world()
+            .settlement(SettlementId(1))
+            .unwrap()
+            .active_projects()[0]
             .remaining_cost()
             .turn_cost,
         1
     );
     let second = simulation.step().unwrap();
     assert_eq!(
-        second.settlements[&1].projects[0].result,
+        second.settlements[&SettlementId(1)].projects[0].result,
         Ok(ProjectCompletion::BuildingConstructed(BuildingId(0)))
     );
-    assert!(second.settlements[&1].inventory.produced.is_empty());
+    assert!(
+        second.settlements[&SettlementId(1)]
+            .inventory
+            .produced
+            .is_empty()
+    );
     simulation
         .queue_decision(
-            1,
+            SettlementId(1),
             SettlementDecision::SetBuildingLoad {
                 building_id: BuildingId(0),
                 load: 1.0,
@@ -335,9 +367,12 @@ fn construction_progresses_once_per_global_turn_and_finishes_after_production() 
         )
         .unwrap();
     let third = simulation.step().unwrap();
-    assert_eq!(third.settlements[&1].inventory.produced[&Grain], 2);
+    assert_eq!(
+        third.settlements[&SettlementId(1)].inventory.produced[&Grain],
+        2
+    );
     assert!(
-        third.settlements[&1]
+        third.settlements[&SettlementId(1)]
             .consumption
             .missing_resources
             .contains(&Grain)
@@ -349,7 +384,7 @@ fn construction_can_be_canceled_in_the_same_decision_phase_without_spending() {
     let mut simulation = Simulation::new(world(&[1])).unwrap();
     simulation
         .queue_decision(
-            1,
+            SettlementId(1),
             SettlementDecision::Construct {
                 project_id: ProjectId(9),
                 position: Position { x: 1, y: 0 },
@@ -362,7 +397,10 @@ fn construction_can_be_canceled_in_the_same_decision_phase_without_spending() {
         )
         .unwrap();
     simulation
-        .queue_decision(1, SettlementDecision::CancelProject(ProjectId(9)))
+        .queue_decision(
+            SettlementId(1),
+            SettlementDecision::CancelProject(ProjectId(9)),
+        )
         .unwrap();
     let report = simulation.step().unwrap();
     assert!(
@@ -371,7 +409,7 @@ fn construction_can_be_canceled_in_the_same_decision_phase_without_spending() {
             .iter()
             .all(|decision| decision.result.is_ok())
     );
-    assert!(report.settlements[&1].projects.is_empty());
+    assert!(report.settlements[&SettlementId(1)].projects.is_empty());
     assert_eq!(
         simulation
             .world()
@@ -383,7 +421,7 @@ fn construction_can_be_canceled_in_the_same_decision_phase_without_spending() {
     assert_eq!(
         simulation
             .world()
-            .settlement(1)
+            .settlement(SettlementId(1))
             .unwrap()
             .inventory()
             .amount(Wood),
@@ -395,17 +433,23 @@ fn construction_can_be_canceled_in_the_same_decision_phase_without_spending() {
 fn registration_uses_the_world_registry_and_unknown_decisions_are_rejected() {
     let mut simulation = Simulation::new(world(&[])).unwrap();
     assert_eq!(
-        simulation.queue_decision(1, SettlementDecision::CancelProject(ProjectId(1))),
-        Err(WorldError::MissingSettlement(1))
+        simulation.queue_decision(
+            SettlementId(1),
+            SettlementDecision::CancelProject(ProjectId(1))
+        ),
+        Err(WorldError::MissingSettlement(SettlementId(1)))
     );
     simulation
-        .add_settlement(10, Settlement::new(1, 100, 0, Arc::default()))
+        .add_settlement(10, Settlement::new(SettlementId(1), 100, 0, Arc::default()))
         .unwrap();
     assert_eq!(simulation.settlements().count(), 1);
-    assert_eq!(simulation.world().province_settlement(10), Ok(Some(1)));
+    assert_eq!(
+        simulation.world().province_settlement(10),
+        Ok(Some(SettlementId(1)))
+    );
     assert!(
         simulation
-            .add_settlement(20, Settlement::new(1, 100, 0, Arc::default()))
+            .add_settlement(20, Settlement::new(SettlementId(1), 100, 0, Arc::default()))
             .is_err()
     );
     assert_eq!(simulation.step().unwrap().settlements.len(), 1);
@@ -472,14 +516,18 @@ fn storage_order_decision_is_applied_before_economic_updates() {
     let mut simulation = Simulation::new(world(&[1])).unwrap();
     simulation
         .queue_decision(
-            1,
+            SettlementId(1),
             SettlementDecision::SetStorageOrder(vec![Grain, Wood, Stone]),
         )
         .unwrap();
     let report = simulation.step().unwrap();
     assert_eq!(report.decisions[0].result, Ok(()));
     assert_eq!(
-        simulation.world().settlement(1).unwrap().storage_order(),
+        simulation
+            .world()
+            .settlement(SettlementId(1))
+            .unwrap()
+            .storage_order(),
         &[Grain, Wood, Stone]
     );
 }
@@ -495,7 +543,7 @@ fn an_upgrade_changes_output_only_after_the_turn_in_which_it_completes() {
     }];
     simulation
         .queue_decision(
-            1,
+            SettlementId(1),
             SettlementDecision::Upgrade {
                 project_id: ProjectId(9),
                 building_id: BuildingId(7),
@@ -505,13 +553,16 @@ fn an_upgrade_changes_output_only_after_the_turn_in_which_it_completes() {
         )
         .unwrap();
     let first = simulation.step().unwrap();
-    assert_eq!(first.settlements[&1].inventory.produced[&Grain], 2);
     assert_eq!(
-        first.settlements[&1].projects[0].result,
+        first.settlements[&SettlementId(1)].inventory.produced[&Grain],
+        2
+    );
+    assert_eq!(
+        first.settlements[&SettlementId(1)].projects[0].result,
         Ok(ProjectCompletion::BuildingUpgraded(BuildingId(7)))
     );
     assert_eq!(
-        simulation.step().unwrap().settlements[&1]
+        simulation.step().unwrap().settlements[&SettlementId(1)]
             .inventory
             .produced[&Grain],
         4
@@ -524,12 +575,15 @@ fn invalid_storage_order_is_reported_and_does_not_replace_the_existing_order() {
     let mut simulation = Simulation::new(world(&[1])).unwrap();
     let before = simulation
         .world()
-        .settlement(1)
+        .settlement(SettlementId(1))
         .unwrap()
         .storage_order()
         .to_vec();
     simulation
-        .queue_decision(1, SettlementDecision::SetStorageOrder(vec![Wood, Wood]))
+        .queue_decision(
+            SettlementId(1),
+            SettlementDecision::SetStorageOrder(vec![Wood, Wood]),
+        )
         .unwrap();
     let report = simulation.step().unwrap();
     assert_eq!(
@@ -539,7 +593,11 @@ fn invalid_storage_order_is_reported_and_does_not_replace_the_existing_order() {
         ))
     );
     assert_eq!(
-        simulation.world().settlement(1).unwrap().storage_order(),
+        simulation
+            .world()
+            .settlement(SettlementId(1))
+            .unwrap()
+            .storage_order(),
         before
     );
 }

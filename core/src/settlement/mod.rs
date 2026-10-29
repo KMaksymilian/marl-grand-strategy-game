@@ -7,6 +7,7 @@ mod population;
 mod project_lifecycle;
 mod project_manager;
 pub mod projects;
+pub mod registry;
 pub mod stat;
 mod turn;
 pub mod turn_report;
@@ -17,7 +18,7 @@ use crate::buildings::Building;
 use crate::buildings::productivity::BuildingProductivityCalculator;
 use crate::economy::ResourceType;
 use crate::economy::gold_inventory::GoldInventory;
-use crate::ids::BuildingId;
+use crate::ids::{BuildingId, SettlementId};
 use crate::trade::book::TradeBook;
 use building_manager::BuildingManager;
 use inventory_manager::SettlementInventoryManager;
@@ -37,12 +38,12 @@ pub enum BuildingCommandError {
 /// Managers are implementation details; public views cannot mutate their collections.
 /// ```compile_fail
 /// use simulation_core::settlement::Settlement;
-/// let mut settlement = Settlement::new(1, 10, 1, std::sync::Arc::default());
+/// let mut settlement = Settlement::new(simulation_core::ids::SettlementId(1), 10, 1, std::sync::Arc::default());
 /// settlement.project_manager.active_projects.clear();
 /// ```
 #[derive(Debug)]
 pub struct Settlement {
-    id: u32,
+    id: SettlementId,
     gold_inventory: GoldInventory,
     inventory_manager: SettlementInventoryManager,
     book: TradeBook,
@@ -53,7 +54,7 @@ pub struct Settlement {
 
 impl Settlement {
     pub fn new(
-        id: u32,
+        id: SettlementId,
         initial_capacity: u32,
         initial_population: u32,
         need_registry: Arc<NeedRegistry>,
@@ -69,7 +70,7 @@ impl Settlement {
         }
     }
 
-    pub fn id(&self) -> u32 {
+    pub fn id(&self) -> SettlementId {
         self.id
     }
 

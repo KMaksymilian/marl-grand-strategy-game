@@ -1,4 +1,5 @@
 //! Headless global turn coordination. World remains the only settlement registry.
+use crate::ids::SettlementId;
 mod decisions;
 mod turn;
 pub mod turn_report;
@@ -9,15 +10,16 @@ pub use turn_report::{PhaseExecution, SimulationTurnReport, TurnPhase};
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
-use crate::settlement::Settlement;
+use crate::settlement::{NeedRegistry, Settlement, registry::SettlementRegistry};
 use crate::world::{World, WorldError, pathfinding::path_finder::PathFinder};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SimulationError {
     InvalidMap,
     TurnOverflow,
     World {
-        settlement_id: u32,
+        settlement_id: SettlementId,
         error: WorldError,
     },
 }
@@ -46,10 +48,36 @@ pub struct Simulation {
     world: World,
     current_turn: u64,
     finder: PathFinder,
-    pending_decisions: BTreeMap<u32, Vec<SettlementDecision>>,
+    pending_decisions: BTreeMap<SettlementId, Vec<SettlementDecision>>,
 }
 
 impl Simulation {
+    /// The same ordered registry used by World and every global phase.
+    pub fn settlement_registry(&self) -> &SettlementRegistry {
+        self.world.settlement_registry()
+    }
+
+    pub fn settlement(&self, id: SettlementId) -> Result<&Settlement, WorldError> {
+        self.world
+            .settlement(id)
+            .ok_or(WorldError::MissingSettlement(id))
+    }
+
+    pub fn initialize_settlement(
+        &mut self,
+        province_id: usize,
+        initial_capacity: u32,
+        initial_population: u32,
+        need_registry: Arc<NeedRegistry>,
+    ) -> Result<SettlementId, WorldError> {
+        self.world.initialize_settlement(
+            province_id,
+            initial_capacity,
+            initial_population,
+            need_registry,
+        )
+    }
+
     /// Takes a configured world. Turn zero means no global turns have completed.
     pub fn new(world: World) -> Result<Self, SimulationError> {
         let map = &world.map;
@@ -103,7 +131,7 @@ impl Simulation {
     /// Queues a command for the next successful step; does not change world state.
     pub fn queue_decision(
         &mut self,
-        settlement_id: u32,
+        settlement_id: SettlementId,
         decision: SettlementDecision,
     ) -> Result<(), WorldError> {
         if self.world.settlement(settlement_id).is_none() {

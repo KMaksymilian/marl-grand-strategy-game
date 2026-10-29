@@ -1,3 +1,4 @@
+use crate::ids::SettlementId;
 use std::sync::Arc;
 
 use super::Simulation;
@@ -42,7 +43,7 @@ pub enum DecisionError {
 
 #[derive(Debug, Clone)]
 pub struct DecisionOutcome {
-    pub settlement_id: u32,
+    pub settlement_id: SettlementId,
     pub decision: SettlementDecision,
     pub result: Result<(), DecisionError>,
 }
@@ -50,7 +51,7 @@ pub struct DecisionOutcome {
 impl Simulation {
     pub(super) fn apply_decision(
         &mut self,
-        settlement_id: u32,
+        settlement_id: SettlementId,
         decision: &SettlementDecision,
     ) -> Result<(), DecisionError> {
         match decision {

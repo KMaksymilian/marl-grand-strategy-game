@@ -33,7 +33,7 @@ file and explicitly implemented runtime method.
 │   │   ├── buildings/               Instances, definitions, catalogue, productivity
 │   │   ├── settlement/              Aggregate state, commands, managers and turns
 │   │   ├── trade/                   Offers, trade books, matching and caravans
-│   │   └── ids.rs                   Typed building and project identifiers
+│   │   └── ids.rs                   Typed settlement, building and project identifiers
 │   ├── examples/headless.rs         Simulation runner without graphics
 │   └── tests/                       Public-interface integration tests
 ├── adapters/src/view/map/           Macroquad rendering and input
@@ -72,6 +72,7 @@ settlement/
 │   └── projects.rs            Queue construction/upgrades and cancel projects
 ├── turn.rs                    Shared local/global phases and inline aggregate tests
 ├── project_lifecycle.rs       Validate, reject and finalize projects
+├── registry.rs                Ordered persistent settlement store and ID allocation
 └── *_manager.rs               Internal collections and allocation
 
 buildings/

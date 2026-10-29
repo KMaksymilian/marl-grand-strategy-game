@@ -1,3 +1,4 @@
+use crate::ids::SettlementId;
 use crate::trade::book::TradeBook;
 use crate::world::pathfinding::{a_star::AStar, path_finder::PathFinder};
 use crate::world::{Map, Point};
@@ -12,8 +13,8 @@ pub enum CaravanState {
 }
 
 pub struct Caravan {
-    pub sender_id: usize,
-    pub receiver_id: usize,
+    pub sender_id: SettlementId,
+    pub receiver_id: SettlementId,
     current_position: Point,
     current_position_idx: usize,
     caravan_state: CaravanState,
@@ -27,8 +28,8 @@ impl Caravan {
     pub fn new(
         map: &Map,
         path_finder: &mut PathFinder,
-        sender_id: usize,
-        receiver_id: usize,
+        sender_id: SettlementId,
+        receiver_id: SettlementId,
         start: Point,
         end: Point,
         book: TradeBook,
@@ -94,15 +95,15 @@ mod tests {
         let caravan = Caravan::new(
             &map,
             &mut finder,
-            100,
-            200,
+            SettlementId(100),
+            SettlementId(200),
             Point(0, 0),
             Point(2, 0),
             TradeBook::default(),
         )
         .unwrap();
-        assert_eq!(caravan.sender_id, 100);
-        assert_eq!(caravan.receiver_id, 200);
+        assert_eq!(caravan.sender_id, SettlementId(100));
+        assert_eq!(caravan.receiver_id, SettlementId(200));
         assert_eq!(caravan.current_position, Point(0, 0));
         assert_eq!(caravan.path, vec![Point(0, 0), Point(1, 0), Point(2, 0)]);
         assert_eq!(caravan.caravan_state, CaravanState::TravelTo);
@@ -118,8 +119,8 @@ mod tests {
                 Caravan::new(
                     &map,
                     &mut finder,
-                    100,
-                    200,
+                    SettlementId(100),
+                    SettlementId(200),
                     Point(0, 0),
                     end,
                     TradeBook::default(),

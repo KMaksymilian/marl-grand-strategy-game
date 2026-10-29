@@ -1,4 +1,5 @@
 //! World entry points validate province membership; settlements own project lifecycle.
+use crate::ids::SettlementId;
 use std::sync::Arc;
 
 use super::{World, WorldError};
@@ -12,11 +13,11 @@ impl World {
     /// Cancellation belongs to the settlement and also works after map edits.
     pub fn cancel_project(
         &mut self,
-        settlement_id: u32,
+        settlement_id: SettlementId,
         project_id: ProjectId,
     ) -> Result<(), WorldError> {
         self.settlements
-            .get_mut(&settlement_id)
+            .get_mut(settlement_id)
             .ok_or(WorldError::MissingSettlement(settlement_id))?
             .cancel_project(project_id, &mut self.territory)
             .map_err(WorldError::Project)
@@ -24,7 +25,7 @@ impl World {
 
     pub fn queue_construction(
         &mut self,
-        settlement_id: u32,
+        settlement_id: SettlementId,
         project_id: ProjectId,
         position: Position,
         definition: Arc<BuildingDefinition>,
@@ -32,7 +33,7 @@ impl World {
     ) -> Result<(), WorldError> {
         self.validate_settlement_position(settlement_id, position)?;
         self.settlements
-            .get_mut(&settlement_id)
+            .get_mut(settlement_id)
             .expect("settlement was validated")
             .queue_construction(
                 project_id,
@@ -47,13 +48,13 @@ impl World {
 
     pub fn add_building(
         &mut self,
-        settlement_id: u32,
+        settlement_id: SettlementId,
         building: Building,
         finder: &mut PathFinder,
     ) -> Result<(), WorldError> {
         self.validate_settlement_position(settlement_id, building.position())?;
         self.settlements
-            .get_mut(&settlement_id)
+            .get_mut(settlement_id)
             .expect("settlement was validated")
             .add_building(building, &self.map, finder, &mut self.territory)
             .map_err(WorldError::Building)
@@ -61,7 +62,7 @@ impl World {
 
     pub fn queue_upgrade(
         &mut self,
-        settlement_id: u32,
+        settlement_id: SettlementId,
         project_id: ProjectId,
         building_id: BuildingId,
         definition: Arc<BuildingDefinition>,
@@ -78,7 +79,7 @@ impl World {
             )))?;
         self.validate_settlement_position(settlement_id, building.position())?;
         self.settlements
-            .get_mut(&settlement_id)
+            .get_mut(settlement_id)
             .expect("settlement was validated")
             .queue_upgrade(project_id, building_id, definition, cost)
             .map_err(WorldError::Project)
@@ -87,18 +88,21 @@ impl World {
     /// Advances one settlement; this does not implement a global world turn scheduler.
     pub fn process_settlement_turn(
         &mut self,
-        settlement_id: u32,
+        settlement_id: SettlementId,
         finder: &mut PathFinder,
     ) -> Result<TurnReport, WorldError> {
         self.validate_settlement_turn(settlement_id)?;
         Ok(self
             .settlements
-            .get_mut(&settlement_id)
+            .get_mut(settlement_id)
             .expect("settlement was validated")
             .process_turn(&self.map, finder, &mut self.territory))
     }
 
-    pub(crate) fn validate_settlement_turn(&self, settlement_id: u32) -> Result<(), WorldError> {
+    pub(crate) fn validate_settlement_turn(
+        &self,
+        settlement_id: SettlementId,
+    ) -> Result<(), WorldError> {
         let settlement = self
             .settlement(settlement_id)
             .ok_or(WorldError::MissingSettlement(settlement_id))?;

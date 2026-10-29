@@ -10,7 +10,7 @@ province membership, then delegate lifecycle changes to that settlement.
 | --- | --- |
 | `Map` | Terrain and the province ID of each grid position |
 | `World::province_settlements` | Optional settlement registered in a province |
-| `World::settlements` | Settlement instances keyed by their existing `u32` IDs |
+| `World::settlements` | One `SettlementRegistry` storing instances in ascending `SettlementId` order |
 | `TerritoryManager::tiles` | Sparse `HashMap<Position, Tile>` of structural occupancy |
 | `Settlement` | Actual building instances and active projects |
 
@@ -26,7 +26,8 @@ not assumed to equal their offsets in `World::provinces`.
 
 `TileOccupancy` is `Empty`, `Construction(ProjectReference)` or
 `Building(BuildingReference)`. References include both settlement ID and local
-project/building ID. Two settlements can therefore use the same local numbers.
+project/building ID. The settlement component is a typed `SettlementId`, independent
+of province indices. Two settlements can therefore use the same local building or project numbers.
 An absent registry entry represents an empty structural slot; it does not imply
 that the position exists on the map. Use the checked world reads for map inspection.
 

@@ -170,6 +170,7 @@ impl Settlement {
 
 #[cfg(test)]
 mod tests {
+    use crate::ids::SettlementId;
     use crate::world::map as core_map;
     use crate::world::pathfinding::path_finder as test_path;
     use crate::world::terrain::area as test_area;
@@ -232,7 +233,7 @@ mod tests {
             BuildingId(id),
             Position {
                 x: id as i32,
-                y: settlement.id() as i32,
+                y: settlement.id().0 as i32,
             },
             definition,
         )
@@ -256,8 +257,8 @@ mod tests {
     #[test]
     fn storage_priorities_are_local_to_each_settlement() {
         let mut territory = TerritoryManager::default();
-        let mut food_first = Settlement::new(1, 3, 1, Arc::default());
-        let mut wood_first = Settlement::new(2, 3, 1, Arc::default());
+        let mut food_first = Settlement::new(SettlementId(1), 3, 1, Arc::default());
+        let mut wood_first = Settlement::new(SettlementId(2), 3, 1, Arc::default());
         food_first
             .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
             .unwrap();
@@ -285,7 +286,7 @@ mod tests {
     #[test]
     fn changing_storage_priority_affects_future_admissions_without_eviction() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 3, 1, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 3, 1, Arc::default());
         settlement
             .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
             .unwrap();
@@ -333,7 +334,7 @@ mod tests {
     #[test]
     fn buffer_and_warehouse_losses_are_reported_without_double_counting() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 5, 1, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 5, 1, Arc::default());
         settlement
             .inventory_manager
             .main
@@ -380,7 +381,7 @@ mod tests {
     #[test]
     fn material_grants_returned_without_workers_are_not_consumption() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 2, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 2, 0, Arc::default());
         settlement.inventory_manager.main.add(ResourceType::Wood, 2);
         add_building(
             &mut settlement,
@@ -403,7 +404,7 @@ mod tests {
     #[test]
     fn combined_building_production_can_exceed_u32_without_wrapping() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, u32::MAX, 2, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), u32::MAX, 2, Arc::default());
         let blueprint = definition(vec![BuildingBehavior::Production {
             inputs: vec![],
             outputs: vec![(ResourceType::Wood, u32::MAX)],
@@ -430,7 +431,7 @@ mod tests {
     #[test]
     fn opening_balance_includes_preexisting_buffer_stock() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 3, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 3, 0, Arc::default());
         settlement
             .inventory_manager
             .main
@@ -465,7 +466,7 @@ mod tests {
         let mut expected = None;
         for order in [[1, 2], [2, 1]] {
             let mut territory = TerritoryManager::default();
-            let mut settlement = Settlement::new(1, 3, 2, Arc::default());
+            let mut settlement = Settlement::new(SettlementId(1), 3, 2, Arc::default());
             for id in order {
                 let output = if id == 1 {
                     ResourceType::Stone
@@ -497,7 +498,7 @@ mod tests {
     #[test]
     fn zero_cost_entries_do_not_block_construction() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 100, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 100, 0, Arc::default());
         settlement
             .queue_construction(
                 ProjectId(10),
@@ -532,7 +533,7 @@ mod tests {
     #[test]
     fn missing_upgrade_target_is_rejected_without_spending_resources() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 100, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 100, 0, Arc::default());
         settlement
             .inventory_manager
             .main
@@ -555,7 +556,7 @@ mod tests {
     #[test]
     fn upgrade_completion_reports_the_existing_building_id() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 100, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 100, 0, Arc::default());
         let old = definition(vec![]);
         let upgraded = definition(vec![]);
         settlement
@@ -608,7 +609,7 @@ mod tests {
     #[test]
     fn removed_upgrade_target_fails_before_further_material_allocation() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 100, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 100, 0, Arc::default());
         add_building(&mut settlement, 1, definition(vec![]), &mut territory);
         settlement
             .queue_upgrade(
@@ -659,7 +660,7 @@ mod tests {
     #[test]
     fn unsupported_recruitment_reports_failure_without_spending() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 100, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 100, 0, Arc::default());
         settlement
             .project_manager
             .add_project(Project::new(
@@ -687,7 +688,7 @@ mod tests {
     #[test]
     fn pending_construction_reports_completion_only_after_cost_and_time_are_paid() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 100, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 100, 0, Arc::default());
         settlement
             .queue_construction(
                 ProjectId(2),
@@ -746,7 +747,7 @@ mod tests {
     #[test]
     fn duplicate_queue_requests_return_an_explicit_error() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 100, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 100, 0, Arc::default());
         add_building(&mut settlement, 1, definition(vec![]), &mut territory);
         settlement
             .queue_construction(
@@ -773,7 +774,7 @@ mod tests {
     #[test]
     fn finalization_checks_upgrade_targets_again() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 100, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 100, 0, Arc::default());
         assert_eq!(
             settlement.finalize_project(
                 ProjectId(0),
@@ -792,7 +793,7 @@ mod tests {
     #[test]
     fn invalid_projects_do_not_take_materials_from_valid_construction() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 100, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 100, 0, Arc::default());
         settlement
             .project_manager
             .add_project(Project::new(
@@ -849,7 +850,7 @@ mod tests {
             min_population: 1,
             needs_per_capita: HashMap::from([(ResourceType::Wood, 1)]),
         }]));
-        let mut settlement = Settlement::new(1, 100, 2, registry);
+        let mut settlement = Settlement::new(SettlementId(1), 100, 2, registry);
         let blueprint = definition(vec![recipe(ResourceType::Wood, ResourceType::Stone)]);
         add_building(&mut settlement, 1, blueprint.clone(), &mut territory);
         settlement
@@ -896,7 +897,7 @@ mod tests {
                 needs_per_capita: HashMap::from([(ResourceType::Grain, 1)]),
             },
         ]));
-        let mut settlement = Settlement::new(1, 100, 1, registry);
+        let mut settlement = Settlement::new(SettlementId(1), 100, 1, registry);
         settlement
             .inventory_manager
             .main
@@ -916,7 +917,7 @@ mod tests {
             min_population: 1,
             needs_per_capita: HashMap::from([(ResourceType::Grain, 1), (ResourceType::Wood, 1)]),
         }]));
-        let mut settlement = Settlement::new(1, 100, 1, registry);
+        let mut settlement = Settlement::new(SettlementId(1), 100, 1, registry);
         settlement
             .inventory_manager
             .main
@@ -942,7 +943,7 @@ mod tests {
     #[test]
     fn building_and_project_with_same_number_have_separate_allocations() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 100, 1, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 100, 1, Arc::default());
         let blueprint = definition(vec![recipe(ResourceType::Wood, ResourceType::Stone)]);
         add_building(&mut settlement, 7, blueprint.clone(), &mut territory);
         settlement
@@ -977,7 +978,7 @@ mod tests {
             min_population: 1,
             needs_per_capita: HashMap::from([(ResourceType::Grain, 1)]),
         }]));
-        let mut settlement = Settlement::new(1, 100, 1, registry);
+        let mut settlement = Settlement::new(SettlementId(1), 100, 1, registry);
         add_building(
             &mut settlement,
             0,
@@ -1010,7 +1011,7 @@ mod tests {
     #[test]
     fn shared_recipe_inputs_are_consumed_only_once() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 100, 1, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 100, 1, Arc::default());
         add_building(
             &mut settlement,
             1,
@@ -1032,7 +1033,7 @@ mod tests {
     #[test]
     fn remaining_single_material_advances_one_of_two_projects() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 100, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 100, 0, Arc::default());
         for id in [1, 2] {
             settlement
                 .queue_construction(
@@ -1065,7 +1066,7 @@ mod tests {
     fn large_project_cost_is_deducted_exactly() {
         let mut territory = TerritoryManager::default();
         let amount = 16_777_219;
-        let mut settlement = Settlement::new(1, u32::MAX, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), u32::MAX, 0, Arc::default());
         settlement
             .queue_construction(
                 ProjectId(1),
@@ -1093,7 +1094,7 @@ mod tests {
     #[test]
     fn production_is_available_for_consumption_in_the_next_turn() {
         let mut territory = TerritoryManager::default();
-        let mut settlement = Settlement::new(1, 100, 2, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 100, 2, Arc::default());
         add_building(
             &mut settlement,
             1,

@@ -71,6 +71,7 @@ mod tests {
     use super::*;
     use crate::buildings::definition::BuildingDefinition;
     use crate::ids::ProjectId;
+    use crate::ids::SettlementId;
     use crate::settlement::projects::ProjectCost;
     use crate::world::{Map, Province, pathfinding::path_finder::PathFinder};
     use std::sync::Arc;
@@ -86,7 +87,7 @@ mod tests {
             vec![Province::new(10), Province::new(20)],
         );
         world
-            .add_settlement(10, Settlement::new(1, 100, 0, Arc::default()))
+            .add_settlement(10, Settlement::new(SettlementId(1), 100, 0, Arc::default()))
             .unwrap();
         world
     }
@@ -110,7 +111,7 @@ mod tests {
         assert_eq!(view.position, position);
         assert!(std::ptr::eq(view.terrain, &world.map.terrain[0]));
         assert_eq!(view.province_id, 10);
-        assert_eq!(view.settlement.unwrap().id(), 1);
+        assert_eq!(view.settlement.unwrap().id(), SettlementId(1));
         assert_eq!(view.tile.occupancy(), TileOccupancy::Empty);
         assert!(view.project.is_none());
         assert!(view.building.is_none());
@@ -132,7 +133,7 @@ mod tests {
         let position = Position { x: 0, y: 0 };
         world
             .queue_construction(
-                1,
+                SettlementId(1),
                 ProjectId(7),
                 position,
                 definition(),
@@ -142,18 +143,23 @@ mod tests {
         let view = world.inspect_tile(position).unwrap();
         assert!(std::ptr::eq(
             view.project.unwrap(),
-            &world.settlement(1).unwrap().active_projects()[0]
+            &world.settlement(SettlementId(1)).unwrap().active_projects()[0]
         ));
         assert!(view.building.is_none());
 
         world
-            .process_settlement_turn(1, &mut PathFinder::new(2, 1))
+            .process_settlement_turn(SettlementId(1), &mut PathFinder::new(2, 1))
             .unwrap();
         let view = world.inspect_tile(position).unwrap();
         assert!(view.project.is_none());
         assert!(std::ptr::eq(
             view.building.unwrap(),
-            world.settlement(1).unwrap().buildings().next().unwrap()
+            world
+                .settlement(SettlementId(1))
+                .unwrap()
+                .buildings()
+                .next()
+                .unwrap()
         ));
         assert_eq!(view.building.unwrap().position(), position);
     }
@@ -164,14 +170,14 @@ mod tests {
         let position = Position { x: 0, y: 0 };
         world
             .queue_construction(
-                1,
+                SettlementId(1),
                 ProjectId(7),
                 position,
                 definition(),
                 ProjectCost::default(),
             )
             .unwrap();
-        world.cancel_project(1, ProjectId(7)).unwrap();
+        world.cancel_project(SettlementId(1), ProjectId(7)).unwrap();
         let view = world.inspect_tile(position).unwrap();
         assert!(view.project.is_none());
         assert!(view.building.is_none());

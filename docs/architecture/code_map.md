@@ -44,6 +44,9 @@ Contains `Simulation` and `SimulationError`; `World` remains the only settlement
 | `current_turn` | Read the number of completed global turns. |
 | `world` | Read the owned world without mutable access. |
 | `settlements` | Read settlements from the world registry. |
+| `settlement_registry` | Read the same ordered persistent registry owned through World. |
+| `settlement` | Look up a typed ID or return `MissingSettlement`. |
+| `initialize_settlement` | Delegate initialization and unique automatic ID allocation. |
 | `add_settlement` | Delegate one-province settlement registration. |
 | `queue_decision` | Queue a known settlement's command for the next successful step. |
 | `into_world` | Recover the world, discarding pending commands. |
@@ -138,6 +141,21 @@ Owns `Settlement`, `BuildingCommandError`, module visibility and re-exports of
 | `buildings`, `active_projects` | Inspect buildings and ongoing projects without mutable collection access. |
 | `building_productivity_calculator` | Inspect the optional travel-cost configuration. |
 | `storage_order` | Borrow the ordered material storage policy. |
+
+### [core/src/settlement/registry.rs](../../core/src/settlement/registry.rs)
+
+`SettlementRegistry` stores persistent instances in `BTreeMap<SettlementId, Settlement>`.
+Only crate-internal world registration/commands can mutate the store.
+
+| Method | Purpose |
+| --- | --- |
+| `default` | Initialize an empty ordered registry and automatic ID candidate zero. |
+| `get` | Look up a settlement by its typed ID. |
+| `iter` | Visit instances in ascending ID order. |
+| `len`, `is_empty` | Read registry cardinality. |
+| `get_mut` | Internally borrow an instance for validated commands or phases. |
+| `next_id` | Read the next unregistered automatic ID, or None on exhaustion. |
+| `register` | Reject duplicates, insert the persistent instance and skip occupied ID candidates without overflow. |
 
 ### [core/src/settlement/commands/mod.rs](../../core/src/settlement/commands/mod.rs)
 
@@ -332,7 +350,8 @@ at zero. Currency is separate from warehouse materials.
 
 ### [core/src/ids.rs](../../core/src/ids.rs)
 
-`BuildingId` and `ProjectId` are distinct `u32` tuple types. No explicit methods.
+`SettlementId`, `BuildingId` and `ProjectId` are distinct `u32` tuple types.
+`SettlementId::fmt` formats the numeric ID without conflating it with other ID types.
 
 ## Trade and transport
 
@@ -412,7 +431,9 @@ See [current limitations](trading.md) before using this prototype in a simulatio
 | `new` | Store map/provinces and initialize empty caravans, settlements and territory. |
 | `settlement_turn_parts` | Internally split mutable settlement/territory and shared map borrows for global phases. |
 | `add_settlement` | Register an empty settlement in exactly one existing, unoccupied province. |
-| `settlement`, `settlements` | Read settlement instances; hash-map iteration order is unspecified. |
+| `settlement`, `settlements` | Read settlement instances; iteration follows ascending SettlementId. |
+| `settlement_registry` | Borrow the central registry without public mutation access. |
+| `initialize_settlement` | Allocate an unused ID and register an initialized settlement atomically. |
 | `territory` | Read the global occupancy registry without mutation access. |
 | `province_settlement` | Return the optional settlement ID in an existing province. |
 | `province_at` | Resolve valid map coordinates to an existing province ID. |
@@ -592,6 +613,7 @@ The following files only declare/export modules; they contain no explicit method
 | [core/tests/territory_construction_tests.rs](../../core/tests/territory_construction_tests.rs) | World construction, overlap rejection, placement, upgrades and atomic failures. |
 | [core/tests/project_cancellation_tests.rs](../../core/tests/project_cancellation_tests.rs) | Cancellation, no refunds, upgrade preservation, reservation matching and identifier reuse. |
 | [core/tests/simulation_tests.rs](../../core/tests/simulation_tests.rs) | Global progression/order, decisions, local economic equivalence and headless multi-turn execution. |
+| [core/tests/settlement_registry_tests.rs](../../core/tests/settlement_registry_tests.rs) | Initialization, typed references, duplicates, stable traversal, ID allocation and persistent economic/spatial identity. |
 | [core/examples/headless.rs](../../core/examples/headless.rs) | `main` creates a farm scenario and runs a requested number of turns without graphics. |
 | Inline `#[cfg(test)]` modules | Unit tests alongside the feature they verify, including turn tests in `settlement/turn.rs`. |
 | [.github/workflows/ci.yml](../../.github/workflows/ci.yml) | Rust formatting, Clippy and workspace test checks. |

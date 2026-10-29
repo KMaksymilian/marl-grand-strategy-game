@@ -29,14 +29,14 @@ classDiagram
         +current_turn() u64
     }
     class World {
-        -HashMap settlements
+        -SettlementRegistry settlements
         -HashMap province_settlements
         -TerritoryManager territory
         +add_settlement(province_id, settlement)
         +inspect_tile(position) TileView
     }
     class Settlement {
-        -u32 id
+        -SettlementId id
         +queue_construction(...)
         +queue_upgrade(...)
         +cancel_project(...)
@@ -47,6 +47,13 @@ classDiagram
         +reserve_construction(...)
         +finish_construction(...)
         +cancel_construction(...)
+    }
+    class SettlementRegistry {
+        -BTreeMap settlements
+        -SettlementId next_id
+        +get(id) Settlement
+        +iter()
+        +len() usize
     }
     class PathFinder {
         -Vec nodes
@@ -69,7 +76,8 @@ classDiagram
     Simulation "1" *-- "1" World
     Simulation "1" *-- "1" PathFinder
     Simulation "1" *-- "0..*" SettlementDecision : pending commands
-    World "1" *-- "0..*" Settlement : single registry
+    World "1" *-- "1" SettlementRegistry
+    SettlementRegistry "1" *-- "0..*" Settlement : ascending SettlementId
     World "1" *-- "1" TerritoryManager
     Settlement ..> TerritoryManager : borrows for construction
     Simulation ..> Settlement : invokes global phases
@@ -90,11 +98,48 @@ means no global turns have completed. Each successful `step()` returns a report
 for turn `current_turn + 1` and increments the counter exactly once, including
 for a world with no settlements.
 
+## Settlement registry
+
+`Simulation` owns its single `SettlementRegistry` through `World`. The registry
+stores the actual persistent settlement instances in
+`BTreeMap<SettlementId, Settlement>`. Province-to-settlement links are a spatial
+index, not copies of economic state. `Simulation::settlement_registry()` and
+`World::settlement_registry()` expose the same registry by shared reference.
+
+`SettlementId(pub u32)` is distinct from `BuildingId`, `ProjectId` and province
+indices. Settlement constructors, world commands, queued decisions, reports,
+tile references and caravan participant fields use this type. The caravan
+constructor still only builds a route; it does not validate participants against
+the registry or participate in global stepping.
+
+Two initialization paths are supported:
+
+- `add_settlement(province_id, settlement)` registers a manually initialized
+  settlement with an explicit `SettlementId`, including seeded inventory.
+- `initialize_settlement(province_id, capacity, population, needs)` creates and
+  registers an empty settlement and returns its automatically allocated ID.
+
+Automatic IDs start at zero and skip registered explicit IDs without wrapping.
+Registration failures (including occupied/missing provinces) do not consume an
+ID. Duplicate IDs preserve the existing instance and both spatial/economic state.
+There is no removal command or identifier reuse during a world's lifetime.
+
+`Simulation::settlement(id)` returns `MissingSettlement(id)` for unknown IDs;
+`SettlementRegistry::get(id)` and `World::settlement(id)` provide optional lookups.
+No public mutable registry access can bypass province or occupancy validation.
+Economic/spatial updates continue through the existing settlement commands.
+
+Registry iteration, world/simulation settlement iteration, report keys and phase
+processing all follow ascending `SettlementId`; `step` no longer sorts a hash-map
+snapshot. Recovering the world through `into_world` preserves settlement instances
+and ID allocation, even though a new coordinator's turn counter starts at zero.
+
 ## Global phases
 
 All registered settlements finish one phase before any settlement enters the next.
 Every phase visits settlement IDs in ascending order, independent of registration
-order or `HashMap` iteration. Within a settlement, decisions retain submission order.
+order. The registry supplies this stable order directly. Within a settlement,
+decisions retain submission order.
 
 | Phase | Work |
 | --- | --- |

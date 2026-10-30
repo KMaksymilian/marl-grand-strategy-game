@@ -13,9 +13,12 @@ purchased stock and a maximum price. `calculate_demand()` requests materials for
 sales and quantity multiplied by the maximum price for purchases.
 
 `Settlement::process_turn()` asks `TradeAllocationEngine` to reserve these goods
-and funds before local population/building/project allocation. At the end of the
-turn it drains purchased goods, unsold stock and remaining gold back into the
-settlement inventories. A newly constructed settlement has an empty trade book;
+and funds before local population/building/project allocation. Reserved goods
+leave the warehouse. In the collecting phase it drains purchased goods, unsold
+stock and returned caravan cargo into one batch with the turn's production; that
+batch goes through the production buffer and warehouse in storage order, so trade
+goods and new products compete for space on equal terms. Their losses share the
+`ProductionBuffer`/`Warehouse` stages. Gold goes straight to the treasury. A newly constructed settlement has an empty trade book;
 there are currently no public settlement commands to configure it.
 
 `TradeBook::trade()` matches buy/sell offers in two books when the seller's minimum
@@ -45,12 +48,9 @@ unchanged. In particular:
   accepts a map of offers, but external callers cannot construct populated offer
   values through a supported constructor. There are no settlement market commands.
 - Gold and several price/quantity operations use unchecked `u32` arithmetic.
-- Reserved trade goods, purchases and trade overflow are not represented in
-  `InventoryTurnReport`. Its opening snapshot precedes reservations, and its
-  closing snapshot precedes trade returns. `is_balanced()` therefore does not
-  establish conservation for turns with nonempty trade activity.
-- Returned goods use direct inventory insertion; rejected quantities are ignored
-  and do not follow the settlement manager's ordered batch admission/reporting.
+- Losses of returned trade goods cannot be told apart from production losses of
+  the same material; `InventoryTurnReport` covers them with `trade_reserved` and
+  `trade_received`, so `is_balanced()` still holds.
 - `travel_back()` subtracts the movement step before checking the lower bound,
   which can underflow near the route origin.
 - Routes are fixed after creation. No rerouting, cargo capacity, arrival dispatch,

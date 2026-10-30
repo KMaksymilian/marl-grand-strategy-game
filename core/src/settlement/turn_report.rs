@@ -13,8 +13,6 @@ pub enum InventoryLossStage {
     Returns,
     ProductionBuffer,
     Warehouse,
-    /// Goods coming back from the trade book or a returning caravan.
-    TradeReturns,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,9 +175,10 @@ pub struct ReturnedCaravan {
 
 /// Trade activity of one settlement turn.
 ///
-/// Material flows are also part of `InventoryTurnReport` (`trade_reserved`,
-/// `trade_received` and losses with stage `TradeReturns`), so `is_balanced()`
-/// covers trade. Gold is reported only here.
+/// Material flows are also part of `InventoryTurnReport` (`trade_reserved` and
+/// `trade_received`), so `is_balanced()` covers trade. Returned goods are stored
+/// together with production, so their losses appear there with the same stages.
+/// Gold is reported only here.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TradeTurnReport {
     /// Stock and gold reserved by the local market book.
@@ -197,8 +196,6 @@ pub struct TradeTurnReport {
     pub received: MaterialTotals,
     /// Gold returned from the market book and returning caravans.
     pub gold_received: u64,
-    /// Returned materials rejected by a full warehouse.
-    pub lost: MaterialTotals,
 }
 
 impl TradeTurnReport {

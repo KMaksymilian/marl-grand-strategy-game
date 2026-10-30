@@ -72,19 +72,6 @@ impl SettlementInventoryManager {
         )
     }
 
-    /// Trade goods go straight to the warehouse in storage order.
-    pub fn admit_trade_returns(
-        &mut self,
-        returned: HashMap<ResourceType, u64>,
-    ) -> Vec<InventoryLoss> {
-        Self::add_in_order(
-            &mut self.main,
-            returned,
-            InventoryLossStage::TradeReturns,
-            &self.priorities,
-        )
-    }
-
     fn add_in_order(
         inventory: &mut ResourceInventory,
         batch: HashMap<ResourceType, u64>,

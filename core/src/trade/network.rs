@@ -73,7 +73,7 @@ impl TradeNetwork {
                     .collect();
                 // Stable order makes leftover distribution deterministic.
                 visitors.sort_by_key(|caravan| caravan.sender_id);
-                settlement.process_turn_with_visitors(map, finder, &mut visitors)
+                settlement.process_turn(map, finder, &mut visitors)
             })
             .collect()
     }
@@ -310,11 +310,10 @@ mod tests {
             report.trade.caravans_returned[0].cargo[&ResourceType::Stone],
             10
         );
-        assert_eq!(report.trade.lost[&ResourceType::Stone], 7);
         assert!(report.inventory.losses.contains(&InventoryLoss {
             resource: ResourceType::Stone,
             amount: 7,
-            stage: InventoryLossStage::TradeReturns,
+            stage: InventoryLossStage::Warehouse,
         }));
         assert!(report.inventory.is_balanced());
         assert_eq!(settlements[0].inventory().amount(ResourceType::Stone), 3);

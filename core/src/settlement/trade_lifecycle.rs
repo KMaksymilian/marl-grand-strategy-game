@@ -2,7 +2,7 @@
 //! market trading with visitors and collection of returns.
 use super::Settlement;
 use super::turn_report::{
-    DispatchedCaravan, InventoryLoss, MarketTrade, MaterialTotals, ReturnedCaravan, TradeTurnReport,
+    DispatchedCaravan, MarketTrade, MaterialTotals, ReturnedCaravan, TradeTurnReport,
 };
 use crate::economy::ResourceType;
 use crate::trade::allocation::TradeAllocationEngine;
@@ -97,12 +97,12 @@ impl Settlement {
         }
     }
 
-    /// Drains the market book and returned caravans into gold and the warehouse.
-    /// Rejected goods are reported as losses with stage `TradeReturns`.
+    /// Drains the market book and returned caravans. Gold goes straight to the treasury;
+    /// goods are returned as one batch that the turn stores together with production.
     pub(super) fn collect_trade_returns(
         &mut self,
         report: &mut TradeTurnReport,
-    ) -> Vec<InventoryLoss> {
+    ) -> HashMap<ResourceType, u64> {
         let mut batch: HashMap<ResourceType, u64> = HashMap::new();
         let mut add = |goods: &HashMap<ResourceType, u32>| {
             for (&resource, &amount) in goods {
@@ -137,11 +137,7 @@ impl Settlement {
             .iter()
             .map(|(&resource, &amount)| (resource, amount))
             .collect();
-        let losses = self.inventory_manager.admit_trade_returns(batch);
-        for loss in &losses {
-            *report.lost.entry(loss.resource).or_default() += loss.amount;
-        }
-        losses
+        batch
     }
 }
 
@@ -157,7 +153,7 @@ mod tests {
 
     fn turn(settlement: &mut Settlement) -> crate::settlement::turn_report::TurnReport {
         let map = Map::new(4, 1, vec![Area::new(0.5, 0.5); 4], vec![0; 4]);
-        settlement.process_turn(&map, &mut PathFinder::new(4, 1))
+        settlement.process_turn(&map, &mut PathFinder::new(4, 1), &mut [])
     }
 
     #[test]
@@ -177,7 +173,7 @@ mod tests {
             assert_eq!(report.trade.market_gold_reserved, 12);
             assert_eq!(report.trade.market_unsold[&ResourceType::Wood], 5);
             assert_eq!(report.trade.gold_received, 12);
-            assert!(report.trade.lost.is_empty());
+            assert!(report.inventory.losses.is_empty());
             assert!(report.inventory.is_balanced());
             assert_eq!(settlement.inventory().amount(ResourceType::Wood), 5);
             assert_eq!(settlement.gold(), 20);

@@ -27,7 +27,7 @@ impl Settlement {
         offers: HashMap<ResourceType, TradeOffer>,
     ) -> Result<(), TradeCommandError> {
         Self::validate_offers(&offers)?;
-        self.trade.market_offers = offers;
+        self.trade.market_offers = Self::without_progress(offers);
         Ok(())
     }
 
@@ -50,7 +50,7 @@ impl Settlement {
         Self::validate_offers(&offers)?;
         self.trade.orders.push(CaravanOrder {
             receiver_id,
-            offers,
+            offers: Self::without_progress(offers),
         });
         Ok(())
     }
@@ -76,6 +76,17 @@ impl Settlement {
             return Err(TradeCommandError::LabourIsNotTradable);
         }
         Ok(())
+    }
+
+    /// Keeps only the order parameters, so purchases made earlier on a copied
+    /// offer cannot be collected again as goods from nowhere.
+    fn without_progress(
+        offers: HashMap<ResourceType, TradeOffer>,
+    ) -> HashMap<ResourceType, TradeOffer> {
+        offers
+            .into_iter()
+            .map(|(resource, offer)| (resource, offer.without_progress()))
+            .collect()
     }
 }
 

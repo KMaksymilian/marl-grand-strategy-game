@@ -210,6 +210,48 @@ mod tests {
         assert!(settlement.caravan_orders().is_empty());
     }
 
+    fn partially_bought(units: u32, bought: u32, price: u32) -> TradeOffer {
+        let mut offer = TradeOffer::buy(units, price);
+        if let TradeOffer::Buy(buy) = &mut offer {
+            buy.add_bought_amount(bought);
+        }
+        offer
+    }
+
+    #[test]
+    fn published_offer_does_not_carry_earlier_purchases() {
+        let mut settlement = Settlement::new(1, 50, 0, Arc::default());
+        settlement.deposit_gold(10);
+        settlement
+            .publish_trade_offers(HashMap::from([(
+                ResourceType::Wood,
+                partially_bought(3, 1, 2),
+            )]))
+            .unwrap();
+        for _ in 0..3 {
+            let report = turn(&mut settlement);
+            assert!(report.trade.received.is_empty());
+            assert!(report.inventory.is_balanced());
+            assert_eq!(settlement.inventory().amount(ResourceType::Wood), 0);
+            assert_eq!(settlement.gold(), 10);
+        }
+    }
+
+    #[test]
+    fn caravan_order_does_not_carry_earlier_purchases() {
+        let mut settlement = Settlement::new(1, 50, 0, Arc::default());
+        settlement.deposit_gold(10);
+        settlement
+            .order_caravan(
+                2,
+                HashMap::from([(ResourceType::Wood, partially_bought(3, 1, 2))]),
+            )
+            .unwrap();
+        turn(&mut settlement);
+        let cargo = settlement.take_dispatched_caravans().pop().unwrap();
+        assert!(cargo.book.bought_goods().is_empty());
+    }
+
     #[test]
     fn invalid_trade_commands_are_rejected() {
         let mut settlement = Settlement::new(1, 50, 0, Arc::default());

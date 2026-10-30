@@ -30,6 +30,16 @@ impl TradeOffer {
         }
     }
 
+    /// Same open units and price limit, without units already bought.
+    pub(crate) fn without_progress(&self) -> TradeOffer {
+        match self {
+            TradeOffer::Sell(sell_offer) => TradeOffer::Sell(sell_offer.clone()),
+            TradeOffer::Buy(buy_offer) => {
+                TradeOffer::buy(buy_offer.available_units, buy_offer.maximum_price_per_unit)
+            }
+        }
+    }
+
     /// Moves up to `units` open units into a new offer with the same price limit.
     pub(crate) fn take_share(&mut self, units: u32) -> TradeOffer {
         match self {

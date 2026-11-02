@@ -2,12 +2,11 @@
 
 `WorldBuilder` in `core/src/world/generation/` generates a flat grid map
 with terrain and provinces. It belongs to the `simulation_core::world::generation`
-module and is independent of Macroquad. Individual source
-files and methods are indexed in the [code map](code_map.md).
+module.
 
 ## Configuration
 
-Generation parameters are Rust structs in `world_generation/config.rs`, separate
+Generation parameters are Rust structs in `world/generation/config.rs`, separate
 from the runtime economy parser in `core/src/configuration.rs`.
 
 | Parameter type | Current defaults |
@@ -32,16 +31,13 @@ FBM and supplies noise samples, coordinate warp and island elevation falloff.
 5. Apply `edge_alignment()`: if a province includes an ocean tile, make that whole
    province ocean.
 6. Apply `ocean_set()`: normalize ocean elevation to zero and moisture to one.
-7. Return `World` with map, provinces and an empty caravan collection.
+7. Return `World` with map/provinces, empty settlement/occupancy registries and no caravans.
 
 Terrain filling and tile assignment use Rayon. `Voronoi` holds
 seed generation, Voronoi assignment and centroid helpers.
 
 ## Terrain data
 
-`Map` stores width/height, `Vec<Area>` terrain and a flat province-index territory
-buffer. `Province` stores its ID and tile coordinates. `Area` stores elevation
-and moisture values and classifies them through geography enums.
 
 | Classification | Thresholds |
 | --- | --- |
@@ -56,7 +52,29 @@ not the biome category, when computing movement costs.
 
 Generation assumes valid, nonzero dimensions and a feasible province count.
 Unique-point generation cannot terminate when more points are requested than
-available tiles; centroid calculation requires nonempty provinces. `Map::new()`
+available tiles. `Province::centroid` returns `(0, 0)` for an empty province;
+this fallback does not enforce nonempty Voronoi regions. `Map::new()`
 does not validate its input vector lengths. Callers must currently enforce these
 constraints. Rendering adds unseeded cosmetic noise, so identical domain seeds do
 not guarantee identical texture pixels.
+
+
+## Generation activity
+
+```mermaid
+flowchart TD
+    Parameters[Rust parameter structs and optional seeds] --> Allocate[Allocate map and noise managers]
+    Allocate --> Elevation[Build elevation]
+    Elevation --> Moisture[Build moisture]
+    Moisture --> Seeds[Generate unique province seeds and border warp field]
+    Seeds --> More{Remaining configured relaxation passes?}
+    More -->|Yes| Assign[Assign tiles to warped nearest seed]
+    Assign --> Centroids[Recompute province centroids]
+    Centroids --> More
+    More -->|No| Align[Make provinces containing ocean entirely ocean]
+    Align --> Normalize[Normalize ocean terrain values]
+    Normalize --> World[Create World with empty settlement and occupancy registries]
+```
+
+Generation does not found settlements, create resource deposits or configure
+building catalogues.

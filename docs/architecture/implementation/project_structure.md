@@ -17,15 +17,20 @@ file and explicitly implemented runtime method.
 │   │   ├── lib.rs                   Public functional modules
 │   │   ├── configuration.rs         Runtime TOML parsing and validation
 │   │   ├── simulation/              Global turns, decisions and reports
+│   │   ├── spatial/                 Map-independent positions, references and construction contract
 │   │   ├── world/                   Spatial data and operations
 │   │   │   ├── mod.rs               Public world exports
 │   │   │   ├── state.rs             World, settlement registration and province membership
 │   │   │   ├── state/construction.rs World entry points for settlement lifecycle
+│   │   │   ├── state/map_commands.rs Controlled tile terrain/province edits
 │   │   │   ├── state/inspection.rs  Combined read-only tile view
 │   │   │   ├── territory.rs         Global sparse occupancy registry
 │   │   │   ├── map.rs               Terrain/territory buffers
 │   │   │   ├── province.rs          Province tiles and centroid
-│   │   │   ├── coordinates.rs       Point indices and signed Position
+│   │   │   ├── coordinates.rs       Compatibility re-exports of spatial coordinates
+│   │   │   ├── settlement_registry.rs Global settlement store and ID allocation
+│   │   │   ├── settlement_environment.rs Map-backed construction and A* cost adapters
+│   │   │   ├── state/commands.rs    Single world command dispatch
 │   │   │   ├── terrain/             Area, elevation, moisture and biome
 │   │   │   ├── generation/          WorldBuilder, noise and Voronoi
 │   │   │   └── pathfinding/         A*, Dijkstra and search buffers
@@ -59,31 +64,42 @@ technical layers.
 ```text
 simulation/
 ├── mod.rs                     State, validation, registry access and decision queue
-├── decisions.rs               Typed commands, dispatch and rejection outcomes
+├── decisions.rs               Command/error aliases and rejection outcomes
 ├── turn.rs                    Global phase execution and turn progression
 └── turn_report.rs             Completed turn, settlement reports and execution trace
 
 settlement/
-├── mod.rs                     State, constructor and read-only views
+├── mod.rs                     Aggregate state, constructor, views and public exports
 ├── commands/
-│   ├── mod.rs                 Private command groups
+│   ├── mod.rs                 Mutation command groups
+│   ├── command.rs             SettlementCommand values
 │   ├── inventory.rs           Deposit, withdrawal, capacity and storage order
 │   ├── buildings.rs           Registration, load, activity and productivity
 │   └── projects.rs            Queue construction/upgrades and cancel projects
-├── turn.rs                    Shared local/global phases and inline aggregate tests
-├── project_lifecycle.rs       Validate, reject and finalize projects
-├── registry.rs                Ordered persistent settlement store and ID allocation
-└── *_manager.rs               Internal collections and allocation
+├── economy/
+│   ├── mod.rs                 Private local managers and public needs types
+│   ├── buildings.rs           Building collection, demand, productivity and production
+│   ├── inventory.rs           Local warehouse/buffer admission and losses
+│   └── population.rs          Needs registry, population demand and satisfaction
+├── projects/
+│   ├── mod.rs                 Project model, costs reference, errors and outcomes
+│   ├── manager.rs             Local project collection, allocation and progress
+│   └── lifecycle.rs           Project validation, rejection and completion effects
+└── turn/
+    ├── mod.rs                 Shared local/global phases and inline aggregate tests
+    └── report.rs              Material accounting and turn report data
 
 buildings/
 ├── building.rs                Runtime instance, settings and views
 ├── building/production.rs     Demand, grants and recipe execution
 ├── definition.rs              Blueprint data and validation
+├── effects.rs                 Shared stat modifier targets
 ├── catalog.rs                 BuildingCatalog: shared blueprint registry
 └── productivity.rs            Travel-cost policy and exact multipliers
 
 economy/
 ├── resources.rs               ResourceType and material catalogue
+├── cost.rs                    Shared ProjectCost value
 ├── inventory.rs               ResourceInventory and admission/capacity results
 ├── allocation.rs              Proportional local demand allocation
 ├── storage_order.rs           Ordered material admission policy
@@ -111,11 +127,41 @@ Private child modules add methods to their owning type; callers still use
 public settlement interface. There is no borrowed API wrapper or extra object
 needed to call these operations. Managers remain private implementation details.
 
+## Settlement directory boundaries
+
+Only `mod.rs` remains directly inside `settlement`. The four subdirectories group
+local mutation commands, local economy managers, projects and turn processing.
+They implement operations on the same aggregate, without adding API wrapper objects.
+
+`settlement/economy` owns local collections and their turn participation.
+`core/src/economy` owns reusable resource/inventory primitives and allocation
+algorithms. `BuildingManager` stays local because it manages this settlement's
+instances and their turn work; building definitions, instances and productivity
+policies remain in `core/src/buildings`. Projects also stay local: payment,
+upgrade targets and completion effects belong to the settlement lifecycle.
+
+World-wide settlement storage is in `world/settlement_registry.rs`, coordinates
+and construction contracts in `spatial`, and shared costs in `economy/cost.rs`.
+The obsolete `settlement/stat.rs` forwarding module is removed; use
+`buildings::effects::StatType` directly.
+
+Existing public paths `settlement::projects`, `settlement::command`,
+`settlement::turn_report`, `settlement::NeedRegistry` and `settlement::NeedTier`
+remain available through module exports. Private manager modules stay private.
+
 ## Shared concepts and dependency boundaries
 
-`world::coordinates` owns both coordinate types. `Point(usize, usize)` is used for
+`spatial` owns both coordinate types; `world::coordinates` re-exports them for compatibility. `Point(usize, usize)` is used for
 nonnegative grid indices; `Position { x: i32, y: i32 }` retains the signed placement
 contract. They are not merged and no implicit conversion is introduced.
+
+Building instances keep an immutable `spatial::Position`; definitions have no
+position. `TerritoryManager` maintains the inverse position-to-qualified-ID index.
+Neither the coordinate value nor the index introduces a map reference into a
+building. See [position ownership](../systems/buildings.md#position-and-spatial-independence).
+
+`SettlementRegistry` is implemented under `world/settlement_registry.rs` and
+owned by `World`; see [registry responsibility](../systems/settlement_registry.md).
 
 `World` (implemented in `world/state.rs`) owns caravans, but `Caravan` no longer depends on `World`.
 Construction accepts a map, search buffer, explicit start/end points, participant
@@ -124,8 +170,8 @@ province indices. Missing routes produce `None` rather than a pathfinding panic.
 
 `World` also owns settlements and one global occupancy registry. Each registered
 settlement belongs to exactly one province; provinces may be empty. World entry
-points validate membership and pass spatial state to `Settlement`, which owns the
-project lifecycle. See [territory](territory.md) for placement, cancellation and
+points validate membership and pass construction/cost capabilities to `Settlement`, which owns the
+project lifecycle without importing the map. See [dependency boundaries](../overview/settlement_boundaries.md). See [territory](../systems/territory.md) for placement, cancellation and
 `World::inspect_tile`. The executable does not yet expose a tile inspection panel.
 
 `configuration.rs` parses runtime economy TOML. `world/generation/config.rs`
@@ -153,8 +199,25 @@ contains generation parameters and defaults; it remains a separate concern.
 
 The old technical namespaces are removed, without compatibility aliases. External
 callers must migrate imports. Matching rules, production arithmetic, allocation,
-turn timing and productivity formulas are unchanged. Caravan construction is the
-explicit constructor-contract change described above.
+turn timing and productivity formulas are unchanged. Caravan construction changed as described above. Later additions also introduce
+typed `SettlementId` parameters and shared territory arguments; see the
+[current simulation API](simulation_commands.md) and
+[settlement API](settlement_commands.md).
+
+## Documentation levels
+
+```text
+docs/architecture/
+├── README.md          Entry point and diagram index
+├── overview/          Scope, components, aggregate ownership and global lifecycle
+├── systems/           Rules and lifecycle diagrams for individual areas
+└── implementation/    Source map, signatures, algorithms and configuration
+```
+
+Read the [architecture guide](../README.md) before this implementation reference.
+Ownership diagrams belong in `overview/`, system class/state diagrams next to
+system rules, and exact method contracts/formulas here. Diagrams link to their
+source rather than introducing another competing description of the same rule.
 
 ## Tests and documentation
 
@@ -163,15 +226,16 @@ verified. Public integration tests live in `core/tests/`; compile-fail rustdoc
 examples protect encapsulation. Tests of caravan construction are inline in
 `trade/caravan.rs`.
 
-Use `architecture/` for implemented behavior, `planning/` for proposals,
+Use the three architecture levels for implemented behavior, `planning/` for proposals,
 `decisions/` for rationale and `analysis/` for dated reviews. Update the
-[source map](code_map.md) and [documentation index](../README.md) when files or
+[source map](code_map.md) and [documentation index](../../README.md) when files or
 methods move. Historical analyses retain their original paths and findings.
 
 Run from the repository root:
 
 ```sh
 cargo run -p marl_grand_strategy
+cargo run -p simulation_core --example headless -- 100
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features

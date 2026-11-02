@@ -1,10 +1,9 @@
-# Pathfinding
+# Pathfinding Algorithm Reference
+
+For callers and the route-query sequence, see [pathfinding](../systems/pathfinding.md).
 
 The map is an eight-neighbor grid. `AStar`, `DijkstraFlood` and building
-productivity share `PathFinder` movement rules. Coordinates are `(usize, usize)`
-or `Point`; flat indices use `y * width + x`. See the [code map](code_map.md) for
-every method and source link.
-
+productivity share `PathFinder` movement rules. Coordinates are `(usize, usize)`; flat indices use `y * width + x`.
 ## Shared search state
 
 `PathFinder` allocates a private `Vec<Node>` for fixed map dimensions. Each node
@@ -55,10 +54,3 @@ point paths; building productivity uses only the cost.
 movement budget. It shares neighbor enumeration, movement costs and generation
 state with A*. Unlike A*, its entry point currently assumes valid map buffers,
 an in-bounds start and matching pathfinder dimensions; callers must ensure these.
-
-## Verification
-
-Inline tests compare A* cost with reconstructed paths, check slopes, detours,
-disconnected/ocean/invalid endpoints and repeated buffer use. A pathfinder unit
-test exercises generation wrap across A* and Dijkstra. Integration tests cover
-the effect of changed map routes on settlement productivity.

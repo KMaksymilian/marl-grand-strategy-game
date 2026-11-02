@@ -48,26 +48,30 @@ graph TD
 The Rust application generates and displays a map, with camera controls and A*/Dijkstra
 overlays. The domain library implements settlement inventories, population needs,
 production, construction/upgrade projects, configurable travel-cost productivity,
-and prototype trade books and caravans. Settlement turns, trade and transport are
-not wired into a global simulation loop. Nations and AI training remain future work.
+and prototype trade books and caravans. A headless `Simulation` coordinates global
+settlement phases with a typed, ordered registry. The graphical frame loop does not
+advance those turns; trade matching and caravan travel remain outside the coordinator.
+Nations and AI training remain future work.
 
 Run from the repository root so the application can load `configuration.toml`:
 
 ```sh
 cargo run -p marl_grand_strategy
+# Without graphics:
+cargo run -p simulation_core --example headless -- 100
 ```
 
 ## Documentation
 
 - [Documentation index](docs/README.md)
-- [Project structure and organization rules](docs/architecture/project_structure.md)
-- [Source files, types and method descriptions](docs/architecture/code_map.md)
-- [Economy](docs/architecture/economy.md)
-- [Settlements and turn processing](docs/architecture/settlements.md)
-- [Building productivity](docs/architecture/building_productivity.md)
-- [Trading and caravans: implementation and limitations](docs/architecture/trading.md)
+- [Architecture and UML diagram index](docs/architecture/README.md)
+- [Project structure and organization rules](docs/architecture/implementation/project_structure.md)
+- [Source files, types and method descriptions](docs/architecture/implementation/code_map.md)
+- [Economy](docs/architecture/implementation/economy_rules.md)
+- [Settlements and turn processing](docs/architecture/implementation/settlement_commands.md)
+- [Building productivity](docs/architecture/implementation/building_productivity.md)
+- [Trading and caravans: implementation and limitations](docs/architecture/systems/trading.md)
 - [Recorded decisions](docs/decisions/0001-economy.md)
-- [Future economy design](docs/planning/economy_roadmap.md)
 - [Target simulation aggregates](docs/planning/aggregates.md)
 
 ## Workspace
@@ -81,6 +85,6 @@ cargo run -p marl_grand_strategy
 | `ml_brain/` | Python dependency placeholder; training is not implemented |
 | `docs/` | Current architecture, decisions, future plans and historical reviews |
 
-See the [structure guide](docs/architecture/project_structure.md) for the complete
+See the [structure guide](docs/architecture/implementation/project_structure.md) for the complete
 source layout and import changes. Current code and future proposals are documented
 separately.

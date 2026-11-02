@@ -1,8 +1,9 @@
 # Trading and Caravans
 
 Status: domain prototype, introduced on develop before the code reorganization.
-The executable does not create settlements/offers/caravans or drive their turns.
-Source responsibilities and method names are listed in the [code map](code_map.md).
+The graphical executable does not create settlements/offers/caravans or drive their turns.
+The headless coordinator runs local trade funding/returns, but does not match books or move caravans.
+Source responsibilities and method names are listed in the [code map](../implementation/code_map.md).
 
 ## Data and execution
 
@@ -56,5 +57,82 @@ unchanged. In particular:
 - Routes are fixed after creation. No rerouting, cargo capacity, arrival dispatch,
   finished-caravan removal or global turn scheduling is implemented.
 
-The [economy roadmap](../planning/economy_roadmap.md) describes intended future
-logistics. Its proposals should not be read as completed functionality.
+Future logistics and information exchange require separate implementation;
+the prototype below is not an automatic trading system.
+
+
+## Prototype class view
+
+```mermaid
+classDiagram
+    World *-- Caravan
+    Settlement *-- TradeBook
+    Caravan *-- TradeBook
+    TradeBook *-- TradeOffer : one per resource
+    class Caravan {
+        +SettlementId sender_id
+        +SettlementId receiver_id
+        -CaravanState caravan_state
+        -Vec path
+        +new(map, finder, participants, endpoints, book)
+        +travel()
+        +trade(book)
+    }
+    class TradeOffer {
+        <<enumeration>>
+        Buy
+        Sell
+    }
+    TradeOffer *-- TradeOfferBuy
+    TradeOffer *-- TradeOfferSell
+    Caravan ..> AStar : route at construction
+```
+
+Participant IDs are typed `SettlementId`, but caravan construction does not
+validate them against the registry. It builds a route from explicit endpoints.
+The constructor takes its book by value and does not return it on route failure;
+there is no supported dispatch transaction protecting already committed cargo.
+
+## Stored caravan states
+
+These are the actual `CaravanState` variants. Movement is in path indices, not
+an A* cost budget. The diagram shows normal transitions, not a guaranteed round
+trip: the existing return subtraction can underflow before reaching `Back`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> TravelTo: route created
+    TravelTo --> TravelTo: travel along outbound path
+    TravelTo --> Trading: destination reached
+    Trading --> TravelBack: external trade call
+    TravelBack --> TravelBack: travel along reverse path
+    TravelBack --> Back: safe final return step
+    note right of Trading
+        travel alone does not execute trade.
+        An external caller must invoke trade.
+    end note
+    note right of Back
+        No automatic unloading or removal.
+    end note
+```
+
+## External trade sequence
+
+```mermaid
+sequenceDiagram
+    actor Caller
+    participant C as Caravan
+    participant B as Caravan TradeBook
+    participant O as Other TradeBook
+    Caller->>C: travel calls until destination
+    C->>C: state becomes Trading
+    Caller->>C: trade(other_book)
+    C->>B: trade(other_book)
+    B->>O: match compatible offers and transfer counters/gold
+    C->>C: state becomes TravelBack
+    Caller->>C: later travel calls
+    Note over Caller,C: Arrival dispatch, unloading and cleanup are not automated
+```
+
+`Simulation::step` does not execute this sequence. Information observations,
+multiple trade stops, transport capacity and market discovery remain unimplemented.

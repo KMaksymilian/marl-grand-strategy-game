@@ -24,9 +24,10 @@ validation at every consumer, despite definitions being shared as flyweights.
 
 ## Still to decide
 
-Trade and caravan lifecycle/access rules remain outside this change, pending their
-separate work. This decision does not define ownership transfer or automatic
-demolition when province membership changes.
+The original encapsulation change left caravan collection access unchanged.
+The integrated lifecycle is documented in [trading](../architecture/systems/trading.md).
+This decision does not define ownership transfer or automatic demolition when
+province membership changes.
 
 ## Details
 

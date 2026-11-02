@@ -47,6 +47,7 @@ classDiagram
     Settlement *-- PopulationManager
     Settlement *-- ProjectManager
     Settlement *-- GoldInventory
+    Settlement *-- TradeManager
     Settlement *-- TradeBook
     SettlementInventoryManager *-- ResourceInventory : main and production buffer
     BuildingManager *-- Building
@@ -73,12 +74,13 @@ in the [target model](../../planning/aggregates.md).
 
 | Boundary | Invariant and mutation path |
 | --- | --- |
-| World layers | Map/province collections are private; checked tile edits preserve layer shape and update province tile lists. Caravans remain a separate prototype with their existing access contract. |
+| World layers | Map/province collections are private; checked tile edits preserve layer shape and update province tile lists. World also owns the active caravan collection, which remains public. |
 | Registration | `World` validates settlement uniqueness, province existence/availability and an empty structural state before updating registry and province index. |
 | Local economy | `Settlement` changes private inventories, managers and projects through commands and shared turn phases. |
 | Spatial construction | `World` checks province membership; `Settlement` requests reservation/finalization through `ConstructionSpace`; the world adapter validates land and global occupancy. |
 | Cancellation | `Settlement` checks the exact project/settlement reservation before removal; an upgrade retains its building. |
-| Global turn | `Simulation` preflights all existing project memberships before consuming decisions or advancing any settlement. |
+| Global turn | `Simulation` preflights all existing project memberships before consuming decisions, moving caravans or advancing any settlement. |
+| Trading | Settlement funds and matches books; World resolves visitors, routes departures and queues returns against the same registry. |
 
 These are synchronous in-memory operations using exclusive Rust borrows. There is no global rollback for panics, process failures or already completed turns.
 

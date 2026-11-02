@@ -35,7 +35,9 @@ classDiagram
 
 ```mermaid
 flowchart TD
-    Stock[Opening warehouse stock] --> Allocate[Allocate material budget once]
+    Stock[Opening warehouse stock] --> Trade[Reserve market and caravan stock]
+    Trade --> Allocate[Allocate remaining material budget once]
+    Trade --> Cargo[Funded books and cargo]
     Needs[Combined population, project and building requests] --> Allocate
     Labour[Renewed labour capacity] -.-> Allocate
     Allocate --> People[Population consumption]
@@ -47,6 +49,7 @@ flowchart TD
     ReturnAdmission --> ReturnLoss[Report rejected returns]
     ReturnAdmission --> Closing[Closing material stock]
     Output --> Buffer[Ordered production-buffer admission]
+    TradeReturns[Market and caravan receipts] --> Buffer
     Buffer --> BufferLoss[Report buffer rejection]
     Buffer --> Transfer[Ordered buffer-to-warehouse transfer]
     Transfer --> WarehouseLoss[Report warehouse rejection]
@@ -65,3 +68,7 @@ project IDs.
 Buildings run recipes in definition order against remaining material grants.
 Inputs round up and outputs round down using exact execution fractions. Unused
 grants return at turn end and are not reallocated within that turn.
+
+Trade receipts are admitted at economic updates, not reused in earlier allocation.
+Material reports include trade reservations/receipts; currency and in-transit cargo
+remain separate. See [trading](trading.md) for the full lifecycle.

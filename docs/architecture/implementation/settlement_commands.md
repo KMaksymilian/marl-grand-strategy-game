@@ -1,6 +1,6 @@
 # Settlement Commands
 
-This document describes the implemented settlement model. Accounting rules are documented in [economy rules](economy_rules.md); prototype trade behavior is described in [trading.md](../systems/trading.md). See the [code map](code_map.md) for file responsibilities and method descriptions.
+This document describes the implemented settlement model. Accounting rules are documented in [economy rules](economy_rules.md); trade behavior is described in [trading.md](../systems/trading.md). See the [code map](code_map.md) for file responsibilities and method descriptions.
 
 ## 1. Scope
 
@@ -26,9 +26,11 @@ Each settlement owns an independent ordered storage list. `set_storage_order(mat
 
 Settlement fields and manager modules are private implementation details. Public reads use `id()`, `population()`, `inventory()`, `pending_inventory()`, `buildings()` and `active_projects()`. Building and project views expose immutable identity, definitions and remaining costs through accessors. There is no mutable collection getter.
 
-The model, constructor and read-only views live in `settlement/mod.rs`. Mutation commands live in the private `commands/` directory, grouped by inventory, buildings and projects.
+The model, constructor and read-only views live in `settlement/mod.rs`. Mutation commands live in the private `commands/` directory, grouped by inventory, buildings, projects and trade.
 
-The aggregate also owns a `GoldInventory` and `TradeBook`, both initially empty. \
+The aggregate also owns an initially empty `GoldInventory`, funded `TradeBook` and
+`TradeManager` with published offers and caravan queues. See the
+[trade command reference](trading.md#public-commands-and-views).
 
 Use `deposit()`, `withdraw()` and `set_inventory_capacity()` to change warehouse stock or capacity. Create definitions through fallible `BuildingDefinition::new`, then instances through infallible `Building::new`. Add these buildings through `add_building()`; duplicate IDs are rejected. Change a managed building through `set_building_load()` or `set_building_active()`, which reject missing IDs. Queue projects through `queue_construction()` and `queue_upgrade()`, which accept already validated definitions and check local project/target identities before any allocation. `NeedRegistry` and `NeedTier` are re-exported for external needs configuration.
 
@@ -73,6 +75,7 @@ The public report is defined in [turn_report.rs](../../../core/src/settlement/tu
 
 ```rust
 pub struct TurnReport {
+    pub trade: TradeTurnReport,
     pub consumption: ConsumptionResult,
     pub projects: Vec<ProjectOutcome>,
     pub inventory: InventoryTurnReport,
@@ -90,15 +93,15 @@ Queue errors are returned immediately and do not enter the active list. At turn 
 
 If an upgrade target disappears after earlier partial payment, the next turn reports failure without further allocation. Previously paid materials remain spent. Explicit cancellation follows the same no-refund rule.
 
-`inventory` records local material stock, production, internal returns, consumption categories and stage-specific overflow losses. `inventory.is_balanced()` checks this accounting separately for each material, excluding renewed labour. Trade reservations/returns are not accounted for, so this check does not establish conservation for nonempty trade activity. The local balance equation is documented in [economy rules](economy_rules.md); trade limitations are in [trading.md](../systems/trading.md).
+`inventory` records local material stock, production, internal returns, consumption categories and stage-specific overflow losses. `inventory.is_balanced()` checks this accounting separately for each material, excluding renewed labour. Trade reservations and receipts are included; treasury gold and cargo in transit are outside the local material snapshots. The local balance equation is documented in [economy rules](economy_rules.md); trade limitations are in [trading.md](../systems/trading.md).
 
 ## Spatial Registration and Construction
 
 `World` owns the global `TerritoryManager` and registers each settlement in exactly one province with `add_settlement(province_id, settlement)`. A province may have no settlement. Register settlements before adding buildings or projects; importing existing structures is not supported yet.
 
-For registered settlements, use `World::queue_construction`, `World::add_building`, `World::queue_upgrade`, `World::cancel_project` and `World::process_settlement_turn`. Construction entry points validate the settlement and its province, then delegate lifecycle changes to `Settlement`; cancellation only requires the settlement and its matching reservation. The world's registry and settlements have no public mutable getters. `World::inspect_tile(position)` combines terrain, province, optional settlement and occupancy with borrowed building/project data; see [territory](../systems/territory.md).
+For registered settlements, use `World::queue_construction`, `World::add_building`, `World::queue_upgrade`, `World::cancel_project` and `World::process_settlement_turn`. Construction entry points validate the settlement and its province, then delegate lifecycle changes to `Settlement`; cancellation only requires the settlement and its matching reservation. The world's registry and settlements have no public mutable getters. `World::inspect_tile(position)` combines terrain, province membership and occupancy with borrowed building/project data and separate province/occupant settlements; see [territory](../systems/territory.md).
 
-Standalone construction/cancellation receives `&mut impl ConstructionSpace`; `add_building` and `process_turn` require both `ConstructionSpace` and `TravelCostSource`. The caller must retain and reuse the same backing occupancy store. The supplied world adapters preserve land and overlap validation. Project and building references include the settlement ID because their local IDs can overlap across settlements.
+Standalone construction/cancellation receives `&mut impl ConstructionSpace`; `add_building` and `process_turn` require both `ConstructionSpace` and `TravelCostSource`. `process_turn` also accepts arrived visitors (`&mut [&mut Caravan]`). The caller must retain and reuse the same backing occupancy store. The supplied world adapters preserve land and overlap validation. Project and building references include the settlement ID because their local IDs can overlap across settlements.
 
 New construction requires a valid land tile and an empty structural slot. Land uses the existing `Elevation::OCEAN_LEVEL` boundary; building-specific marine placement rules are not implemented. Queueing reserves `Construction(ProjectReference)` without spending materials. Successful completion replaces it with `Building(BuildingReference)`. Direct building registration performs the same placement and occupancy checks. Upgrades keep the existing building on its tile throughout the project.
 

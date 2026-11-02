@@ -21,6 +21,8 @@ classDiagram
     Settlement *-- BuildingManager
     Settlement *-- PopulationManager
     Settlement *-- ProjectManager
+    Settlement *-- TradeManager
+    Settlement *-- TradeBook
     SettlementInventoryManager *-- ResourceInventory : warehouse and buffer
     BuildingManager *-- Building
     ProjectManager *-- Project
@@ -29,7 +31,7 @@ classDiagram
     Project o-- BuildingDefinition : requested result
 ```
 
-Gold and the prototype trade book are also settlement-owned; see the full
+Gold, market templates, funded books and caravan order/return queues are also settlement-owned; see the full
 [aggregate view](../overview/state_ownership.md). There is no public mutable
 manager/collection getter. Read access and validated commands remain on `Settlement`.
 Global callers use queued decisions or world entry points so spatial validation

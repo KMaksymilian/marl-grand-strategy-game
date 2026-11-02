@@ -24,6 +24,7 @@ file and explicitly implemented runtime method.
 │   │   │   ├── state/construction.rs World entry points for settlement lifecycle
 │   │   │   ├── state/map_commands.rs Controlled tile terrain/province edits
 │   │   │   ├── state/inspection.rs  Combined read-only tile view
+│   │   │   ├── state/trade.rs       Global transport, visitors and dispatch
 │   │   │   ├── territory.rs         Global sparse occupancy registry
 │   │   │   ├── map.rs               Terrain/territory buffers
 │   │   │   ├── province.rs          Province tiles and centroid
@@ -52,7 +53,7 @@ file and explicitly implemented runtime method.
 state for rendering; `simulation_core` does not depend on Macroquad. The executable
 currently displays a generated map and interactive pathfinding overlays. Settlement
 turns can run headlessly through `Simulation`; the graphical loop does not yet
-drive it. Trade matching and caravan travel remain outside the coordinator.
+drive it. Global turns include caravan movement, market matching, returns and dispatch.
 
 `domain/`, `services/`, `world_data/` and the separate top-level `geography/`
 directories are removed. World-related models, generation and navigation now live
@@ -75,7 +76,8 @@ settlement/
 │   ├── command.rs             SettlementCommand values
 │   ├── inventory.rs           Deposit, withdrawal, capacity and storage order
 │   ├── buildings.rs           Registration, load, activity and productivity
-│   └── projects.rs            Queue construction/upgrades and cancel projects
+│   ├── projects.rs            Queue construction/upgrades and cancel projects
+│   └── trade.rs               Treasury, market templates and caravan orders
 ├── economy/
 │   ├── mod.rs                 Private local managers and public needs types
 │   ├── buildings.rs           Building collection, demand, productivity and production
@@ -85,6 +87,9 @@ settlement/
 │   ├── mod.rs                 Project model, costs reference, errors and outcomes
 │   ├── manager.rs             Local project collection, allocation and progress
 │   └── lifecycle.rs           Project validation, rejection and completion effects
+├── trading/
+│   ├── mod.rs                 TradeManager queues and public CaravanOrder
+│   └── lifecycle.rs           Reservation, funding, visitor matching and returns
 └── turn/
     ├── mod.rs                 Shared local/global phases and inline aggregate tests
     └── report.rs              Material accounting and turn report data
@@ -108,6 +113,9 @@ economy/
 trade/
 ├── book.rs                    TradeBook: offers, funds and resource collection
 ├── book/matching.rs           Bilateral matching and transactions
+├── book/market.rs             Sharing a market between visitors
+├── execution.rs               Trade records and participant perspective
+├── network.rs                 Alternative world runner with explicit endpoints
 ├── offer.rs                   Buy/sell offer state and demand
 ├── allocation.rs              Reserve and return resources
 └── caravan.rs                 Route and transport state
@@ -129,8 +137,8 @@ needed to call these operations. Managers remain private implementation details.
 
 ## Settlement directory boundaries
 
-Only `mod.rs` remains directly inside `settlement`. The four subdirectories group
-local mutation commands, local economy managers, projects and turn processing.
+Only `mod.rs` remains directly inside `settlement`. The five subdirectories group
+local mutation commands, local economy managers, projects, trading state and turn processing.
 They implement operations on the same aggregate, without adding API wrapper objects.
 
 `settlement/economy` owns local collections and their turn participation.
@@ -166,7 +174,9 @@ owned by `World`; see [registry responsibility](../systems/settlement_registry.m
 `World` (implemented in `world/state.rs`) owns caravans, but `Caravan` no longer depends on `World`.
 Construction accepts a map, search buffer, explicit start/end points, participant
 IDs and a `TradeBook`. Callers resolve coordinates; the caravan does not look up
-province indices. Missing routes produce `None` rather than a pathfinding panic.
+province indices. `Caravan::new` returns `None` for missing routes; coordinated dispatch uses
+`from_cargo`, which returns the original funded cargo on failure. See the
+[trade implementation reference](trading.md).
 
 `World` also owns settlements and one global occupancy registry. Each registered
 settlement belongs to exactly one province; provinces may be empty. World entry

@@ -19,7 +19,7 @@ flowchart TD
         World --> Navigation[pathfinding and terrain]
         Settlement --> Buildings[buildings]
         Settlement --> Economy[economy]
-        Settlement --> Trade[trade prototypes]
+        Settlement --> Trade[trade books and funding]
         Settlement --> Spatial[spatial: values and construction contract]
         Buildings --> Costs[TravelCostSource contract]
         World --> Environment[map adapters]

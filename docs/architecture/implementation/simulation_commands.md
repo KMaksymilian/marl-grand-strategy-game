@@ -62,14 +62,17 @@ order. Checked-arithmetic panics are not recoverable turn errors.
 - `settlements: BTreeMap<SettlementId, TurnReport>`: local accounting and project outcomes.
 - `execution: Vec<PhaseExecution>`: actual phase/settlement invocation order.
 
-Local reports contain population consumption, project outcomes and material
-accounting. They do not include completed-project history or world knowledge.
-Prototype trade reservations/returns remain outside inventory balance checking.
+Local reports contain population consumption, project outcomes, material accounting
+and `TradeTurnReport`. Material balance includes trade reservations/receipts; gold
+and cargo in transit are outside its scope. Reports do not retain completed-project
+history or world knowledge. Transport runs around the seven traced settlement
+phases; see [trading](../systems/trading.md).
 
 `PreparedTurn`, `AllocatedTurn`, `ConsumedTurn` and `ProducedTurn` are private
 transient phase values moved between calls. They carry allocations and reports,
 not another persistent copy of settlement state. A local `Settlement::process_turn`
-uses these same methods without incrementing the global counter.
+uses these same methods with an environment and visitor slice, without incrementing
+the global counter or moving/dispatching global caravans.
 
 ## Headless execution
 

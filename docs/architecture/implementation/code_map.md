@@ -274,12 +274,12 @@ Internal project validation and effects on the same `Settlement` type.
 | Method on `Settlement` | Purpose |
 | --- | --- |
 | `process_turn` | Refresh productivity, reserve trade resources, allocate local demands, execute production/projects, collect stock and return a report. |
-| `prepare_turn` | Refresh productivity/labour, snapshot opening stock, reject invalid projects and reserve trade resources. |
+| `prepare_turn` | Refresh productivity/labour, snapshot opening stock, reject invalid projects, fund market/caravan books and match arrived visitors. |
 | `allocate_turn` | Gather demands and allocate from existing stock. |
 | `consume_turn` | Evaluate population allocations and shortages. |
 | `progress_construction` | Pay project allocations and advance time once. |
 | `produce_turn` | Execute buildings and record produced/unused materials. |
-| `finish_turn` | Collect stock, report overflow, finalize projects and return trade resources. |
+| `finish_turn` | Collect production/trade returns, admit materials, report overflow and finalize projects. |
 
 Contains inline unit tests of turn behavior and private aggregate invariants.
 
@@ -291,7 +291,8 @@ Contains `TurnReport`, `InventoryTurnReport`, `MaterialTotals`, `InventoryLoss`,
 `from_allocations()` records grants by consumer category; `record_production()`
 records outputs and removes unused inputs from consumption;
 `is_balanced()` checks material conservation separately for each resource.
-Trade transfers are currently outside that accounting model; see [trading](../systems/trading.md).
+Trade reservations and receipts participate in the material balance. Gold and cargo
+in transit remain separate; see [trading](../systems/trading.md).
 
 
 ## Economy
@@ -345,61 +346,18 @@ at zero. Currency is separate from warehouse materials.
 
 ## Trade and transport
 
-### [core/src/trade/offer.rs](../../../core/src/trade/offer.rs)
+[Trading implementation](trading.md) lists settlement trade commands, world routing,
+reports, failures and related test files in detail.
 
-Contains `TradeOffer`, `TradeDemand`, `SellTradeOffer` and `BuyTradeOffer`.
-
-| Type / method | Purpose |
+| File | Types, methods and responsibility |
 | --- | --- |
-| `TradeOffer::calculate_demand` | Dispatch to the contained offer's gold/material demand. |
-| `SellTradeOffer::calculate_demand` | Request the offered material quantity. |
-| `update_sell_resource_amount` | Replace the funded quantity available to sell. |
-| `get_amount_to_sell`, `get_minimal_price_per_unit` | Read offered stock and minimum unit price. |
-| `consume_avaiable_units` | Drain unsold stock; spelling matches the current code. |
-| `subtract_sold_amount` | Decrement stock after a sale. |
-| `BuyTradeOffer::calculate_demand` | Request quantity multiplied by maximum unit price in gold. |
-| `consume_bought_units` | Drain purchased stock for return to inventory. |
-| `get_maximum_price_per_unit`, `get_remaining_amount_to_buy` | Read price ceiling and outstanding demand. |
-| `add_bought_amount` | Record purchases and reduce outstanding demand. |
-
-### [core/src/trade/book.rs](../../../core/src/trade/book.rs)
-
-`TradeBook` owns reserved gold and offers keyed by resource.
-
-| Method | Purpose |
-| --- | --- |
-| `new`, `default` | Initialize explicit offers/funds or an empty book. |
-| `add_gold_amount` | Add reserved funds. |
-| `update_sell_resource_amount` | Update funding for an existing sell offer. |
-| `calculate_demand` | Aggregate material and currency reservations requested by offers. |
-| `return_resources` | Drain purchased/unsold goods and remaining gold. |
-
-### [core/src/trade/book/matching.rs](../../../core/src/trade/book/matching.rs)
-
-Bilateral matching and transaction methods on the same `TradeBook` type.
-
-| Method | Purpose |
-| --- | --- |
-| `trade` | Match opposing offers in two books using midpoint prices. |
-| `transaction` | Execute one purchase direction, scaling quantities to funds and spending remainders. |
-| `execute_single_trade` | Debit the buyer and update buyer/seller quantities. |
-
-### [core/src/trade/allocation.rs](../../../core/src/trade/allocation.rs)
-
-`TradeAllocationEngine::execute()` reserves materials and gold from inventories;
-`execute_gold_allocation()` funds the book up to the available amount;
-`execute_remained_resources()` returns remaining currency and goods to inventories.
-It currently ignores the result of material admission.
-
-### [core/src/trade/caravan.rs](../../../core/src/trade/caravan.rs)
-
-`Caravan` carries a trade book, route, sender/receiver IDs and a `CaravanState`.
-`new(map, finder, sender_id, receiver_id, start, end, book)` builds an A* route
-between explicit points and returns `Option<Caravan>`; it does not read a `World`
-or interpret participant IDs as province indices. `travel()` dispatches the
-movement state; `trade()` matches books on arrival and starts the return journey;
-`travel_to()` and `travel_back()` advance along the stored path.
-See [current limitations](../systems/trading.md) before using this prototype in a simulation.
+| [trade/mod.rs](../../../core/src/trade/mod.rs) | Exports allocation, book, caravan, execution, network and offer modules. |
+| [trade/offer.rs](../../../core/src/trade/offer.rs) | `TradeOffer`, `BuyTradeOffer`, `SellTradeOffer`, `TradeDemand`. `buy`/`sell` construct offers; `remaining_units` reads open quantity; `calculate_demand` requests stock or gold. `without_progress` strips earlier purchases from templates; `take_share`/`absorb` split/merge offers. Buy/sell accessors track stock and purchases. Buy gold demand uses saturating multiplication. |
+| [trade/book.rs](../../../core/src/trade/book.rs) | `TradeBook` owns reserved funds and offers. `new`/`with_offers`/`default` construct it; `replace_offers` installs templates; `calculate_demand` sums reservations; `update_sell_resource_amount` and `add_gold_amount` apply funding. `gold`, `offers`, `goods_for_sale`, `bought_goods` expose state; `return_resources` drains materials and funds. |
+| [trade/book/matching.rs](../../../core/src/trade/book/matching.rs) | `TradeBook::trade` returns executions from self's perspective. Private `transaction` scales purchases to gold, orders price/resource ties and spends remainders. `execute_single_trade` updates buyer/seller quantities and funds. |
+| [trade/book/market.rs](../../../core/src/trade/book/market.rs) | `TradeBook::trade_with_visitors` shares a market and returns execution vectors in visitor order. `visitor_interest`, `price`, `equal_shares`, `split`, `take_share`, `absorb` implement repeated sharing. |
+| [trade/execution.rs](../../../core/src/trade/execution.rs) | `TradeExecution`: resource, units, unit price, `TradeSide`. `total_price` multiplies in `u64`; `mirrored` and `TradeSide::opposite` switch perspective. |
+| [trade/allocation.rs](../../../core/src/trade/allocation.rs) | `TradeAllocationEngine::execute` withdraws available stock/gold, reducing unfunded sell quantities; `execute_gold_allocation` handles funds. Legacy `execute_remained_resources` ignores material admission rejection and is not used by the coordinated lifecycle. |
 
 ## Geography and world state
 
@@ -480,9 +438,10 @@ Contains `Tile`, `TileOccupancy`, settlement-qualified references and `Territory
 
 ### [core/src/world/state/inspection.rs](../../../core/src/world/state/inspection.rs)
 
-`World::inspect_tile` returns `TileView`: terrain, province, optional settlement,
-occupancy and borrowed building/new-construction objects. It validates coordinates
-and province existence. This authoritative read does not filter agent knowledge.
+`World::inspect_tile` returns `TileView`: terrain, province, separate
+`province_settlement`/`occupant_settlement` references, occupancy and borrowed
+building/new-construction objects. It validates coordinates, province existence
+and structural references, returning `InconsistentOccupancy` for dangling or misplaced objects. This authoritative read does not filter agent knowledge.
 
 ## Pathfinding services
 
@@ -657,3 +616,16 @@ projects outside their settlement's province after a membership change.
 `World::settlement_mut` is a checked internal lookup for nonspatial phases.
 `BuildingManager::get/get_mut` centralize instance lookup. `GameScreen::cursor_tile`
 shares checked mouse-to-tile conversion between pathfinding overlays.
+
+## Integrated trading coordination
+
+| File | Methods and responsibilities |
+| --- | --- |
+| [settlement/commands/trade.rs](../../../core/src/settlement/commands/trade.rs) | `publish_trade_offers`, `clear_trade_offers`, `order_caravan`, `cancel_caravan_orders`, treasury/views and cargo handoff. |
+| [settlement/trading/mod.rs](../../../core/src/settlement/trading/mod.rs) | `TradeManager` and `CaravanOrder`: templates, orders, funded departures and queued returns. |
+| [settlement/trading/lifecycle.rs](../../../core/src/settlement/trading/lifecycle.rs) | `reserve_market`, `fund_caravan_orders`, `trade_with_visitors`, `collect_trade_returns`. |
+| [world/state/trade.rs](../../../core/src/world/state/trade.rs) | `begin_trade_turn`, `prepare_settlement_turn`, `default_trade_locations`, `finish_trade_turn`: transport and participant resolution. |
+| [trade/network.rs](../../../core/src/trade/network.rs) | `process_turn`: alternative local-phase runner with explicit endpoints. |
+
+`Simulation::step` invokes transport before Preparation and after EconomicUpdates.
+See [trading](trading.md) for report timing, failure semantics and all supporting files.

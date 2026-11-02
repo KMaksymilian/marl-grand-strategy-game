@@ -24,7 +24,7 @@ and [decisions](../decisions/0001-economy.md), respectively.
 | [Economy](systems/economy.md) | Allocation, resource flow, storage and accounting |
 | [Buildings](systems/buildings.md) | Definitions, runtime instances, production and upgrades |
 | [Territory](systems/territory.md) | Province membership, occupancy and tile inspection |
-| [Trading and caravans](systems/trading.md) | Existing trade and transport prototypes and their limitations |
+| [Trading and caravans](systems/trading.md) | Market funding, visitor matching, transport lifecycle and limitations |
 | [World generation](systems/world_generation.md) | Terrain and province generation |
 | [Pathfinding](systems/pathfinding.md) | Shared movement rules and route queries |
 | [Rendering](systems/rendering.md) | Map display, camera and input |
@@ -56,7 +56,7 @@ and [decisions](../decisions/0001-economy.md), respectively.
 | Inventory classes and resource activity | [Economy](systems/economy.md) |
 | Building classes and operating states | [Buildings](systems/buildings.md) |
 | Occupancy states and construction sequence | [Territory](systems/territory.md) |
-| Caravan classes, stored states and external trade call | [Trading](systems/trading.md) |
+| Trade ownership, caravan states and global execution | [Trading](systems/trading.md) |
 | World generation activity | [World generation](systems/world_generation.md) |
 | Route query sequence | [Pathfinding](systems/pathfinding.md) |
 | Graphical startup and frame sequence | [Rendering](systems/rendering.md) |
@@ -71,3 +71,5 @@ signatures for readability; exact contracts belong to implementation references.
 Keep one authoritative explanation of each rule and link to it from other levels.
 Add a system subdirectory only when that system needs several separate documents.
 Unsupported behavior must be labeled as a limitation, not drawn as a working path.
+
+- [Trading file and method reference](implementation/trading.md)

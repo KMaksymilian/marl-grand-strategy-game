@@ -144,7 +144,7 @@ fn construction_and_economy_accept_an_environment_without_a_map() {
             &mut environment,
         )
         .unwrap();
-    let report = settlement.process_turn(&mut environment);
+    let report = settlement.process_turn(&mut environment, &mut []);
     let building = match report.projects[0].result.as_ref().unwrap() {
         ProjectCompletion::BuildingConstructed(id) => *id,
         other => panic!("unexpected completion: {other:?}"),
@@ -158,12 +158,12 @@ fn construction_and_economy_accept_an_environment_without_a_map() {
     );
     settlement.set_building_load(building, 1.0).unwrap();
     settlement.deposit(ResourceType::Wood, 10);
-    let report = settlement.process_turn(&mut environment);
+    let report = settlement.process_turn(&mut environment, &mut []);
     assert_eq!(report.inventory.produced[&ResourceType::Stone], 5);
     assert_eq!(settlement.inventory().amount(ResourceType::Wood), 8);
     assert!(report.inventory.is_balanced());
     environment.cost = None;
-    let report = settlement.process_turn(&mut environment);
+    let report = settlement.process_turn(&mut environment, &mut []);
     assert_eq!(
         report
             .inventory

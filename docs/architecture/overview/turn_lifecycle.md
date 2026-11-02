@@ -9,12 +9,17 @@ next phase begins. The order comes from the registry, not hash-map iteration.
 | Phase | Effect |
 | --- | --- |
 | Decisions | Apply queued commands in submission order within each settlement; report individual rejection. |
-| Preparation | Refresh productivity, snapshot opening stock, reject invalid projects, refresh labour and reserve prototype trade resources. |
+| Preparation | Refresh productivity, snapshot opening stock, reject invalid projects, refresh labour, reserve market stock, fund caravan orders and match arrived visitors. |
 | Allocation | Gather demands and withdraw material budgets before publishing grants. |
 | Consumption | Evaluate population allocations and shortages. |
 | Construction | Pay project grants and decrement remaining time once. |
 | Production | Execute existing buildings using their allocated inputs and labour. |
-| EconomicUpdates | Collect output/returns, record losses and closing stock, finalize projects and return prototype trade resources. |
+| EconomicUpdates | Collect output and trade/internal returns, admit materials, record losses and closing stock, and finalize projects. |
+
+After Decisions, `World::begin_trade_turn` moves existing caravans and queues returns.
+After EconomicUpdates, `World::finish_trade_turn` routes funded departures. These
+transport boundaries are not separate `TurnPhase` entries. New caravans first
+move next turn. See [trading](../systems/trading.md).
 
 ## Global sequence
 
@@ -36,14 +41,16 @@ sequenceDiagram
     alt Preflight fails
         Sim-->>Caller: SimulationError, world and queue unchanged
     else Preflight succeeds
-        loop Each global phase, in table order
+        Sim->>W: execute queued decisions
+        Sim->>W: begin_trade_turn()
+        loop Each remaining global phase, in table order
             loop Every SettlementId in ascending order
-                Sim->>W: execute_settlement_command for decisions
                 Sim->>W: borrow target and temporary environment for phases
                 Sim->>S: execute shared phase through capabilities
                 S-->>Sim: outcome or transient phase state
             end
         end
+        Sim->>W: finish_trade_turn(default locations, finder)
         Sim->>Sim: increment current_turn once
         Sim-->>Caller: SimulationTurnReport
     end
@@ -63,13 +70,15 @@ stateDiagram-v2
     Ready --> Preflight: step()
     Preflight --> Ready: error / preserve world, queue and counter
     Preflight --> Decisions: valid
-    Decisions --> Preparation: all commands attempted
+    Decisions --> TransportStart: all commands attempted
+    TransportStart --> Preparation: move caravans and queue returns
     Preparation --> Allocation: all settlements prepared
     Allocation --> Consumption: all grants assigned
     Consumption --> Construction: all needs evaluated
     Construction --> Production: all projects progressed
     Production --> EconomicUpdates: all buildings executed
-    EconomicUpdates --> Ready: increment turn and return report
+    EconomicUpdates --> Dispatch: all settlements finished
+    Dispatch --> Ready: route departures, increment turn and return report
     note right of Decisions
         Invalid commands produce outcomes.
         They do not abort the turn.

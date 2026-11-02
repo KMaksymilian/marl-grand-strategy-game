@@ -46,17 +46,14 @@ impl Simulation {
             }
         }
 
+        self.world.begin_trade_turn();
         let mut prepared = Vec::with_capacity(ids.len());
         for &id in &ids {
             execution.push(PhaseExecution {
                 phase: TurnPhase::Preparation,
                 settlement_id: id,
             });
-            let (settlement, mut environment) = self
-                .world
-                .settlement_turn_parts(id, &mut self.finder)
-                .expect("registered settlement");
-            prepared.push((id, settlement.prepare_turn(&mut environment)));
+            prepared.push((id, self.world.prepare_settlement_turn(id, &mut self.finder)));
         }
 
         let mut allocated = Vec::with_capacity(prepared.len());
@@ -123,6 +120,8 @@ impl Simulation {
                 .expect("registered settlement");
             settlements.insert(id, settlement.finish_turn(state, &mut environment));
         }
+        let locations = self.world.default_trade_locations();
+        self.world.finish_trade_turn(&locations, &mut self.finder);
         self.current_turn = turn;
         Ok(SimulationTurnReport {
             turn,

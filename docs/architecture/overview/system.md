@@ -35,8 +35,8 @@ flowchart TD
 | Settlements | Needs, inventories, production, projects and cancellation | No automatic population growth or survival penalties |
 | Spatial state | Province registration, land placement and structural occupancy | No resource deposits, mobile units or fog of war |
 | Buildings | Shared definitions, work allocation, production and upgrades | Stat modifiers are stored but not executed |
-| Trade | Offer funding/returns and bilateral matching primitives | No settlement market commands or global matching phase |
-| Transport | A* route and caravan state prototype | No automatic arrival trading/unloading or integration in `step` |
+| Trade | Persistent offers, funding, shared visitor matching and reported returns | No queued trading decisions for agents yet |
+| Transport | A* routes, movement, arrival trade, return unloading and dispatch in `step` | Temporary endpoints, fixed speed/routes, no capacity or observations |
 | Display | Map, camera, A* and reachable-area overlays | No tile information panel or economic controls |
 
 

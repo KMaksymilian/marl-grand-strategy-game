@@ -54,7 +54,8 @@ turn before spending, preserving projects and reservations.
 `World::inspect_tile(position)` returns a borrowed `TileView` containing:
 
 - Position and terrain reference.
-- Province ID and optional registered settlement reference.
+- Province ID and optional `province_settlement` membership reference.
+- Optional `occupant_settlement`, resolved from the qualified structural owner.
 - Occupancy snapshot and the referenced building or new-construction project.
 
 
@@ -123,3 +124,13 @@ classDiagram
 Tile lookup combines province membership and terrain from the map with occupancy;
 it does not infer deposits from warehouse goods or reveal an AI agent's knowledge.
 The current graphical click handler runs pathfinding, not `inspect_tile`.
+
+## Inspection and economic integration
+
+`TileView::province_settlement` describes current province membership;
+`occupant_settlement` resolves the settlement-qualified structural reference.
+They may differ after province edits. A dangling reference or an object whose
+position disagrees with the tile returns `WorldError::InconsistentOccupancy`.
+Turn preflight rejects projects outside their registered province before trade
+funding, movement or construction spending. Trading and construction use the
+same persistent registered settlement instances.

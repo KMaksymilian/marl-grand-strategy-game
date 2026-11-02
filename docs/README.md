@@ -55,3 +55,5 @@ Historical documents describe their original revision. Source paths and findings
 may differ from the current implementation.
 
 - [Historical review: 2026-10-13](analysis/2026-10-13.md)
+
+- [Trading file and method reference](architecture/implementation/trading.md)

@@ -98,15 +98,23 @@ impl World {
         finder: &mut PathFinder,
     ) -> Result<TurnReport, WorldError> {
         self.validate_settlement_turn(settlement_id)?;
+        let mut visitors: Vec<_> = self
+            .caravans
+            .iter_mut()
+            .filter(|caravan| {
+                caravan.state() == crate::trade::caravan::CaravanState::Trading
+                    && caravan.receiver_id == settlement_id
+            })
+            .collect();
+        visitors.sort_by_key(|caravan| caravan.sender_id);
         Ok(self
             .settlements
             .get_mut(settlement_id)
             .expect("settlement was validated")
-            .process_turn(&mut MapSettlementEnvironment::new(
-                &self.map,
-                finder,
-                &mut self.territory,
-            )))
+            .process_turn(
+                &mut MapSettlementEnvironment::new(&self.map, finder, &mut self.territory),
+                &mut visitors,
+            ))
     }
 
     pub(crate) fn validate_settlement_turn(

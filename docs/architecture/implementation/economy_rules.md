@@ -42,13 +42,15 @@ Products are visible in the warehouse after the turn ends, but do not participat
 
 ### Material Balance in the Turn Report
 
-`TurnReport.inventory` contains opening/closing material stock, production, internal returns, consumption by population/projects/buildings and stage-specific losses.
+`TurnReport.inventory` contains opening/closing material stock, production, internal returns, trade reservations/receipts, consumption by population/projects/buildings and stage-specific losses.
+Trade receipts join production for ordered buffer/warehouse admission. Gold and
+cargo in transit are outside the material snapshots; see [trading](../systems/trading.md).
 For every material, `report.inventory.is_balanced()` checks:
 
 ```text
-opening stock + produced
+opening stock + produced + trade received
     = closing stock + population consumed + project consumed
-      + production inputs consumed + losses
+      + production inputs consumed + trade reserved + losses
 ```
 
 

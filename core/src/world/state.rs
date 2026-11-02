@@ -5,6 +5,7 @@ mod construction;
 pub use commands::CommandError;
 mod inspection;
 mod map_commands;
+mod trade;
 pub use inspection::TileView;
 
 use super::settlement_registry::SettlementRegistry;
@@ -30,6 +31,10 @@ pub enum WorldError {
     },
     InvalidMapPosition(Position),
     InvalidTerrain(Position),
+    InconsistentOccupancy {
+        position: Position,
+        occupancy: super::territory::TileOccupancy,
+    },
     SettlementOutsideProvince {
         province_id: usize,
         settlement_id: SettlementId,
@@ -111,15 +116,6 @@ impl World {
         ))
     }
 
-    pub(crate) fn settlement_mut(
-        &mut self,
-        id: SettlementId,
-    ) -> Result<&mut Settlement, WorldError> {
-        self.settlements
-            .get_mut(id)
-            .ok_or(WorldError::MissingSettlement(id))
-    }
-
     pub fn new(map: Map, provinces: Vec<Province>) -> World {
         World {
             map,
@@ -160,6 +156,19 @@ impl World {
 
     pub fn settlement(&self, id: SettlementId) -> Option<&Settlement> {
         self.settlements.get(id)
+    }
+
+    pub(crate) fn settlement_mut(
+        &mut self,
+        id: SettlementId,
+    ) -> Result<&mut Settlement, WorldError> {
+        self.settlements
+            .get_mut(id)
+            .ok_or(WorldError::MissingSettlement(id))
+    }
+
+    pub(crate) fn settlement_ids(&self) -> Vec<SettlementId> {
+        self.settlements.iter().map(Settlement::id).collect()
     }
 
     pub fn settlements(&self) -> impl Iterator<Item = &Settlement> {

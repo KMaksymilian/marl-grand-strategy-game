@@ -4,3 +4,6 @@ mod buildings;
 pub mod command;
 mod inventory;
 mod projects;
+mod trade;
+
+pub use trade::TradeCommandError;

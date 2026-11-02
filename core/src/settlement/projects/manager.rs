@@ -4,7 +4,7 @@ use crate::settlement::projects::Project;
 
 #[derive(Debug)]
 pub struct ProjectManager {
-    pub(super) active_projects: Vec<Project>,
+    pub(in crate::settlement) active_projects: Vec<Project>,
 }
 
 impl ProjectManager {

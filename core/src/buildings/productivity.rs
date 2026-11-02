@@ -1,6 +1,11 @@
-use crate::world::coordinates::Position;
-use crate::world::map::Map;
-use crate::world::pathfinding::{a_star::AStar, path_finder::PathFinder};
+use crate::spatial::Position;
+
+/// Map-independent source of directed movement costs (Strategy boundary).
+pub trait TravelCostSource {
+    /// Directed cost in the policy's units; `None` means unreachable.
+    /// The caller retains buffers; no route or map reference is stored in buildings.
+    fn travel_cost(&mut self, from: Position, to: Position) -> Option<u32>;
+}
 
 /// Linear output penalty in the movement-cost units used by map A*.
 /// Thresholds are supplied by configuration.toml; no balance defaults are embedded here.
@@ -52,7 +57,7 @@ impl TravelCostEfficiencyPolicy {
     }
 }
 
-/// Computes building output multipliers from capital-to-building A* route costs.
+/// Computes building output multipliers from supplied capital-to-building costs.
 /// Owned by BuildingManager; buildings receive only the resulting multiplier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuildingProductivityCalculator {
@@ -73,36 +78,26 @@ impl BuildingProductivityCalculator {
         self.policy
     }
 
-    /// Directed route cost from the capital to the building on the supplied map.
+    /// Directed route cost from the capital to the building using the supplied source.
     pub fn travel_cost_to(
         self,
         position: Position,
-        map: &Map,
-        finder: &mut PathFinder,
+        source: &mut impl TravelCostSource,
     ) -> Option<u32> {
-        let start = (
-            usize::try_from(self.capital.x).ok()?,
-            usize::try_from(self.capital.y).ok()?,
-        );
-        let end = (
-            usize::try_from(position.x).ok()?,
-            usize::try_from(position.y).ok()?,
-        );
-        AStar::travel_cost(map, finder, start, end)
+        source.travel_cost(self.capital, position)
     }
 
-    pub fn productivity_at(self, position: Position, map: &Map, finder: &mut PathFinder) -> f64 {
-        self.multiplier_at(position, map, finder).as_factor()
+    pub fn productivity_at(self, position: Position, source: &mut impl TravelCostSource) -> f64 {
+        self.multiplier_at(position, source).as_factor()
     }
 
     pub(crate) fn multiplier_at(
         self,
         position: Position,
-        map: &Map,
-        finder: &mut PathFinder,
+        source: &mut impl TravelCostSource,
     ) -> LocationProductivity {
         self.policy
-            .productivity(self.travel_cost_to(position, map, finder))
+            .productivity(self.travel_cost_to(position, source))
     }
 }
 

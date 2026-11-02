@@ -93,14 +93,10 @@ mod tests {
     }
 
     fn definition() -> Arc<BuildingDefinition> {
-        Arc::new(BuildingDefinition {
-            id: "house".into(),
-            name: "House".into(),
-            tier: 1,
-            max_workers: 0,
-            behaviors: vec![],
-            construction_cost: ProjectCost::default(),
-        })
+        Arc::new(
+            BuildingDefinition::new("house", "House", 1, 0, vec![], ProjectCost::default())
+                .unwrap(),
+        )
     }
 
     #[test]

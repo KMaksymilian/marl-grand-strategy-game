@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct SettlementInventoryManager {
-    pub(super) main: ResourceInventory,
-    pub(super) pending_production: ResourceInventory,
+    pub(in crate::settlement) main: ResourceInventory,
+    pub(in crate::settlement) pending_production: ResourceInventory,
     priorities: StorageOrder,
 }
 

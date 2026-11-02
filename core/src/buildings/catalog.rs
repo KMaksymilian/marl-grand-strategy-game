@@ -1,5 +1,5 @@
 //! Registry of shared, validated building definitions.
-use super::definition::{BuildingDefinition, DefinitionError};
+use super::definition::BuildingDefinition;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -9,11 +9,9 @@ pub struct BuildingCatalog {
 }
 
 impl BuildingCatalog {
-    pub fn register(&mut self, definition: BuildingDefinition) -> Result<(), DefinitionError> {
-        definition.validate()?;
+    pub fn register(&mut self, definition: BuildingDefinition) {
         self.registry
-            .insert(definition.id.clone(), Arc::new(definition));
-        Ok(())
+            .insert(definition.id().to_owned(), Arc::new(definition));
     }
 
     pub fn get_blueprint(&self, id: &str) -> Option<Arc<BuildingDefinition>> {
@@ -25,21 +23,22 @@ impl BuildingCatalog {
 mod tests {
     use super::super::definition::BuildingBehavior;
     use super::*;
-    use crate::settlement::stat::StatType;
+    use crate::buildings::effects::StatType;
 
-    fn create_dummy_definition(id: &str) -> BuildingDefinition {
-        BuildingDefinition {
-            id: id.to_string(),
-            name: "Test Building".to_string(),
-            tier: 1,
-            max_workers: 5,
-            behaviors: vec![BuildingBehavior::StatModifier {
+    fn create_dummy_definition(id: &str, workers: u32) -> BuildingDefinition {
+        BuildingDefinition::new(
+            id.to_string(),
+            "Test Building".to_string(),
+            1,
+            workers,
+            vec![BuildingBehavior::StatModifier {
                 stat: StatType::HousingCapacity,
                 base_amount: 10,
                 per_worker_amount: 2,
             }],
-            construction_cost: Default::default(),
-        }
+            Default::default(),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -54,17 +53,17 @@ mod tests {
     #[test]
     fn test_register_and_get_blueprint() {
         let mut catalog = BuildingCatalog::default();
-        let def = create_dummy_definition("house_t1");
+        let def = create_dummy_definition("house_t1", 5);
 
-        catalog.register(def).unwrap();
+        catalog.register(def);
 
         let blueprint = catalog.get_blueprint("house_t1");
         assert!(blueprint.is_some(), "Blueprint should be initialized");
 
         let blueprint = blueprint.unwrap();
-        assert_eq!(blueprint.id, "house_t1");
-        assert_eq!(blueprint.name, "Test Building");
-        assert_eq!(blueprint.max_workers, 5);
+        assert_eq!(blueprint.id(), "house_t1");
+        assert_eq!(blueprint.name(), "Test Building");
+        assert_eq!(blueprint.max_workers(), 5);
     }
 
     #[test]
@@ -81,8 +80,8 @@ mod tests {
     #[test]
     fn test_flyweight_pattern_arc_cloning() {
         let mut catalog = BuildingCatalog::default();
-        let def = create_dummy_definition("lumber_mill");
-        catalog.register(def).unwrap();
+        let def = create_dummy_definition("lumber_mill", 5);
+        catalog.register(def);
 
         let bp1 = catalog.get_blueprint("lumber_mill").unwrap();
         let bp2 = catalog.get_blueprint("lumber_mill").unwrap();
@@ -97,16 +96,14 @@ mod tests {
     fn test_register_overwrites_existing_id() {
         let mut catalog = BuildingCatalog::default();
 
-        let mut def1 = create_dummy_definition("forge");
-        def1.max_workers = 3;
-        catalog.register(def1).unwrap();
+        let def1 = create_dummy_definition("forge", 3);
+        catalog.register(def1);
 
-        let mut def2 = create_dummy_definition("forge");
-        def2.max_workers = 10;
-        catalog.register(def2).unwrap();
+        let def2 = create_dummy_definition("forge", 10);
+        catalog.register(def2);
 
         let blueprint = catalog.get_blueprint("forge").unwrap();
 
-        assert_eq!(blueprint.max_workers, 10);
+        assert_eq!(blueprint.max_workers(), 10);
     }
 }

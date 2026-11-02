@@ -1,6 +1,6 @@
 use crate::economy::allocation::{AllocationRecipient, AllocationResult};
 use crate::economy::{ResourceInventory, ResourceType};
-pub use crate::settlement::population::ConsumptionResult;
+pub use crate::settlement::economy::ConsumptionResult;
 use crate::settlement::projects::ProjectOutcome;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 

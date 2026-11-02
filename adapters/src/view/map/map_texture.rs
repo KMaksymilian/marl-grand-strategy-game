@@ -13,8 +13,8 @@ pub struct MapTextureData {
 
 impl MapTextureData {
     pub fn generate_from_world(world: &World) -> MapTextureData {
-        let width: usize = world.map.width;
-        let height: usize = world.map.height;
+        let width: usize = world.map().width;
+        let height: usize = world.map().height;
         let mut image_geo: Image = Image::gen_image_color(width as u16, height as u16, BLANK);
         let mut image_ele: Image = image_geo.clone();
         let mut rng: ThreadRng = ::rand::rng();
@@ -25,14 +25,14 @@ impl MapTextureData {
         for y in 0..height {
             for x in 0..width {
                 let elevation_color: Color = MapTextureData::determine_elevation_color(
-                    world.map.terrain[y * width + x].elevation_val,
+                    world.map().terrain[y * width + x].elevation_val,
                 );
                 let base_color: Color = MapTextureData::determine_biome_color(
-                    &world.map.terrain[y * width + x].determine_biome(),
+                    &world.map().terrain[y * width + x].determine_biome(),
                 );
                 let noise: f32 = rng.random_range(-0.04..=0.04);
                 let lightning_multiplier: f32 =
-                    MapTextureData::calculate_light(&world.map, x, y, width, height, ocean_level);
+                    MapTextureData::calculate_light(world.map(), x, y, width, height, ocean_level);
                 let final_color: Color = Color::new(
                     (base_color.r * lightning_multiplier + noise).clamp(0.0, 1.0),
                     (base_color.g * lightning_multiplier + noise).clamp(0.0, 1.0),
@@ -138,12 +138,12 @@ impl MapTextureData {
     fn extract_province_borders(world: &World, map_image: &mut Image, width: usize, height: usize) {
         for y in 1..height - 1 {
             for x in 1..width - 1 {
-                let province_id: usize = world.map.territory[y * width + x];
+                let province_id: usize = world.map().territory[y * width + x];
 
-                if province_id != world.map.territory[(y - 1) * width + x]
-                    || province_id != world.map.territory[y * width + x - 1]
-                    || province_id != world.map.territory[(y + 1) * width + x]
-                    || province_id != world.map.territory[y * width + x + 1]
+                if province_id != world.map().territory[(y - 1) * width + x]
+                    || province_id != world.map().territory[y * width + x - 1]
+                    || province_id != world.map().territory[(y + 1) * width + x]
+                    || province_id != world.map().territory[y * width + x + 1]
                 {
                     map_image.set_pixel(x as u32, y as u32, BLACK);
                 }

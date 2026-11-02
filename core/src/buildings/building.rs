@@ -1,19 +1,14 @@
 //! Building state, identity, configuration and read-only views.
 mod production;
 
-use crate::world::coordinates::Position;
+use crate::spatial::Position;
 
-use super::definition::{BuildingDefinition, DefinitionError};
+use super::definition::BuildingDefinition;
 use super::productivity::LocationProductivity;
 use crate::economy::ResourceType;
 use crate::ids::BuildingId;
 use std::collections::HashMap;
 use std::sync::Arc;
-
-pub struct BuildingUpdateResult {
-    pub production: ProductionResult,
-    //pub modifiers: HashMap<ModifierType, f32>,
-}
 
 pub struct ProductionResult {
     pub produced: HashMap<ResourceType, u32>,
@@ -91,9 +86,8 @@ impl Building {
         instance_id: BuildingId,
         position: Position,
         definition: Arc<BuildingDefinition>,
-    ) -> Result<Self, DefinitionError> {
-        definition.validate()?;
-        Ok(Self {
+    ) -> Self {
+        Self {
             instance_id,
             position,
             definition,
@@ -101,17 +95,12 @@ impl Building {
             location_productivity: LocationProductivity::FULL,
             is_active: true,
             current_workers: 0,
-        })
+        }
     }
 
-    pub fn upgrade(
-        &mut self,
-        new_definition: Arc<BuildingDefinition>,
-    ) -> Result<(), DefinitionError> {
-        new_definition.validate()?;
-        self.current_workers = self.current_workers.min(new_definition.max_workers);
+    pub fn upgrade(&mut self, new_definition: Arc<BuildingDefinition>) {
+        self.current_workers = self.current_workers.min(new_definition.max_workers());
         self.definition = new_definition;
-        Ok(())
     }
 }
 
@@ -132,9 +121,9 @@ mod tests {
                 outputs: vec![(ResourceType::Stone, 2)],
             }],
         );
-        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
         let grants = HashMap::from([(ResourceType::Labour, 1), (ResourceType::Wood, 1)]);
-        let result = building.resolve_allocation(Some(&grants)).production;
+        let result = building.resolve_allocation(Some(&grants));
         assert_eq!(result.produced[&ResourceType::Stone], 1);
         assert_eq!(result.unused[&ResourceType::Wood], 0);
     }
@@ -149,13 +138,13 @@ mod tests {
                 outputs: vec![(ResourceType::Stone, 9)],
             }],
         );
-        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
         let grants = HashMap::from([
             (ResourceType::Labour, 1),
             (ResourceType::Wood, 3),
             (ResourceType::Grain, 1),
         ]);
-        let result = building.resolve_allocation(Some(&grants)).production;
+        let result = building.resolve_allocation(Some(&grants));
         assert_eq!(result.produced[&ResourceType::Stone], 3);
         assert_eq!(result.unused[&ResourceType::Wood], 0);
         assert_eq!(result.unused[&ResourceType::Grain], 0);
@@ -172,9 +161,9 @@ mod tests {
                 outputs: vec![(ResourceType::Stone, amount)],
             }],
         );
-        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
         let grants = HashMap::from([(ResourceType::Labour, 1), (ResourceType::Wood, amount)]);
-        let result = building.resolve_allocation(Some(&grants)).production;
+        let result = building.resolve_allocation(Some(&grants));
         assert_eq!(result.produced[&ResourceType::Stone], amount);
         assert_eq!(result.unused[&ResourceType::Wood], 0);
     }
@@ -184,21 +173,23 @@ mod tests {
         max_workers: u32,
         behaviors: Vec<BuildingBehavior>,
     ) -> Arc<BuildingDefinition> {
-        Arc::new(BuildingDefinition {
-            id: id.to_string(),
-            name: "Test Building".to_string(),
-            tier: 1,
-            max_workers,
-            behaviors,
-            construction_cost: Default::default(),
-        })
+        Arc::new(
+            BuildingDefinition::new(
+                id.to_string(),
+                "Test Building".to_string(),
+                1,
+                max_workers,
+                behaviors,
+                Default::default(),
+            )
+            .unwrap(),
+        )
     }
 
     #[test]
     fn test_building_initialization() {
         let def = create_test_def("house", 5, vec![]);
-        let building =
-            Building::new(BuildingId(1), Position { x: 10, y: 15 }, def.clone()).unwrap();
+        let building = Building::new(BuildingId(1), Position { x: 10, y: 15 }, def.clone());
 
         assert_eq!(building.instance_id, BuildingId(1));
         assert_eq!(building.position, Position { x: 10, y: 15 });
@@ -216,10 +207,9 @@ mod tests {
         let def_t1 = create_test_def("lumber_t1", 5, vec![]);
         let def_t2 = create_test_def("lumber_t2", 10, vec![]);
 
-        let mut building =
-            Building::new(BuildingId(1), Position { x: 0, y: 0 }, def_t1.clone()).unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def_t1.clone());
 
-        building.upgrade(def_t2.clone()).unwrap();
+        building.upgrade(def_t2.clone());
 
         assert!(
             Arc::ptr_eq(&building.definition, &def_t2),
@@ -235,7 +225,7 @@ mod tests {
             outputs: vec![(ResourceType::Wood, 10)],
         };
         let def = create_test_def("free_wood", 5, vec![behavior]);
-        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
 
         // We do not grant Labour, only raw materials
         let mut granted = HashMap::new();
@@ -244,15 +234,11 @@ mod tests {
         let result = building.resolve_allocation(Some(&granted));
 
         assert!(
-            result.production.produced.is_empty(),
+            result.produced.is_empty(),
             "Building without workers should not produce anything."
         );
         assert_eq!(
-            *result
-                .production
-                .unused
-                .get(&ResourceType::Wood)
-                .unwrap_or(&0),
+            *result.unused.get(&ResourceType::Wood).unwrap_or(&0),
             50,
             "All granted resources should be returned as unused."
         );
@@ -266,7 +252,7 @@ mod tests {
             outputs: vec![(ResourceType::Wood, 10)],
         };
         let def = create_test_def("free_wood", 5, vec![behavior]);
-        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
         building.is_active = false;
 
         let mut granted = HashMap::new();
@@ -276,20 +262,16 @@ mod tests {
         let result = building.resolve_allocation(Some(&granted));
 
         assert!(
-            result.production.produced.is_empty(),
+            result.produced.is_empty(),
             "Inactive building should not produce anything."
         );
         assert_eq!(
-            *result
-                .production
-                .unused
-                .get(&ResourceType::Wood)
-                .unwrap_or(&0),
+            *result.unused.get(&ResourceType::Wood).unwrap_or(&0),
             20,
             "Inactive building should return all granted material resources."
         );
         assert!(
-            !result.production.unused.contains_key(&ResourceType::Labour),
+            !result.unused.contains_key(&ResourceType::Labour),
             "Labour should not be returned as unused material, even if inactive."
         );
         assert_eq!(
@@ -305,7 +287,7 @@ mod tests {
             outputs: vec![(ResourceType::Stone, 20)],
         };
         let def = create_test_def("stone_maker", 10, vec![behavior]);
-        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
 
         // AllocationEngine provides full labor and resources
         let mut granted = HashMap::new();
@@ -315,20 +297,9 @@ mod tests {
         let result = building.resolve_allocation(Some(&granted));
 
         assert_eq!(building.current_workers, 10);
+        assert_eq!(*result.produced.get(&ResourceType::Stone).unwrap_or(&0), 20);
         assert_eq!(
-            *result
-                .production
-                .produced
-                .get(&ResourceType::Stone)
-                .unwrap_or(&0),
-            20
-        );
-        assert_eq!(
-            *result
-                .production
-                .unused
-                .get(&ResourceType::Wood)
-                .unwrap_or(&0),
+            *result.unused.get(&ResourceType::Wood).unwrap_or(&0),
             0,
             "All wood should be consumed."
         );
@@ -341,7 +312,7 @@ mod tests {
             outputs: vec![(ResourceType::Stone, 40)],
         };
         let def = create_test_def("stone_maker", 10, vec![behavior]);
-        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
 
         // Grant only 50% of required workforce (5/10) and more wood than needed for 50% efficiency
         let mut granted = HashMap::new();
@@ -352,20 +323,12 @@ mod tests {
 
         assert_eq!(building.current_workers, 5);
         assert_eq!(
-            *result
-                .production
-                .produced
-                .get(&ResourceType::Stone)
-                .unwrap_or(&0),
+            *result.produced.get(&ResourceType::Stone).unwrap_or(&0),
             20,
             "Should only produce 50% of max capacity."
         );
         assert_eq!(
-            *result
-                .production
-                .unused
-                .get(&ResourceType::Wood)
-                .unwrap_or(&0),
+            *result.unused.get(&ResourceType::Wood).unwrap_or(&0),
             5,
             "Should return 5 leftover wood out of the 15 granted."
         );
@@ -378,16 +341,19 @@ mod tests {
             outputs: vec![(ResourceType::Stone, 20)],
         };
 
-        let def = Arc::new(BuildingDefinition {
-            id: "demanding_maker".to_string(),
-            name: "Test Building".to_string(),
-            tier: 1,
-            max_workers: 10,
-            behaviors: vec![behavior],
-            construction_cost: Default::default(),
-        });
+        let def = Arc::new(
+            BuildingDefinition::new(
+                "demanding_maker".to_string(),
+                "Test Building".to_string(),
+                1,
+                10,
+                vec![behavior],
+                Default::default(),
+            )
+            .unwrap(),
+        );
 
-        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def).unwrap();
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
 
         // Workers = 100%
         // Wood = 100% (10 granted / 10 needed)
@@ -402,33 +368,12 @@ mod tests {
         assert_eq!(building.current_workers, 10);
 
         // 1. Produced Stone should be 40% of 20 = 8.0
-        assert_eq!(
-            *result
-                .production
-                .produced
-                .get(&ResourceType::Stone)
-                .unwrap_or(&0),
-            8
-        );
+        assert_eq!(*result.produced.get(&ResourceType::Stone).unwrap_or(&0), 8);
 
         // 2. Consumed Grain is 2.0 (100% of granted). Unused = 0.0.
-        assert_eq!(
-            *result
-                .production
-                .unused
-                .get(&ResourceType::Grain)
-                .unwrap_or(&0),
-            0
-        );
+        assert_eq!(*result.unused.get(&ResourceType::Grain).unwrap_or(&0), 0);
 
         // 3. Consumed Wood is 4.0 (40% of needed). Unused = 10.0 - 4.0 = 6.0.
-        assert_eq!(
-            *result
-                .production
-                .unused
-                .get(&ResourceType::Wood)
-                .unwrap_or(&0),
-            6
-        );
+        assert_eq!(*result.unused.get(&ResourceType::Wood).unwrap_or(&0), 6);
     }
 }

@@ -1,18 +1,13 @@
 //! Settlement state, read-only views and construction.
 //! Commands and turn processing are implemented on the same type in child modules.
-mod building_manager;
 mod commands;
-mod inventory_manager;
-mod population;
-mod project_lifecycle;
-mod project_manager;
+mod economy;
 pub mod projects;
-pub mod registry;
-pub mod stat;
 mod turn;
-pub mod turn_report;
 
-pub use population::{NeedRegistry, NeedTier};
+pub use commands::command;
+pub use economy::{NeedRegistry, NeedTier};
+pub use turn::report as turn_report;
 
 use crate::buildings::Building;
 use crate::buildings::productivity::BuildingProductivityCalculator;
@@ -20,17 +15,15 @@ use crate::economy::ResourceType;
 use crate::economy::gold_inventory::GoldInventory;
 use crate::ids::{BuildingId, SettlementId};
 use crate::trade::book::TradeBook;
-use building_manager::BuildingManager;
-use inventory_manager::SettlementInventoryManager;
-use population::PopulationManager;
-use project_manager::ProjectManager;
+use economy::{BuildingManager, PopulationManager, SettlementInventoryManager};
 use projects::Project;
+use projects::ProjectManager;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildingCommandError {
     DuplicateBuilding(BuildingId),
-    Territory(crate::world::territory::TerritoryError),
+    Territory(crate::spatial::TerritoryError),
     MissingBuilding(BuildingId),
     InvalidLoad,
 }

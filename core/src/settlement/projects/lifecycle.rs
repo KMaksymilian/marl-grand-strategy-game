@@ -1,32 +1,22 @@
 //! Project validation, rejection and completion effects on Settlement.
-use super::Settlement;
-use super::building_manager::BuildingManager;
-use super::projects::{ProjectCompletion, ProjectError, ProjectOutcome, ProjectResult};
+use super::{ProjectCompletion, ProjectError, ProjectOutcome, ProjectResult};
 use crate::buildings::Building;
+use crate::buildings::productivity::TravelCostSource;
 use crate::ids::ProjectId;
-use crate::ids::SettlementId;
-use crate::world::map::Map;
-use crate::world::pathfinding::path_finder::PathFinder;
-use crate::world::territory::{
-    BuildingReference, ProjectReference, TerritoryManager, TileOccupancy,
-};
+use crate::settlement::Settlement;
+use crate::settlement::economy::BuildingManager;
+use crate::spatial::{BuildingReference, ConstructionSpace, ProjectReference};
 
 impl Settlement {
-    pub(super) fn validate_project_result(
+    pub(in crate::settlement) fn validate_project_result(
         result: &ProjectResult,
         buildings: &BuildingManager,
     ) -> Result<(), ProjectError> {
         match result {
-            ProjectResult::ConstructBuilding { definition, .. } => definition
-                .validate()
-                .map_err(ProjectError::InvalidDefinition),
+            ProjectResult::ConstructBuilding { .. } => Ok(()),
             ProjectResult::UpgradeBuilding {
-                target_instance_id,
-                new_definition,
+                target_instance_id, ..
             } => {
-                new_definition
-                    .validate()
-                    .map_err(ProjectError::InvalidDefinition)?;
                 if buildings.contains(*target_instance_id) {
                     Ok(())
                 } else {
@@ -37,10 +27,9 @@ impl Settlement {
         }
     }
 
-    pub(super) fn reject_invalid_projects(
+    pub(in crate::settlement) fn reject_invalid_projects(
         &mut self,
-        map: &Map,
-        territory: &mut TerritoryManager,
+        space: &mut impl ConstructionSpace,
     ) -> Vec<ProjectOutcome> {
         let mut outcomes = Vec::new();
         let buildings = &self.building_manager;
@@ -50,20 +39,23 @@ impl Settlement {
             .retain(|project| {
                 match Self::validate_project_result(&project.result, buildings).and_then(|()| {
                     Self::validate_project_site(
-                        settlement_id,
-                        project.id,
+                        ProjectReference {
+                            settlement_id,
+                            project_id: project.id,
+                        },
                         &project.result,
-                        map,
-                        territory,
+                        space,
                     )
                 }) {
                     Ok(()) => true,
                     Err(error) => {
                         Self::release_project_site(
-                            settlement_id,
-                            project.id,
+                            ProjectReference {
+                                settlement_id,
+                                project_id: project.id,
+                            },
                             &project.result,
-                            territory,
+                            space,
                         );
                         outcomes.push(ProjectOutcome {
                             project_id: project.id,
@@ -76,19 +68,23 @@ impl Settlement {
         outcomes
     }
 
-    pub(super) fn resolve_completed_projects(
+    pub(in crate::settlement) fn resolve_completed_projects(
         &mut self,
-        map: &Map,
-        finder: &mut PathFinder,
-        territory: &mut TerritoryManager,
+        environment: &mut (impl ConstructionSpace + TravelCostSource),
     ) -> Vec<ProjectOutcome> {
         let completed = self.project_manager.extract_completed();
         let mut outcomes = Vec::new();
         for project in completed {
-            let result =
-                self.finalize_project(project.id, project.result.clone(), map, finder, territory);
+            let result = self.finalize_project(project.id, project.result.clone(), environment);
             if result.is_err() {
-                Self::release_project_site(self.id, project.id, &project.result, territory);
+                Self::release_project_site(
+                    ProjectReference {
+                        settlement_id: self.id,
+                        project_id: project.id,
+                    },
+                    &project.result,
+                    environment,
+                );
             }
             outcomes.push(ProjectOutcome {
                 project_id: project.id,
@@ -98,25 +94,29 @@ impl Settlement {
         outcomes
     }
 
-    pub(super) fn finalize_project(
+    pub(in crate::settlement) fn finalize_project(
         &mut self,
         project_id: ProjectId,
         result: ProjectResult,
-        map: &Map,
-        finder: &mut PathFinder,
-        territory: &mut TerritoryManager,
+        environment: &mut (impl ConstructionSpace + TravelCostSource),
     ) -> Result<ProjectCompletion, ProjectError> {
         Self::validate_project_result(&result, &self.building_manager)?;
-        Self::validate_project_site(self.id, project_id, &result, map, territory)?;
+        Self::validate_project_site(
+            ProjectReference {
+                settlement_id: self.id,
+                project_id,
+            },
+            &result,
+            environment,
+        )?;
         match result {
             ProjectResult::ConstructBuilding {
                 position,
                 definition,
             } => {
                 let id = self.building_manager.next_available_id();
-                let new_building = Building::new(id, position, definition)
-                    .map_err(ProjectError::InvalidDefinition)?;
-                territory
+                let new_building = Building::new(id, position, definition);
+                environment
                     .finish_construction(
                         position,
                         ProjectReference {
@@ -130,7 +130,7 @@ impl Settlement {
                     )
                     .map_err(ProjectError::Territory)?;
                 self.building_manager
-                    .construct_building(new_building, map, finder)
+                    .construct_building(new_building, environment)
                     .expect("new building ID is unused");
                 Ok(ProjectCompletion::BuildingConstructed(id))
             }
@@ -152,44 +152,25 @@ impl Settlement {
     }
 
     fn validate_project_site(
-        settlement_id: SettlementId,
-        project_id: ProjectId,
+        reference: ProjectReference,
         result: &ProjectResult,
-        map: &Map,
-        territory: &TerritoryManager,
+        space: &impl ConstructionSpace,
     ) -> Result<(), ProjectError> {
         if let ProjectResult::ConstructBuilding { position, .. } = result {
-            map.validate_building_position(*position)
-                .map_err(ProjectError::Territory)?;
-            territory
-                .validate_reservation(
-                    *position,
-                    ProjectReference {
-                        settlement_id,
-                        project_id,
-                    },
-                )
+            space
+                .validate_construction(*position, reference)
                 .map_err(ProjectError::Territory)?;
         }
         Ok(())
     }
 
     fn release_project_site(
-        settlement_id: SettlementId,
-        project_id: ProjectId,
+        reference: ProjectReference,
         result: &ProjectResult,
-        territory: &mut TerritoryManager,
+        space: &mut impl ConstructionSpace,
     ) {
         if let ProjectResult::ConstructBuilding { position, .. } = result {
-            let reference = ProjectReference {
-                settlement_id,
-                project_id,
-            };
-            if territory.tile_at(*position).occupancy() == TileOccupancy::Construction(reference) {
-                territory
-                    .cancel_construction(*position, reference)
-                    .expect("reservation belongs to the rejected project");
-            }
+            space.release_rejected_construction(*position, reference);
         }
     }
 }

@@ -1,12 +1,12 @@
 //! One ordered store of persistent settlement instances. Registration is coordinated by World.
 use std::collections::{BTreeMap, btree_map::Entry};
 
-use super::Settlement;
 use crate::ids::SettlementId;
+use crate::settlement::Settlement;
 
 /// Read-only public access; mutations go through the world's registration/commands.
 /// ```compile_fail
-/// use simulation_core::settlement::registry::SettlementRegistry;
+/// use simulation_core::world::settlement_registry::SettlementRegistry;
 /// use simulation_core::ids::SettlementId;
 /// let mut registry = SettlementRegistry::default();
 /// registry.get_mut(SettlementId(1));

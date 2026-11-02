@@ -1,18 +1,17 @@
 use crate::buildings::Building;
 use crate::buildings::definition::BuildingDefinition;
-use crate::buildings::productivity::{BuildingProductivityCalculator, LocationProductivity};
+use crate::buildings::productivity::{
+    BuildingProductivityCalculator, LocationProductivity, TravelCostSource,
+};
 use crate::economy::ResourceType;
 use crate::economy::allocation::{AllocationRecipient, AllocationResult, DemandRequest};
 use crate::ids::BuildingId;
-use crate::world::coordinates::Position;
-use crate::world::map::Map;
-use crate::world::pathfinding::path_finder::PathFinder;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct BuildingManager {
-    pub(super) buildings: Vec<Building>,
+    pub(in crate::settlement) buildings: Vec<Building>,
     productivity_calculator: Option<BuildingProductivityCalculator>,
 }
 
@@ -27,13 +26,12 @@ impl BuildingManager {
     pub fn construct_building(
         &mut self,
         mut building: Building,
-        map: &Map,
-        finder: &mut PathFinder,
+        source: &mut impl TravelCostSource,
     ) -> Result<(), BuildingId> {
         if self.contains(building.instance_id()) {
             return Err(building.instance_id());
         }
-        building.set_location_productivity(self.productivity_at(building.position(), map, finder));
+        building.set_location_productivity(self.productivity_at(building.position(), source));
         self.buildings.push(building);
         Ok(())
     }
@@ -45,18 +43,17 @@ impl BuildingManager {
     pub fn set_productivity_calculator(
         &mut self,
         calculator: Option<BuildingProductivityCalculator>,
-        map: &Map,
-        finder: &mut PathFinder,
+        source: &mut impl TravelCostSource,
     ) {
         self.productivity_calculator = calculator;
-        self.refresh_productivity(map, finder);
+        self.refresh_productivity(source);
     }
 
-    pub fn refresh_productivity(&mut self, map: &Map, finder: &mut PathFinder) {
+    pub fn refresh_productivity(&mut self, source: &mut impl TravelCostSource) {
         let calculator = self.productivity_calculator;
         for building in &mut self.buildings {
             let productivity = calculator.map_or(LocationProductivity::FULL, |calculator| {
-                calculator.multiplier_at(building.position(), map, finder)
+                calculator.multiplier_at(building.position(), source)
             });
             building.set_location_productivity(productivity);
         }
@@ -64,20 +61,29 @@ impl BuildingManager {
 
     fn productivity_at(
         &self,
-        position: Position,
-        map: &Map,
-        finder: &mut PathFinder,
+        position: crate::spatial::Position,
+        source: &mut impl TravelCostSource,
     ) -> LocationProductivity {
         self.productivity_calculator
             .map_or(LocationProductivity::FULL, |calculator| {
-                calculator.multiplier_at(position, map, finder)
+                calculator.multiplier_at(position, source)
             })
     }
 
-    pub fn contains(&self, id: BuildingId) -> bool {
+    pub fn get(&self, id: BuildingId) -> Option<&Building> {
         self.buildings
             .iter()
-            .any(|building| building.instance_id() == id)
+            .find(|building| building.instance_id() == id)
+    }
+
+    pub fn get_mut(&mut self, id: BuildingId) -> Option<&mut Building> {
+        self.buildings
+            .iter_mut()
+            .find(|building| building.instance_id() == id)
+    }
+
+    pub fn contains(&self, id: BuildingId) -> bool {
+        self.get(id).is_some()
     }
 
     /// A completed project receives a building ID independent of its project ID.
@@ -98,12 +104,9 @@ impl BuildingManager {
         target_id: BuildingId,
         new_def: Arc<BuildingDefinition>,
     ) -> bool {
-        if let Some(building) = self
-            .buildings
-            .iter_mut()
-            .find(|b| b.instance_id() == target_id)
-        {
-            building.upgrade(new_def).is_ok()
+        if let Some(building) = self.get_mut(target_id) {
+            building.upgrade(new_def);
+            true
         } else {
             false
         }
@@ -137,10 +140,10 @@ impl BuildingManager {
             let grants = allocations.get(&AllocationRecipient::Building(building.instance_id()));
             let update_result = building.resolve_allocation(grants);
 
-            for (res, amount) in update_result.production.produced {
+            for (res, amount) in update_result.produced {
                 *all_produced.entry(res).or_insert(0_u64) += u64::from(amount);
             }
-            for (res, amount) in update_result.production.unused {
+            for (res, amount) in update_result.unused {
                 if amount > 0 {
                     *all_returned.entry(res).or_insert(0_u64) += u64::from(amount);
                 }
@@ -153,6 +156,10 @@ impl BuildingManager {
 
 #[cfg(test)]
 mod tests {
+    use crate::world::Map;
+    use crate::world::pathfinding::path_finder::PathFinder;
+    use crate::world::settlement_environment::AStarTravelCosts;
+
     fn test_map() -> Map {
         Map::new(
             1,
@@ -169,7 +176,7 @@ mod tests {
     use crate::buildings::Building;
     use crate::buildings::definition::{BuildingBehavior, BuildingDefinition};
     use crate::economy::ResourceType;
-    use crate::world::coordinates::Position;
+    use crate::spatial::Position;
     use std::collections::HashMap;
     use std::sync::Arc;
 
@@ -180,13 +187,15 @@ mod tests {
         manager
             .construct_building(
                 create_active_building(7, def.clone()),
-                &test_map(),
-                &mut test_finder(),
+                &mut AStarTravelCosts::new(&test_map(), &mut test_finder()),
             )
             .unwrap();
         let duplicate = create_active_building(7, def);
         assert_eq!(
-            manager.construct_building(duplicate, &test_map(), &mut test_finder()),
+            manager.construct_building(
+                duplicate,
+                &mut AStarTravelCosts::new(&test_map(), &mut test_finder())
+            ),
             Err(BuildingId(7))
         );
         assert_eq!(manager.buildings.len(), 1);
@@ -199,19 +208,21 @@ mod tests {
         max_workers: u32,
         behaviors: Vec<BuildingBehavior>,
     ) -> Arc<BuildingDefinition> {
-        Arc::new(BuildingDefinition {
-            id: id.to_string(),
-            name: "Test Building".to_string(),
-            tier: 1,
-            max_workers,
-            behaviors,
-            construction_cost: Default::default(),
-        })
+        Arc::new(
+            BuildingDefinition::new(
+                id.to_string(),
+                "Test Building".to_string(),
+                1,
+                max_workers,
+                behaviors,
+                Default::default(),
+            )
+            .unwrap(),
+        )
     }
 
     fn create_active_building(instance_id: u32, def: Arc<BuildingDefinition>) -> Building {
-        let mut building =
-            Building::new(BuildingId(instance_id), Position { x: 0, y: 0 }, def).unwrap();
+        let mut building = Building::new(BuildingId(instance_id), Position { x: 0, y: 0 }, def);
         // Important: default is 0.0, which means no demand and no production.
         // We set it to 1.0 to simulate a fully functioning building.
         building.set_target_load(1.0).unwrap();
@@ -231,10 +242,16 @@ mod tests {
 
         // Act
         manager
-            .construct_building(first, &test_map(), &mut test_finder())
+            .construct_building(
+                first,
+                &mut AStarTravelCosts::new(&test_map(), &mut test_finder()),
+            )
             .unwrap();
         manager
-            .construct_building(second, &test_map(), &mut test_finder())
+            .construct_building(
+                second,
+                &mut AStarTravelCosts::new(&test_map(), &mut test_finder()),
+            )
             .unwrap();
 
         // Assert
@@ -254,8 +271,7 @@ mod tests {
         manager
             .construct_building(
                 create_active_building(1, old_def),
-                &test_map(),
-                &mut test_finder(),
+                &mut AStarTravelCosts::new(&test_map(), &mut test_finder()),
             )
             .unwrap();
 
@@ -278,8 +294,7 @@ mod tests {
         manager
             .construct_building(
                 create_active_building(1, def),
-                &test_map(),
-                &mut test_finder(),
+                &mut AStarTravelCosts::new(&test_map(), &mut test_finder()),
             )
             .unwrap();
 
@@ -305,8 +320,7 @@ mod tests {
         manager
             .construct_building(
                 create_active_building(1, def1),
-                &test_map(),
-                &mut test_finder(),
+                &mut AStarTravelCosts::new(&test_map(), &mut test_finder()),
             )
             .unwrap();
 
@@ -319,8 +333,7 @@ mod tests {
         manager
             .construct_building(
                 create_active_building(2, def2),
-                &test_map(),
-                &mut test_finder(),
+                &mut AStarTravelCosts::new(&test_map(), &mut test_finder()),
             )
             .unwrap();
 
@@ -367,15 +380,13 @@ mod tests {
         manager
             .construct_building(
                 create_active_building(1, Arc::clone(&def)),
-                &test_map(),
-                &mut test_finder(),
+                &mut AStarTravelCosts::new(&test_map(), &mut test_finder()),
             )
             .unwrap();
         manager
             .construct_building(
                 create_active_building(2, def),
-                &test_map(),
-                &mut test_finder(),
+                &mut AStarTravelCosts::new(&test_map(), &mut test_finder()),
             )
             .unwrap();
 

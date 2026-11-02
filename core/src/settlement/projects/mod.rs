@@ -1,20 +1,24 @@
+//! Local project state, progress and completion effects on the settlement.
+mod lifecycle;
+mod manager;
+
+pub(super) use manager::ProjectManager;
+
 use crate::buildings::definition::BuildingDefinition;
 use crate::economy::ResourceType;
 use crate::economy::allocation::{AllocationRecipient, DemandRequest};
 use crate::ids::{BuildingId, ProjectId};
-use crate::world::coordinates::Position;
+use crate::spatial::Position;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectError {
     MissingProject(ProjectId),
-    Territory(crate::world::territory::TerritoryError),
+    Territory(crate::spatial::TerritoryError),
     DuplicateProject(ProjectId),
     MissingBuilding(BuildingId),
-    DuplicateBuilding(BuildingId),
     UnsupportedRecruitment,
-    InvalidDefinition(crate::buildings::definition::DefinitionError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,21 +48,8 @@ pub enum ProjectResult {
     },
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct ProjectCost {
-    pub needed_resources: HashMap<ResourceType, u32>,
-    pub turn_cost: u32,
-}
+pub use crate::economy::cost::ProjectCost;
 
-impl ProjectCost {
-    pub fn normalize(&mut self) {
-        self.needed_resources.retain(|_, amount| *amount > 0);
-    }
-
-    pub fn is_fully_paid(&self) -> bool {
-        self.needed_resources.values().all(|amount| *amount == 0) && self.turn_cost == 0
-    }
-}
 #[derive(Debug, Clone)]
 pub struct Project {
     pub(super) id: ProjectId,

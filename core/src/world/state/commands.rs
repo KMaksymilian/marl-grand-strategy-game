@@ -1,0 +1,65 @@
+//! Single command facade: scheduling never borrows world internals to dispatch actions.
+use super::{World, WorldError};
+use crate::economy::storage_order::StorageOrderError;
+use crate::ids::SettlementId;
+use crate::settlement::command::SettlementCommand;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandError {
+    World(WorldError),
+    StorageOrder(StorageOrderError),
+}
+
+impl World {
+    pub fn execute_settlement_command(
+        &mut self,
+        id: SettlementId,
+        command: &SettlementCommand,
+    ) -> Result<(), CommandError> {
+        match command {
+            SettlementCommand::Construct {
+                project_id,
+                position,
+                definition,
+                cost,
+            } => self
+                .queue_construction(id, *project_id, *position, definition.clone(), cost.clone())
+                .map_err(CommandError::World),
+            SettlementCommand::Upgrade {
+                project_id,
+                building_id,
+                definition,
+                cost,
+            } => self
+                .queue_upgrade(
+                    id,
+                    *project_id,
+                    *building_id,
+                    definition.clone(),
+                    cost.clone(),
+                )
+                .map_err(CommandError::World),
+            SettlementCommand::CancelProject(project_id) => self
+                .cancel_project(id, *project_id)
+                .map_err(CommandError::World),
+            SettlementCommand::SetBuildingLoad { building_id, load } => self
+                .settlement_mut(id)
+                .map_err(CommandError::World)?
+                .set_building_load(*building_id, *load)
+                .map_err(|error| CommandError::World(WorldError::Building(error))),
+            SettlementCommand::SetBuildingActive {
+                building_id,
+                active,
+            } => self
+                .settlement_mut(id)
+                .map_err(CommandError::World)?
+                .set_building_active(*building_id, *active)
+                .map_err(|error| CommandError::World(WorldError::Building(error))),
+            SettlementCommand::SetStorageOrder(materials) => self
+                .settlement_mut(id)
+                .map_err(CommandError::World)?
+                .set_storage_order(materials)
+                .map_err(CommandError::StorageOrder),
+        }
+    }
+}

@@ -13,7 +13,9 @@ pub struct TileView<'a> {
     pub terrain: &'a Area,
     pub province_id: usize,
     /// Settlement registered in this province, if any.
-    pub settlement: Option<&'a Settlement>,
+    pub province_settlement: Option<&'a Settlement>,
+    /// Owner resolved from the structural reference; may differ after province edits.
+    pub occupant_settlement: Option<&'a Settlement>,
     pub tile: Tile,
     pub building: Option<&'a Building>,
     /// New construction only; upgrades are in the settlement's active projects.
@@ -54,11 +56,29 @@ impl World {
                 None,
             ),
         };
+        let occupant_settlement = match tile.occupancy() {
+            TileOccupancy::Empty => None,
+            TileOccupancy::Construction(reference) => self.settlement(reference.settlement_id),
+            TileOccupancy::Building(reference) => self.settlement(reference.settlement_id),
+        };
+        let valid = match tile.occupancy() {
+            TileOccupancy::Empty => true,
+            TileOccupancy::Building(_) => building.is_some_and(|building| building.position() == position),
+            TileOccupancy::Construction(_) => project.is_some_and(|project| matches!(project.result(),
+                crate::settlement::projects::ProjectResult::ConstructBuilding { position: site, .. } if *site == position)),
+        };
+        if !valid {
+            return Err(WorldError::InconsistentOccupancy {
+                position,
+                occupancy: tile.occupancy(),
+            });
+        }
         Ok(TileView {
             position,
             terrain: &self.map.terrain[index],
             province_id,
-            settlement,
+            province_settlement: settlement,
+            occupant_settlement,
             tile,
             building,
             project,
@@ -69,9 +89,50 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ids::SettlementId;
+
+    #[test]
+    fn dangling_structural_reference_is_an_explicit_error() {
+        let mut world = world();
+        let position = Position { x: 0, y: 0 };
+        let reference = crate::world::territory::BuildingReference {
+            settlement_id: SettlementId(1),
+            building_id: crate::ids::BuildingId(99),
+        };
+        world
+            .territory
+            .register_building(position, reference)
+            .unwrap();
+        assert!(matches!(
+            world.inspect_tile(position),
+            Err(WorldError::InconsistentOccupancy { .. })
+        ));
+    }
+
+    #[test]
+    fn province_settlement_and_structure_owner_are_distinct_after_membership_edit() {
+        let mut world = world();
+        let position = Position { x: 0, y: 0 };
+        world
+            .queue_construction(
+                SettlementId(1),
+                ProjectId(7),
+                position,
+                definition(),
+                ProjectCost::default(),
+            )
+            .unwrap();
+        world
+            .add_settlement(20, Settlement::new(SettlementId(2), 100, 0, Arc::default()))
+            .unwrap();
+        world.map.territory[0] = 20;
+        let view = world.inspect_tile(position).unwrap();
+        assert_eq!(view.province_settlement.unwrap().id(), SettlementId(2));
+        assert_eq!(view.occupant_settlement.unwrap().id(), SettlementId(1));
+        assert!(view.project.is_some());
+    }
     use crate::buildings::definition::BuildingDefinition;
     use crate::ids::ProjectId;
-    use crate::ids::SettlementId;
     use crate::settlement::projects::ProjectCost;
     use crate::world::{Map, Province, pathfinding::path_finder::PathFinder};
     use std::sync::Arc;
@@ -111,7 +172,7 @@ mod tests {
         assert_eq!(view.position, position);
         assert!(std::ptr::eq(view.terrain, &world.map.terrain[0]));
         assert_eq!(view.province_id, 10);
-        assert_eq!(view.settlement.unwrap().id(), SettlementId(1));
+        assert_eq!(view.province_settlement.unwrap().id(), SettlementId(1));
         assert_eq!(view.tile.occupancy(), TileOccupancy::Empty);
         assert!(view.project.is_none());
         assert!(view.building.is_none());
@@ -123,7 +184,7 @@ mod tests {
         let view = world.inspect_tile(Position { x: 1, y: 0 }).unwrap();
         assert_eq!(view.province_id, 20);
         assert_eq!(view.terrain.elevation_val, 0.1);
-        assert!(view.settlement.is_none());
+        assert!(view.province_settlement.is_none());
         assert_eq!(view.tile.occupancy(), TileOccupancy::Empty);
     }
 

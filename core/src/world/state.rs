@@ -2,6 +2,7 @@ use crate::ids::SettlementId;
 use std::collections::HashMap;
 mod construction;
 mod inspection;
+mod trade;
 pub use inspection::TileView;
 
 use super::territory::{TerritoryManager, Tile};
@@ -25,6 +26,10 @@ pub enum WorldError {
         settlement_id: SettlementId,
     },
     InvalidMapPosition(Position),
+    InconsistentOccupancy {
+        position: Position,
+        occupancy: super::territory::TileOccupancy,
+    },
     SettlementOutsideProvince {
         province_id: usize,
         settlement_id: SettlementId,
@@ -117,6 +122,19 @@ impl World {
 
     pub fn settlement(&self, id: SettlementId) -> Option<&Settlement> {
         self.settlements.get(id)
+    }
+
+    pub(crate) fn settlement_mut(
+        &mut self,
+        id: SettlementId,
+    ) -> Result<&mut Settlement, WorldError> {
+        self.settlements
+            .get_mut(id)
+            .ok_or(WorldError::MissingSettlement(id))
+    }
+
+    pub(crate) fn settlement_ids(&self) -> Vec<SettlementId> {
+        self.settlements.iter().map(Settlement::id).collect()
     }
 
     pub fn settlements(&self) -> impl Iterator<Item = &Settlement> {

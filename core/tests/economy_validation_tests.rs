@@ -140,7 +140,7 @@ fn invalid_project_is_rejected_before_queueing_or_spending() {
     assert_eq!(settlement.inventory().amount(Wood), 10);
     assert!(
         settlement
-            .process_turn(&test_map(), &mut test_finder(), &mut territory)
+            .process_turn(&test_map(), &mut test_finder(), &mut territory, &mut [])
             .inventory
             .is_balanced()
     );

@@ -144,12 +144,12 @@ decisions retain submission order.
 | Phase | Work |
 | --- | --- |
 | `Decisions` | Apply queued construction, upgrade, cancellation, building-load/activity and storage-order commands. |
-| `Preparation` | Refresh A* productivity, snapshot opening stock, reject invalid projects, refresh labour and reserve prototype trade resources. |
+| `Preparation` | Refresh A* productivity, snapshot opening stock, reject invalid projects, refresh labour and fund market offers/caravan orders and serve arrived visitors. |
 | `Allocation` | Gather population, project and building demand; allocate resources once from existing stock. |
 | `Consumption` | Evaluate population consumption and shortages using those allocations. |
 | `Construction` | Pay remaining project costs and advance project time exactly once. |
 | `Production` | Execute existing buildings using their allocated inputs and labour. |
-| `EconomicUpdates` | Collect output/returns, account for overflow, snapshot closing stock, finalize projects and return prototype trade resources. |
+| `EconomicUpdates` | Collect production and trade returns, account for overflow and trade flows, snapshot closing stock and finalize projects. |
 
 ```mermaid
 flowchart TD
@@ -214,8 +214,7 @@ or resume API. There is no world rollback for panics or process failures.
 `SimulationTurnReport` contains the completed turn number, decision outcomes,
 settlement `TurnReport`s in a `BTreeMap` and `PhaseExecution` entries recorded at
 actual phase invocations. These entries make global ordering inspectable.
-The existing inventory accounting boundary is unchanged: it does not cover
-prototype trade reservations/returns. See [economy.md](economy.md).
+Inventory accounting includes material reservations and returns from trade. See [economy.md](economy.md).
 
 ## Headless execution
 
@@ -237,7 +236,22 @@ construction/upgrade completion, decisions, cancellation, preflight failures and
 counter overflow. Unit tests remain alongside their implementation; public API
 tests live in `core/tests/simulation_tests.rs`.
 
-AI policies, automatic decision generation, graphics integration, caravan travel,
-trade matching, checkpointing and world generation seed reproducibility are not
+AI policies, automatic decision generation, graphics integration, checkpointing and world generation seed reproducibility are not
 introduced by this coordinator. It makes the current settlement economy runnable
 through a shared global lifecycle.
+
+## Transport boundaries
+
+After successful preflight and queued decisions, `step` moves caravans and delivers
+returns before Preparation. Preparation funds offers/orders and serves visitors;
+EconomicUpdates combines trade goods with production and reports both material
+flows. After every settlement finishes, funded caravans are dispatched. These
+transport operations surround the existing seven phases; no settlement is advanced
+a second time by `TradeNetwork` inside the coordinator.
+
+For automatic dispatch, Simulation derives one endpoint per registered province:
+its first land tile in row-major map order. This is a deterministic default, not
+an implemented capital/trade-center rule. No land endpoint yields a NoRoute return.
+`TradeNetwork` remains an alternative convenience entry point with explicit endpoint
+coordinates; do not invoke both entry points for the same intended world turn.
+All caravan cargo, participant fields, orders and report identities use SettlementId.

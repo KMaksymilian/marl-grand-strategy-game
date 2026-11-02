@@ -70,7 +70,8 @@ fn distance_reduces_output_without_discounting_materials_or_workers() {
             &test_map(),
             &mut test_finder(),
         );
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
+        let report =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert_eq!(settlement.inventory().amount(ResourceType::Wood), 90);
         assert_eq!(
             settlement.inventory().amount(ResourceType::Stone),
@@ -113,7 +114,7 @@ fn configured_calculator_applies_to_buildings_added_later() {
         0.5
     );
     settlement.deposit(ResourceType::Wood, 10);
-    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
     assert_eq!(settlement.inventory().amount(ResourceType::Stone), 10);
     assert!(report.inventory.is_balanced());
 }
@@ -169,7 +170,7 @@ fn moving_capital_changing_policy_and_disabling_calculator_refresh_cached_produc
             .location_productivity(),
         1.0
     );
-    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
     assert_eq!(settlement.inventory().amount(ResourceType::Stone), 20);
     assert!(report.inventory.is_balanced());
 }
@@ -184,7 +185,7 @@ fn load_and_material_shortage_remain_independent_of_location_productivity() {
         &mut test_finder(),
     );
     settlement.set_building_load(BuildingId(7), 0.5).unwrap();
-    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
     assert_eq!(settlement.buildings().next().unwrap().current_workers(), 5);
     assert_eq!(report.inventory.production_consumed[&ResourceType::Wood], 5);
     assert_eq!(settlement.inventory().amount(ResourceType::Stone), 5);
@@ -192,7 +193,7 @@ fn load_and_material_shortage_remain_independent_of_location_productivity() {
 
     settlement.withdraw(ResourceType::Wood, 93);
     settlement.set_building_load(BuildingId(7), 1.0).unwrap();
-    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
     assert_eq!(report.inventory.production_consumed[&ResourceType::Wood], 2);
     assert_eq!(settlement.inventory().amount(ResourceType::Stone), 7);
     assert!(report.inventory.is_balanced());
@@ -215,7 +216,8 @@ fn zero_load_and_inactive_buildings_do_not_consume_materials() {
                 .set_building_active(BuildingId(7), false)
                 .unwrap();
         }
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
+        let report =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert_eq!(settlement.inventory().amount(ResourceType::Wood), 100);
         assert_eq!(settlement.inventory().amount(ResourceType::Stone), 0);
         assert_eq!(settlement.buildings().next().unwrap().current_workers(), 0);
@@ -242,7 +244,7 @@ fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
             &mut territory,
         )
         .unwrap();
-    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
     assert_eq!(
         report.projects[0].result,
         Ok(ProjectCompletion::BuildingConstructed(BuildingId(0)))
@@ -260,7 +262,7 @@ fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
             ProjectCost::default(),
         )
         .unwrap();
-    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
     assert_eq!(
         report.projects[0].result,
         Ok(ProjectCompletion::BuildingUpgraded(BuildingId(0)))
@@ -275,7 +277,7 @@ fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
             .location_productivity(),
         0.5
     );
-    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
     assert_eq!(settlement.inventory().amount(ResourceType::Stone), 30);
     assert!(report.inventory.is_balanced());
 }
@@ -296,7 +298,7 @@ fn output_rounds_once_after_combining_staffing_and_distance() {
         .add_building(building, &test_map(), &mut test_finder(), &mut territory)
         .unwrap();
     settlement.deposit(ResourceType::Wood, 2);
-    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory);
+    let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
     assert_eq!(settlement.inventory().amount(ResourceType::Wood), 1);
     assert_eq!(settlement.inventory().amount(ResourceType::Stone), 1);
     assert_eq!(report.inventory.production_consumed[&ResourceType::Wood], 1);
@@ -316,13 +318,18 @@ fn two_settlements_keep_independent_productivity_configuration() {
     );
     assert!(
         first
-            .process_turn(&test_map(), &mut test_finder(), &mut territory)
+            .process_turn(&test_map(), &mut test_finder(), &mut territory, &mut [])
             .inventory
             .is_balanced()
     );
     assert!(
         second
-            .process_turn(&test_map(), &mut test_finder(), &mut second_territory)
+            .process_turn(
+                &test_map(),
+                &mut test_finder(),
+                &mut second_territory,
+                &mut []
+            )
             .inventory
             .is_balanced()
     );
@@ -353,7 +360,7 @@ fn map_changes_update_output_using_the_current_astar_route_each_turn() {
         .unwrap();
     settlement.deposit(ResourceType::Wood, 30);
 
-    let first = settlement.process_turn(&map, &mut finder, &mut territory);
+    let first = settlement.process_turn(&map, &mut finder, &mut territory, &mut []);
     assert_eq!(first.inventory.produced[&ResourceType::Stone], 20);
     assert!(first.inventory.is_balanced());
     map.terrain[4].elevation_val = 0.0;
@@ -361,7 +368,7 @@ fn map_changes_update_output_using_the_current_astar_route_each_turn() {
         context.travel_cost_to(Position { x: 2, y: 1 }, &map, &mut finder),
         Some(28)
     );
-    let detour = settlement.process_turn(&map, &mut finder, &mut territory);
+    let detour = settlement.process_turn(&map, &mut finder, &mut territory, &mut []);
     assert_eq!(detour.inventory.produced[&ResourceType::Stone], 10);
     assert_eq!(
         detour.inventory.production_consumed[&ResourceType::Wood],
@@ -371,7 +378,7 @@ fn map_changes_update_output_using_the_current_astar_route_each_turn() {
     for y in 0..3 {
         map.terrain[y * 3 + 1].elevation_val = 0.0;
     }
-    let blocked = settlement.process_turn(&map, &mut finder, &mut territory);
+    let blocked = settlement.process_turn(&map, &mut finder, &mut territory, &mut []);
     assert_eq!(
         settlement
             .buildings()
@@ -437,7 +444,7 @@ fn changing_toml_thresholds_changes_production_for_the_same_route() {
             &map,
             &mut finder,
         );
-        let report = settlement.process_turn(&map, &mut finder, &mut territory);
+        let report = settlement.process_turn(&map, &mut finder, &mut territory, &mut []);
         assert_eq!(report.inventory.produced[&ResourceType::Stone], output);
         assert_eq!(
             report.inventory.production_consumed[&ResourceType::Wood],

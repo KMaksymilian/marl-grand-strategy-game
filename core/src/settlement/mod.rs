@@ -9,8 +9,14 @@ mod project_manager;
 pub mod projects;
 pub mod registry;
 pub mod stat;
+mod trade_lifecycle;
+mod trade_manager;
 mod turn;
+pub(crate) use turn::PreparedTurn;
 pub mod turn_report;
+
+pub use commands::TradeCommandError;
+pub use trade_manager::CaravanOrder;
 
 pub use population::{NeedRegistry, NeedTier};
 
@@ -26,6 +32,7 @@ use population::PopulationManager;
 use project_manager::ProjectManager;
 use projects::Project;
 use std::sync::Arc;
+use trade_manager::TradeManager;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildingCommandError {
@@ -47,6 +54,7 @@ pub struct Settlement {
     gold_inventory: GoldInventory,
     inventory_manager: SettlementInventoryManager,
     book: TradeBook,
+    trade: TradeManager,
     building_manager: BuildingManager,
     population_manager: PopulationManager,
     project_manager: ProjectManager,
@@ -64,6 +72,7 @@ impl Settlement {
             gold_inventory: GoldInventory::default(),
             inventory_manager: SettlementInventoryManager::new(initial_capacity),
             book: TradeBook::default(),
+            trade: TradeManager::default(),
             building_manager: BuildingManager::new(),
             population_manager: PopulationManager::new(initial_population, need_registry),
             project_manager: ProjectManager::new(),

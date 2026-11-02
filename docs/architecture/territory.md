@@ -78,7 +78,8 @@ points so province checks and the authoritative registry cannot be bypassed.
 `World::inspect_tile(position)` returns a borrowed `TileView` containing:
 
 - Position and terrain reference.
-- Province ID and optional registered settlement reference.
+- Province ID and `province_settlement`, the optional settlement registered there.
+- `occupant_settlement`, the owner resolved from a project/building reference.
 - Occupancy snapshot and the referenced building or new-construction project.
 
 The referenced objects are not cloned. For a building tile, `project` is absent;
@@ -96,3 +97,24 @@ Implementation: [registry](../../core/src/world/territory.rs),
 [world commands](../../core/src/world/state/construction.rs),
 [inspection](../../core/src/world/state/inspection.rs),
 [settlement commands](../../core/src/settlement/commands/projects.rs).
+
+## Integration with trade
+
+`TradeNetwork::process_turn(world, locations, finder)` uses the settlements owned
+by `World`, in ascending ID order. It accepts no external settlement slice.
+All project memberships are validated before caravan movement or economic changes.
+Returned cargo is delivered to those same instances, their markets serve arrived
+visitors, and funded departures are dispatched after all local turns.
+
+`Settlement::process_turn(map, finder, territory, visitors)` retains the shared
+occupancy registry and receives the current visitors. World commands supply both;
+standalone callers must retain the same registry across construction and turns.
+The trade material flows participate in `InventoryTurnReport::is_balanced`.
+
+Tile inspection distinguishes province membership from structural ownership after
+province edits. A nonempty occupancy whose object is missing or located elsewhere
+returns `WorldError::InconsistentOccupancy`, rather than an apparently empty view.
+
+Regression coverage: `core/tests/territory_trade_integration_tests.rs` combines
+construction, caravan trade, cancellation, overflow, material balance and preflight
+failure before spending.

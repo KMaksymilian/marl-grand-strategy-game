@@ -153,7 +153,12 @@ mod tests {
 
     fn turn(settlement: &mut Settlement) -> crate::settlement::turn_report::TurnReport {
         let map = Map::new(4, 1, vec![Area::new(0.5, 0.5); 4], vec![0; 4]);
-        settlement.process_turn(&map, &mut PathFinder::new(4, 1), &mut [])
+        settlement.process_turn(
+            &map,
+            &mut PathFinder::new(4, 1),
+            &mut crate::world::territory::TerritoryManager::default(),
+            &mut [],
+        )
     }
 
     #[test]

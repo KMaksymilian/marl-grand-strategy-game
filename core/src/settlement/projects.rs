@@ -8,6 +8,8 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectError {
+    MissingProject(ProjectId),
+    Territory(crate::world::territory::TerritoryError),
     DuplicateProject(ProjectId),
     MissingBuilding(BuildingId),
     DuplicateBuilding(BuildingId),

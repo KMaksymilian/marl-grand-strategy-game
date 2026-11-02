@@ -5,14 +5,16 @@ use crate::economy::allocation::{AllocationEngine, AllocationRecipient};
 use crate::trade::caravan::Caravan;
 use crate::world::map::Map;
 use crate::world::pathfinding::path_finder::PathFinder;
+use crate::world::territory::TerritoryManager;
 
 impl Settlement {
-    /// Full turn including trade with caravans that arrived at this settlement.
-    /// Visitors in another state or addressed elsewhere are left untouched.
+    /// Refreshes route costs from the current map before any economic allocation.
+    /// Reuse the same spatial registry supplied to construction commands.
     pub fn process_turn(
         &mut self,
         map: &Map,
         finder: &mut PathFinder,
+        territory: &mut TerritoryManager,
         visitors: &mut [&mut Caravan],
     ) -> TurnReport {
         self.building_manager.refresh_productivity(map, finder);
@@ -21,7 +23,7 @@ impl Settlement {
             &self.inventory_manager.pending_production,
         );
         // Invalid projects must not participate in material allocation.
-        let mut projects = self.reject_invalid_projects();
+        let mut projects = self.reject_invalid_projects(map, territory);
         // Labour update
         self.inventory_manager
             .refresh_labor_capacity(self.population_manager.population);
@@ -65,7 +67,7 @@ impl Settlement {
             .extend(self.inventory_manager.commit_pending_production());
 
         // 5. Project finalization phase
-        projects.extend(self.resolve_completed_projects(map, finder));
+        projects.extend(self.resolve_completed_projects(map, finder, territory));
 
         inventory.trade_reserved = trade.reserved();
         inventory.trade_received = trade.received.clone();
@@ -137,13 +139,24 @@ mod tests {
         }
     }
 
-    fn add_building(settlement: &mut Settlement, id: u32, definition: Arc<BuildingDefinition>) {
-        let mut building =
-            Building::new(BuildingId(id), Position { x: 0, y: 0 }, definition).unwrap();
+    fn add_building(
+        settlement: &mut Settlement,
+        id: u32,
+        definition: Arc<BuildingDefinition>,
+        territory: &mut TerritoryManager,
+    ) {
+        let mut building = Building::new(
+            BuildingId(id),
+            Position {
+                x: id as i32,
+                y: settlement.id() as i32,
+            },
+            definition,
+        )
+        .unwrap();
         building.set_target_load(1.0).unwrap();
         settlement
-            .building_manager
-            .construct_building(building, &test_map(), &mut test_finder())
+            .add_building(building, &test_map(), &mut test_finder(), territory)
             .unwrap();
     }
 
@@ -159,6 +172,7 @@ mod tests {
 
     #[test]
     fn storage_priorities_are_local_to_each_settlement() {
+        let mut territory = TerritoryManager::default();
         let mut food_first = Settlement::new(1, 3, 1, Arc::default());
         let mut wood_first = Settlement::new(2, 3, 1, Arc::default());
         food_first
@@ -171,10 +185,12 @@ mod tests {
             inputs: vec![],
             outputs: vec![(ResourceType::Wood, 3), (ResourceType::Grain, 3)],
         }]);
-        add_building(&mut food_first, 1, blueprint.clone());
-        add_building(&mut wood_first, 1, blueprint);
-        let food_report = food_first.process_turn(&test_map(), &mut test_finder(), &mut []);
-        let wood_report = wood_first.process_turn(&test_map(), &mut test_finder(), &mut []);
+        add_building(&mut food_first, 1, blueprint.clone(), &mut territory);
+        add_building(&mut wood_first, 1, blueprint, &mut territory);
+        let food_report =
+            food_first.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
+        let wood_report =
+            wood_first.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert_eq!(food_first.storage_order()[0], ResourceType::Grain);
         assert_eq!(wood_first.storage_order()[0], ResourceType::Wood);
         assert_eq!(stock(&food_first, ResourceType::Grain), 3);
@@ -187,6 +203,7 @@ mod tests {
 
     #[test]
     fn changing_storage_priority_affects_future_admissions_without_eviction() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 3, 1, Arc::default());
         settlement
             .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
@@ -198,10 +215,11 @@ mod tests {
                 inputs: vec![],
                 outputs: vec![(ResourceType::Wood, 3), (ResourceType::Grain, 3)],
             }]),
+            &mut territory,
         );
         assert!(
             settlement
-                .process_turn(&test_map(), &mut test_finder(), &mut [])
+                .process_turn(&test_map(), &mut test_finder(), &mut territory, &mut [])
                 .inventory
                 .is_balanced()
         );
@@ -210,7 +228,8 @@ mod tests {
         settlement
             .set_storage_order([ResourceType::Wood, ResourceType::Stone, ResourceType::Grain])
             .unwrap();
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let report =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert_eq!(stock(&settlement, ResourceType::Grain), 3);
         assert_eq!(stock(&settlement, ResourceType::Wood), 0);
         assert!(report.inventory.is_balanced());
@@ -223,7 +242,7 @@ mod tests {
         );
         assert!(
             settlement
-                .process_turn(&test_map(), &mut test_finder(), &mut [])
+                .process_turn(&test_map(), &mut test_finder(), &mut territory, &mut [])
                 .inventory
                 .is_balanced()
         );
@@ -233,6 +252,7 @@ mod tests {
 
     #[test]
     fn buffer_and_warehouse_losses_are_reported_without_double_counting() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 5, 1, Arc::default());
         settlement
             .inventory_manager
@@ -245,8 +265,10 @@ mod tests {
                 inputs: vec![],
                 outputs: vec![(ResourceType::Wood, 4), (ResourceType::Grain, 4)],
             }]),
+            &mut territory,
         );
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let report =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert_eq!(
             report.inventory.losses,
             vec![
@@ -279,6 +301,7 @@ mod tests {
     #[test]
     fn unsold_trade_goods_compete_with_production_by_storage_order() {
         use crate::trade::offer::TradeOffer;
+        let mut territory = TerritoryManager::default();
 
         let mut settlement = Settlement::new(1, 10, 1, Arc::default());
         settlement
@@ -301,10 +324,16 @@ mod tests {
                 inputs: vec![],
                 outputs: vec![(ResourceType::Wood, 10)],
             }]),
+            &mut territory,
         );
 
         // Nobody buys the grain, so it comes back while the warehouse receives new wood.
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let report = settlement.process_turn(
+            &test_map(),
+            &mut test_finder(),
+            &mut crate::world::territory::TerritoryManager::default(),
+            &mut [],
+        );
         assert_eq!(report.inventory.trade_received[&ResourceType::Grain], 10);
         assert_eq!(report.inventory.produced[&ResourceType::Wood], 10);
         assert_eq!(stock(&settlement, ResourceType::Grain), 10);
@@ -322,6 +351,7 @@ mod tests {
 
     #[test]
     fn material_grants_returned_without_workers_are_not_consumption() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 2, 0, Arc::default());
         settlement.inventory_manager.main.add(ResourceType::Wood, 2);
         add_building(
@@ -331,8 +361,10 @@ mod tests {
                 inputs: vec![(ResourceType::Wood, 2)],
                 outputs: vec![(ResourceType::Stone, 5)],
             }]),
+            &mut territory,
         );
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let report =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert_eq!(report.inventory.returned[&ResourceType::Wood], 2);
         assert_eq!(report.inventory.production_consumed[&ResourceType::Wood], 0);
         assert!(report.inventory.produced.is_empty());
@@ -343,14 +375,16 @@ mod tests {
 
     #[test]
     fn combined_building_production_can_exceed_u32_without_wrapping() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, u32::MAX, 2, Arc::default());
         let blueprint = definition(vec![BuildingBehavior::Production {
             inputs: vec![],
             outputs: vec![(ResourceType::Wood, u32::MAX)],
         }]);
-        add_building(&mut settlement, 1, blueprint.clone());
-        add_building(&mut settlement, 2, blueprint);
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        add_building(&mut settlement, 1, blueprint.clone(), &mut territory);
+        add_building(&mut settlement, 2, blueprint, &mut territory);
+        let report =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert_eq!(
             report.inventory.produced[&ResourceType::Wood],
             2 * u64::from(u32::MAX)
@@ -369,6 +403,7 @@ mod tests {
 
     #[test]
     fn opening_balance_includes_preexisting_buffer_stock() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 3, 0, Arc::default());
         settlement
             .inventory_manager
@@ -378,7 +413,8 @@ mod tests {
             .inventory_manager
             .pending_production
             .add(ResourceType::Wood, 3);
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let report =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert_eq!(report.inventory.opening_stock[&ResourceType::Wood], 3);
         assert_eq!(report.inventory.closing_stock[&ResourceType::Wood], 2);
         assert_eq!(
@@ -403,6 +439,7 @@ mod tests {
     fn complete_overflow_reports_are_independent_of_building_order() {
         let mut expected = None;
         for order in [[1, 2], [2, 1]] {
+            let mut territory = TerritoryManager::default();
             let mut settlement = Settlement::new(1, 3, 2, Arc::default());
             for id in order {
                 let output = if id == 1 {
@@ -417,9 +454,11 @@ mod tests {
                         inputs: vec![],
                         outputs: vec![(output, 3)],
                     }]),
+                    &mut territory,
                 );
             }
-            let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+            let report =
+                settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
             assert!(report.inventory.is_balanced());
             if let Some(expected) = &expected {
                 assert_eq!(&report, expected);
@@ -433,6 +472,7 @@ mod tests {
 
     #[test]
     fn zero_cost_entries_do_not_block_construction() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 100, 0, Arc::default());
         settlement
             .queue_construction(
@@ -443,9 +483,12 @@ mod tests {
                     needed_resources: HashMap::from([(ResourceType::Wood, 0)]),
                     turn_cost: 0,
                 },
+                &test_map(),
+                &mut territory,
             )
             .unwrap();
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let report =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert!(settlement.project_manager.active_projects.is_empty());
         assert_eq!(settlement.building_manager.buildings.len(), 1);
         assert_eq!(
@@ -457,7 +500,7 @@ mod tests {
         );
         assert!(
             settlement
-                .process_turn(&test_map(), &mut test_finder(), &mut [])
+                .process_turn(&test_map(), &mut test_finder(), &mut territory, &mut [])
                 .projects
                 .is_empty()
         );
@@ -465,6 +508,7 @@ mod tests {
 
     #[test]
     fn missing_upgrade_target_is_rejected_without_spending_resources() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 100, 0, Arc::default());
         settlement
             .inventory_manager
@@ -481,21 +525,22 @@ mod tests {
         );
         assert_eq!(result, Err(ProjectError::MissingBuilding(BuildingId(99))));
         assert!(settlement.project_manager.active_projects.is_empty());
-        settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert_eq!(stock(&settlement, ResourceType::Wood), 10);
     }
 
     #[test]
     fn upgrade_completion_reports_the_existing_building_id() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 100, 0, Arc::default());
         let old = definition(vec![]);
         let upgraded = definition(vec![]);
         settlement
-            .building_manager
-            .construct_building(
+            .add_building(
                 Building::new(BuildingId(8), Position { x: 2, y: 3 }, old).unwrap(),
                 &test_map(),
                 &mut test_finder(),
+                &mut territory,
             )
             .unwrap();
         settlement
@@ -514,7 +559,8 @@ mod tests {
             .unwrap();
         settlement.inventory_manager.main.add(ResourceType::Wood, 2);
 
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let report =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
 
         assert_eq!(
             report.projects,
@@ -531,7 +577,7 @@ mod tests {
         assert!(settlement.project_manager.active_projects.is_empty());
         assert!(
             settlement
-                .process_turn(&test_map(), &mut test_finder(), &mut [])
+                .process_turn(&test_map(), &mut test_finder(), &mut territory, &mut [])
                 .projects
                 .is_empty()
         );
@@ -539,8 +585,9 @@ mod tests {
 
     #[test]
     fn removed_upgrade_target_fails_before_further_material_allocation() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 100, 0, Arc::default());
-        add_building(&mut settlement, 1, definition(vec![]));
+        add_building(&mut settlement, 1, definition(vec![]), &mut territory);
         settlement
             .queue_upgrade(
                 ProjectId(5),
@@ -555,7 +602,7 @@ mod tests {
         settlement.inventory_manager.main.add(ResourceType::Wood, 1);
         assert!(
             settlement
-                .process_turn(&test_map(), &mut test_finder(), &mut [])
+                .process_turn(&test_map(), &mut test_finder(), &mut territory, &mut [])
                 .projects
                 .is_empty()
         );
@@ -568,7 +615,8 @@ mod tests {
 
         settlement.building_manager.buildings.clear();
         settlement.inventory_manager.main.add(ResourceType::Wood, 2);
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let report =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
 
         assert_eq!(
             report.projects,
@@ -581,7 +629,7 @@ mod tests {
         assert!(settlement.project_manager.active_projects.is_empty());
         assert!(
             settlement
-                .process_turn(&test_map(), &mut test_finder(), &mut [])
+                .process_turn(&test_map(), &mut test_finder(), &mut territory, &mut [])
                 .projects
                 .is_empty()
         );
@@ -589,6 +637,7 @@ mod tests {
 
     #[test]
     fn unsupported_recruitment_reports_failure_without_spending() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 100, 0, Arc::default());
         settlement
             .project_manager
@@ -602,7 +651,8 @@ mod tests {
             ))
             .unwrap();
         settlement.inventory_manager.main.add(ResourceType::Wood, 2);
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let report =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert_eq!(
             report.projects,
             vec![ProjectOutcome {
@@ -616,6 +666,7 @@ mod tests {
 
     #[test]
     fn pending_construction_reports_completion_only_after_cost_and_time_are_paid() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 100, 0, Arc::default());
         settlement
             .queue_construction(
@@ -629,12 +680,14 @@ mod tests {
                     ]),
                     turn_cost: 2,
                 },
+                &test_map(),
+                &mut territory,
             )
             .unwrap();
         settlement.inventory_manager.main.add(ResourceType::Wood, 1);
         assert!(
             settlement
-                .process_turn(&test_map(), &mut test_finder(), &mut [])
+                .process_turn(&test_map(), &mut test_finder(), &mut territory, &mut [])
                 .projects
                 .is_empty()
         );
@@ -646,7 +699,7 @@ mod tests {
         );
         assert!(
             settlement
-                .process_turn(&test_map(), &mut test_finder(), &mut [])
+                .process_turn(&test_map(), &mut test_finder(), &mut territory, &mut [])
                 .projects
                 .is_empty()
         );
@@ -659,7 +712,8 @@ mod tests {
         assert!(settlement.building_manager.buildings.is_empty());
 
         settlement.inventory_manager.main.add(ResourceType::Wood, 1);
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let report =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert_eq!(
             report.projects,
             vec![ProjectOutcome {
@@ -672,14 +726,17 @@ mod tests {
 
     #[test]
     fn duplicate_queue_requests_return_an_explicit_error() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 100, 0, Arc::default());
-        add_building(&mut settlement, 1, definition(vec![]));
+        add_building(&mut settlement, 1, definition(vec![]), &mut territory);
         settlement
             .queue_construction(
                 ProjectId(2),
                 Position { x: 0, y: 0 },
                 definition(vec![]),
                 ProjectCost::default(),
+                &test_map(),
+                &mut territory,
             )
             .unwrap();
         assert_eq!(
@@ -696,15 +753,18 @@ mod tests {
 
     #[test]
     fn finalization_checks_upgrade_targets_again() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 100, 0, Arc::default());
         assert_eq!(
             settlement.finalize_project(
+                ProjectId(0),
                 ProjectResult::UpgradeBuilding {
                     target_instance_id: BuildingId(42),
                     new_definition: definition(vec![]),
                 },
                 &test_map(),
-                &mut test_finder()
+                &mut test_finder(),
+                &mut territory
             ),
             Err(ProjectError::MissingBuilding(BuildingId(42)))
         );
@@ -712,6 +772,7 @@ mod tests {
 
     #[test]
     fn invalid_projects_do_not_take_materials_from_valid_construction() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 100, 0, Arc::default());
         settlement
             .project_manager
@@ -736,11 +797,14 @@ mod tests {
                     needed_resources: HashMap::from([(ResourceType::Wood, 1)]),
                     turn_cost: 1,
                 },
+                &test_map(),
+                &mut territory,
             )
             .unwrap();
         settlement.inventory_manager.main.add(ResourceType::Wood, 1);
 
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let report =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
 
         assert_eq!(
             report.projects,
@@ -762,13 +826,14 @@ mod tests {
 
     #[test]
     fn population_building_and_project_share_whole_resource_units() {
+        let mut territory = TerritoryManager::default();
         let registry = Arc::new(NeedRegistry::new(vec![NeedTier {
             min_population: 1,
             needs_per_capita: HashMap::from([(ResourceType::Wood, 1)]),
         }]));
         let mut settlement = Settlement::new(1, 100, 2, registry);
         let blueprint = definition(vec![recipe(ResourceType::Wood, ResourceType::Stone)]);
-        add_building(&mut settlement, 1, blueprint.clone());
+        add_building(&mut settlement, 1, blueprint.clone(), &mut territory);
         settlement
             .queue_construction(
                 ProjectId(1),
@@ -778,11 +843,14 @@ mod tests {
                     needed_resources: HashMap::from([(ResourceType::Wood, 1)]),
                     turn_cost: 1,
                 },
+                &test_map(),
+                &mut territory,
             )
             .unwrap();
         settlement.inventory_manager.main.add(ResourceType::Wood, 4);
 
-        let result = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let result =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
 
         // Two residents consume 2, the recipe consumes 1, construction costs 1.
         assert_eq!(stock(&settlement, ResourceType::Wood), 0);
@@ -800,6 +868,7 @@ mod tests {
 
     #[test]
     fn population_needs_use_the_same_units_as_inventory_in_a_full_turn() {
+        let mut territory = TerritoryManager::default();
         let registry = Arc::new(NeedRegistry::new(vec![
             NeedTier {
                 min_population: 1,
@@ -816,7 +885,8 @@ mod tests {
             .main
             .add(ResourceType::Grain, 3);
 
-        let result = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let result =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
 
         assert_eq!(result.consumption.satisfaction_percent, 1.0);
         assert!(result.consumption.missing_resources.is_empty());
@@ -825,6 +895,7 @@ mod tests {
 
     #[test]
     fn population_shortage_is_reported_across_turns() {
+        let mut territory = TerritoryManager::default();
         let registry = Arc::new(NeedRegistry::new(vec![NeedTier {
             min_population: 1,
             needs_per_capita: HashMap::from([(ResourceType::Grain, 1), (ResourceType::Wood, 1)]),
@@ -836,7 +907,8 @@ mod tests {
             .add(ResourceType::Grain, 3);
 
         for remaining in [2, 1] {
-            let result = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+            let result =
+                settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
             assert_eq!(result.consumption.satisfaction_percent, 0.5);
             assert_eq!(
                 result.consumption.missing_resources,
@@ -845,7 +917,8 @@ mod tests {
             assert_eq!(stock(&settlement, ResourceType::Grain), remaining);
         }
         settlement.inventory_manager.main.add(ResourceType::Wood, 1);
-        let result = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let result =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert_eq!(result.consumption.satisfaction_percent, 1.0);
         assert!(result.consumption.missing_resources.is_empty());
         assert_eq!(stock(&settlement, ResourceType::Grain), 0);
@@ -854,9 +927,10 @@ mod tests {
 
     #[test]
     fn building_and_project_with_same_number_have_separate_allocations() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 100, 1, Arc::default());
         let blueprint = definition(vec![recipe(ResourceType::Wood, ResourceType::Stone)]);
-        add_building(&mut settlement, 7, blueprint.clone());
+        add_building(&mut settlement, 7, blueprint.clone(), &mut territory);
         settlement
             .queue_construction(
                 ProjectId(7),
@@ -866,11 +940,13 @@ mod tests {
                     needed_resources: HashMap::from([(ResourceType::Wood, 1)]),
                     turn_cost: 1,
                 },
+                &test_map(),
+                &mut territory,
             )
             .unwrap();
         settlement.inventory_manager.main.add(ResourceType::Wood, 2);
 
-        settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
 
         assert_eq!(stock(&settlement, ResourceType::Wood), 0);
         assert_eq!(stock(&settlement, ResourceType::Stone), 1);
@@ -882,6 +958,7 @@ mod tests {
 
     #[test]
     fn population_and_building_zero_have_separate_allocations() {
+        let mut territory = TerritoryManager::default();
         let registry = Arc::new(NeedRegistry::new(vec![NeedTier {
             min_population: 1,
             needs_per_capita: HashMap::from([(ResourceType::Grain, 1)]),
@@ -891,13 +968,15 @@ mod tests {
             &mut settlement,
             0,
             definition(vec![recipe(ResourceType::Grain, ResourceType::Stone)]),
+            &mut territory,
         );
         settlement
             .inventory_manager
             .main
             .add(ResourceType::Grain, 2);
 
-        let report = settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        let report =
+            settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
 
         assert_eq!(report.consumption.satisfaction_percent, 1.0);
         assert_eq!(
@@ -917,6 +996,7 @@ mod tests {
 
     #[test]
     fn shared_recipe_inputs_are_consumed_only_once() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 100, 1, Arc::default());
         add_building(
             &mut settlement,
@@ -925,10 +1005,11 @@ mod tests {
                 recipe(ResourceType::Wood, ResourceType::Stone),
                 recipe(ResourceType::Wood, ResourceType::Grain),
             ]),
+            &mut territory,
         );
         settlement.inventory_manager.main.add(ResourceType::Wood, 1);
 
-        settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
 
         assert_eq!(stock(&settlement, ResourceType::Wood), 0);
         assert_eq!(stock(&settlement, ResourceType::Stone), 1);
@@ -937,23 +1018,26 @@ mod tests {
 
     #[test]
     fn remaining_single_material_advances_one_of_two_projects() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 100, 0, Arc::default());
         for id in [1, 2] {
             settlement
                 .queue_construction(
                     ProjectId(id),
-                    Position { x: 0, y: 0 },
+                    Position { x: id as i32, y: 0 },
                     definition(vec![]),
                     ProjectCost {
                         needed_resources: HashMap::from([(ResourceType::Wood, 1)]),
                         turn_cost: 1,
                     },
+                    &test_map(),
+                    &mut territory,
                 )
                 .unwrap();
         }
         settlement.inventory_manager.main.add(ResourceType::Wood, 1);
 
-        settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
 
         assert_eq!(stock(&settlement, ResourceType::Wood), 0);
         assert_eq!(settlement.building_manager.buildings.len(), 1);
@@ -966,6 +1050,7 @@ mod tests {
 
     #[test]
     fn large_project_cost_is_deducted_exactly() {
+        let mut territory = TerritoryManager::default();
         let amount = 16_777_219;
         let mut settlement = Settlement::new(1, u32::MAX, 0, Arc::default());
         settlement
@@ -977,6 +1062,8 @@ mod tests {
                     needed_resources: HashMap::from([(ResourceType::Wood, amount)]),
                     turn_cost: 1,
                 },
+                &test_map(),
+                &mut territory,
             )
             .unwrap();
         settlement
@@ -984,7 +1071,7 @@ mod tests {
             .main
             .add(ResourceType::Wood, amount);
 
-        settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
 
         assert_eq!(stock(&settlement, ResourceType::Wood), 0);
         assert_eq!(settlement.building_manager.buildings.len(), 1);
@@ -992,6 +1079,7 @@ mod tests {
 
     #[test]
     fn production_is_available_for_consumption_in_the_next_turn() {
+        let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(1, 100, 2, Arc::default());
         add_building(
             &mut settlement,
@@ -1000,18 +1088,20 @@ mod tests {
                 inputs: vec![],
                 outputs: vec![(ResourceType::Grain, 1)],
             }]),
+            &mut territory,
         );
         add_building(
             &mut settlement,
             2,
             definition(vec![recipe(ResourceType::Grain, ResourceType::Stone)]),
+            &mut territory,
         );
 
-        settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert_eq!(stock(&settlement, ResourceType::Grain), 1);
         assert_eq!(stock(&settlement, ResourceType::Stone), 0);
 
-        settlement.process_turn(&test_map(), &mut test_finder(), &mut []);
+        settlement.process_turn(&test_map(), &mut test_finder(), &mut territory, &mut []);
         assert_eq!(stock(&settlement, ResourceType::Grain), 1);
         assert_eq!(stock(&settlement, ResourceType::Stone), 1);
         assert!(

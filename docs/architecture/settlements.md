@@ -77,7 +77,7 @@ Use `deposit()`, `withdraw()` and `set_inventory_capacity()` to change warehouse
 
 ## 3. Turn Sequence
 
-`process_turn(&mut self, map: &Map, finder: &mut PathFinder) -> TurnReport` receives the current map and a reusable pathfinding buffer. It refreshes A* travel costs before gathering economic requests and accepts neither actions nor a time parameter. It performs these steps:
+`process_turn(&mut self, map: &Map, finder: &mut PathFinder, territory: &mut TerritoryManager) -> TurnReport` receives the current map, a reusable pathfinding buffer and the shared spatial registry used when queuing projects. It refreshes A* travel costs before gathering economic requests and accepts neither actions nor a time parameter. It performs these steps:
 
 0. **Refresh building productivity:** compute current A* travel costs from the capital using the configured policy. Then **validate projects:** remove unsupported projects and upgrades without a target, recording their errors before allocation.
 1. **Refresh labour:** set `main[Labour] = population`.
@@ -139,7 +139,7 @@ Products created during a turn cannot satisfy its earlier demands. Construction 
 
 `Building` holds a `BuildingId`, `Position { x: i32, y: i32 }`, a shared definition, activity, target load, location productivity and current worker count. The string definition ID identifies a building type; `instance_id` identifies a particular building.
 
-All buildings belong to one collection; Hub/Spoke and `BuildingLocation` have been removed. An optional `BuildingProductivityCalculator` owned by `BuildingManager` configures the capital position and a validated `TravelCostEfficiencyPolicy`. `Settlement` delegates configuration and refresh operations to the manager. Its linear output penalty uses A* route costs and preserves staffing and material costs. Thresholds are loaded from the repository-root `configuration.toml`. `set_building_productivity_calculator()` and `add_building()` also receive the map and mutable pathfinding buffer so their cached productivity values are immediately correct. The code does not validate territorial boundaries, occupied positions or local resource availability. See [building_productivity.md](building_productivity.md) for configuration, exact arithmetic and migration details.
+All buildings belong to one collection; Hub/Spoke and `BuildingLocation` have been removed. An optional `BuildingProductivityCalculator` owned by `BuildingManager` configures the capital position and a validated `TravelCostEfficiencyPolicy`. `Settlement` delegates configuration and refresh operations to the manager. Its linear output penalty uses A* route costs and preserves staffing and material costs. Thresholds are loaded from the repository-root `configuration.toml`. `set_building_productivity_calculator()` and `add_building()` also receive the map and mutable pathfinding buffer so their cached productivity values are immediately correct. World commands validate province membership; settlement construction commands validate map coordinates, land and occupied positions. Local resource availability is not yet modeled. See [building_productivity.md](building_productivity.md) for configuration, exact arithmetic and migration details.
 
 | Behavior | Implementation status |
 | --- | --- |
@@ -206,14 +206,30 @@ Successful outcomes identify `BuildingConstructed(BuildingId)` or `BuildingUpgra
 
 Queue errors are returned immediately and do not enter the active list. At turn start, invalid active projects are removed and reported before material withdrawal. Finalization also checks the target and handles the effect result explicitly. Pending projects produce no outcome entry. An outcome is emitted only in the turn that removes its project; no history is stored in the settlement. Pre-allocation rejections appear first, followed by finalization outcomes, preserving project order within each phase.
 
-If an upgrade target disappears after earlier partial payment, the next turn reports failure without further allocation. Previously paid materials remain spent; this stage does not introduce refund or cancellation rules.
+If an upgrade target disappears after earlier partial payment, the next turn reports failure without further allocation. Previously paid materials remain spent. Explicit cancellation follows the same no-refund rule.
 
 `inventory` records local material stock, production, internal returns, consumption categories and stage-specific overflow losses. `inventory.is_balanced()` checks this accounting separately for each material, excluding renewed labour. Trade reservations/returns are not accounted for, so this check does not establish conservation for nonempty trade activity. The local balance equation is documented in [economy.md](economy.md); trade limitations are in [trading.md](trading.md).
+
+## Spatial Registration and Construction
+
+`World` owns the global `TerritoryManager` and registers each settlement in exactly one province with `add_settlement(province_id, settlement)`. A province may have no settlement. Register settlements before adding buildings or projects; importing existing structures is not supported yet.
+
+For registered settlements, use `World::queue_construction`, `World::add_building`, `World::queue_upgrade`, `World::cancel_project` and `World::process_settlement_turn`. Construction entry points validate the settlement and its province, then delegate lifecycle changes to `Settlement`; cancellation only requires the settlement and its matching reservation. The world's registry and settlements have no public mutable getters. `World::inspect_tile(position)` combines terrain, province, optional settlement and occupancy with borrowed building/project data; see [territory.md](territory.md).
+
+Standalone settlement construction receives both `&Map` and `&mut TerritoryManager`; `add_building` and `process_turn` also use that same registry. The caller must retain and reuse it. Project and building references include the settlement ID because their local IDs can overlap across settlements.
+
+New construction requires a valid land tile and an empty structural slot. Land uses the existing `Elevation::OCEAN_LEVEL` boundary; building-specific marine placement rules are not implemented. Queueing reserves `Construction(ProjectReference)` without spending materials. Successful completion replaces it with `Building(BuildingReference)`. Direct building registration performs the same placement and occupancy checks. Upgrades keep the existing building on its tile throughout the project.
+
+Construction sites are checked again before allocation and completion. Invalid construction is reported and releases only its own reservation; previously paid materials are not refunded. If mutable province layers change membership, the world entry point rejects the turn before spending, leaving projects and reservations unchanged.
+
+`Settlement::cancel_project(project_id, territory)` removes an active project and stops future spending. For new construction it first releases the exact `(settlement_id, project_id)` reservation. If that reservation differs, cancellation fails without removing the project or changing the tile. Canceling an upgrade preserves the existing building and its definition. Already paid materials remain consumed; unpaid costs are discarded. Cancellation is immediate and does not emit a later turn outcome. Missing or completed projects return `MissingProject`.
+
+`World::cancel_project(settlement_id, project_id)` delegates to the settlement with the shared registry. Cancellation does not require current province membership, allowing a project to be stopped after map edits.
 
 ## 8. Limitations and Open Questions
 
 - Recruitment remains unimplemented and is explicitly rejected.
-- There is no project cancellation, cost refund, position validation, population change or global turn integration.
+- There is no cost refund, population change or global turn scheduler. `World::process_settlement_turn` advances one registered settlement.
 - Overflow uses a configurable ordered material list. There is no automatic policy choosing this order. Resource maps are private; capacity changes use validated commands.
 
 These limitations describe current code rather than approving final game rules. Policies requiring further decisions are collected in [0001-economy.md](../decisions/0001-economy.md).

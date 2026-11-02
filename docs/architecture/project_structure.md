@@ -18,7 +18,10 @@ file and explicitly implemented runtime method.
 │   │   ├── configuration.rs         Runtime TOML parsing and validation
 │   │   ├── world/                   Spatial data and operations
 │   │   │   ├── mod.rs               Public world exports
-│   │   │   ├── state.rs             World state and caravan collection
+│   │   │   ├── state.rs             World, settlement registration and province membership
+│   │   │   ├── state/construction.rs World entry points for settlement lifecycle
+│   │   │   ├── state/inspection.rs  Combined read-only tile view
+│   │   │   ├── territory.rs         Global sparse occupancy registry
 │   │   │   ├── map.rs               Terrain/territory buffers
 │   │   │   ├── province.rs          Province tiles and centroid
 │   │   │   ├── coordinates.rs       Point indices and signed Position
@@ -57,7 +60,7 @@ settlement/
 │   ├── mod.rs                 Private command groups
 │   ├── inventory.rs           Deposit, withdrawal, capacity and storage order
 │   ├── buildings.rs           Registration, load, activity and productivity
-│   └── projects.rs            Queue construction and upgrades
+│   └── projects.rs            Queue construction/upgrades and cancel projects
 ├── turn.rs                    Turn sequence and inline aggregate tests
 ├── project_lifecycle.rs       Validate, reject and finalize projects
 └── *_manager.rs               Internal collections and allocation
@@ -108,6 +111,12 @@ contract. They are not merged and no implicit conversion is introduced.
 Construction accepts a map, search buffer, explicit start/end points, participant
 IDs and a `TradeBook`. Callers resolve coordinates; the caravan does not look up
 province indices. Missing routes produce `None` rather than a pathfinding panic.
+
+`World` also owns settlements and one global occupancy registry. Each registered
+settlement belongs to exactly one province; provinces may be empty. World entry
+points validate membership and pass spatial state to `Settlement`, which owns the
+project lifecycle. See [territory](territory.md) for placement, cancellation and
+`World::inspect_tile`. The executable does not yet expose a tile inspection panel.
 
 `configuration.rs` parses runtime economy TOML. `world/generation/config.rs`
 contains generation parameters and defaults; it remains a separate concern.

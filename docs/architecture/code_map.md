@@ -557,3 +557,14 @@ The following files only declare/export modules; they contain no explicit method
 
 Documentation is indexed in [docs/README.md](../README.md). Update this map when
 adding, moving or renaming an implementation file or method.
+
+## Territory and trade integration
+
+`trade/network.rs`: `TradeNetwork::process_turn` preflights the world's registered
+settlements and orchestrates one transport/economy turn, returning reports in ID order.
+`world/state/trade.rs`: `begin_trade_turn` moves/unloads/turns back caravans;
+`finish_trade_turn` dispatches funded departures or returns undeliverable cargo.
+`World::settlement_ids` supplies deterministic IDs; internal `settlement_mut`
+accesses the same registered instances. `validate_settlement_turn` is shared by
+local and global entry points. Tile inspection exposes `province_settlement` and
+`occupant_settlement`, rejecting dangling or misplaced structural references.

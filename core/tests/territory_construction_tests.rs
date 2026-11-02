@@ -453,7 +453,7 @@ fn invalid_project_cannot_release_another_settlements_reservation() {
     };
     territory.reserve_construction(SITE, other).unwrap();
 
-    let report = settlement.process_turn(&map, &mut PathFinder::new(1, 1), &mut territory);
+    let report = settlement.process_turn(&map, &mut PathFinder::new(1, 1), &mut territory, &mut []);
     assert!(matches!(
         report.projects[0].result,
         Err(ProjectError::Territory(

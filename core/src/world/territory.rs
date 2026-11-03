@@ -1,4 +1,5 @@
 //! Global occupancy registry. Map bounds and ownership are validated by callers.
+use crate::ids::SettlementId;
 use std::collections::HashMap;
 
 use crate::ids::{BuildingId, ProjectId};
@@ -7,14 +8,14 @@ use crate::world::Position;
 /// Project IDs are local to their settlement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProjectReference {
-    pub settlement_id: u32,
+    pub settlement_id: SettlementId,
     pub project_id: ProjectId,
 }
 
 /// Building IDs are local to their settlement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuildingReference {
-    pub settlement_id: u32,
+    pub settlement_id: SettlementId,
     pub building_id: BuildingId,
 }
 
@@ -164,14 +165,15 @@ impl TerritoryManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ids::SettlementId;
 
     const POSITION: Position = Position { x: 2, y: 3 };
     const PROJECT: ProjectReference = ProjectReference {
-        settlement_id: 1,
+        settlement_id: SettlementId(1),
         project_id: ProjectId(7),
     };
     const BUILDING: BuildingReference = BuildingReference {
-        settlement_id: 1,
+        settlement_id: SettlementId(1),
         building_id: BuildingId(4),
     };
 
@@ -235,7 +237,7 @@ mod tests {
                 ..PROJECT
             },
             ProjectReference {
-                settlement_id: 2,
+                settlement_id: SettlementId(2),
                 ..PROJECT
             },
         ] {
@@ -258,7 +260,7 @@ mod tests {
         let mut manager = TerritoryManager::default();
         manager.reserve_construction(POSITION, PROJECT).unwrap();
         let building = BuildingReference {
-            settlement_id: 2,
+            settlement_id: SettlementId(2),
             ..BUILDING
         };
         let before = manager.tiles.clone();

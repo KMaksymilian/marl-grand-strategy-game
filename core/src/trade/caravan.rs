@@ -1,3 +1,4 @@
+use crate::ids::SettlementId;
 use crate::trade::book::TradeBook;
 use crate::trade::execution::TradeExecution;
 use crate::world::pathfinding::{a_star::AStar, path_finder::PathFinder};
@@ -26,15 +27,15 @@ pub enum CaravanOutcome {
 /// Funded book leaving a settlement, before a route is assigned.
 #[derive(Debug)]
 pub struct CaravanCargo {
-    pub sender_id: u32,
-    pub receiver_id: u32,
+    pub sender_id: SettlementId,
+    pub receiver_id: SettlementId,
     pub book: TradeBook,
 }
 
 /// Book carried back to the sender, with the trades made on the journey.
 #[derive(Debug)]
 pub struct CaravanReturn {
-    pub receiver_id: u32,
+    pub receiver_id: SettlementId,
     pub outcome: CaravanOutcome,
     pub book: TradeBook,
     /// Executions seen from the caravan (sender) side.
@@ -55,8 +56,8 @@ impl CaravanReturn {
 
 #[derive(Debug)]
 pub struct Caravan {
-    pub sender_id: usize,
-    pub receiver_id: usize,
+    pub sender_id: SettlementId,
+    pub receiver_id: SettlementId,
     current_position: Point,
     current_position_idx: usize,
     caravan_state: CaravanState,
@@ -72,8 +73,8 @@ impl Caravan {
     pub fn new(
         map: &Map,
         path_finder: &mut PathFinder,
-        sender_id: usize,
-        receiver_id: usize,
+        sender_id: SettlementId,
+        receiver_id: SettlementId,
         start: Point,
         end: Point,
         book: TradeBook,
@@ -92,8 +93,8 @@ impl Caravan {
     ) -> Result<Caravan, CaravanCargo> {
         match AStar::a_star(map, path_finder, (start.0, start.1), (end.0, end.1)) {
             Some(path) if !path.is_empty() => Ok(Self::with_path(
-                cargo.sender_id as usize,
-                cargo.receiver_id as usize,
+                cargo.sender_id,
+                cargo.receiver_id,
                 path,
                 cargo.book,
             )),
@@ -101,7 +102,12 @@ impl Caravan {
         }
     }
 
-    fn with_path(sender_id: usize, receiver_id: usize, path: Vec<Point>, book: TradeBook) -> Self {
+    fn with_path(
+        sender_id: SettlementId,
+        receiver_id: SettlementId,
+        path: Vec<Point>,
+        book: TradeBook,
+    ) -> Self {
         Caravan {
             sender_id,
             receiver_id,
@@ -170,7 +176,7 @@ impl Caravan {
 
     pub fn into_return(self) -> CaravanReturn {
         CaravanReturn {
-            receiver_id: self.receiver_id as u32,
+            receiver_id: self.receiver_id,
             outcome: if self.receiver_missing {
                 CaravanOutcome::ReceiverMissing
             } else {
@@ -215,15 +221,15 @@ mod tests {
         let caravan = Caravan::new(
             &map,
             &mut finder,
-            100,
-            200,
+            SettlementId(100),
+            SettlementId(200),
             Point(0, 0),
             Point(2, 0),
             TradeBook::default(),
         )
         .unwrap();
-        assert_eq!(caravan.sender_id, 100);
-        assert_eq!(caravan.receiver_id, 200);
+        assert_eq!(caravan.sender_id, SettlementId(100));
+        assert_eq!(caravan.receiver_id, SettlementId(200));
         assert_eq!(caravan.current_position, Point(0, 0));
         assert_eq!(caravan.path, vec![Point(0, 0), Point(1, 0), Point(2, 0)]);
         assert_eq!(caravan.caravan_state, CaravanState::TravelTo);
@@ -239,8 +245,8 @@ mod tests {
                 Caravan::new(
                     &map,
                     &mut finder,
-                    100,
-                    200,
+                    SettlementId(100),
+                    SettlementId(200),
                     Point(0, 0),
                     end,
                     TradeBook::default(),
@@ -256,8 +262,8 @@ mod tests {
         map.terrain[1].elevation_val = 0.0;
         let mut finder = PathFinder::new(3, 1);
         let cargo = CaravanCargo {
-            sender_id: 1,
-            receiver_id: 2,
+            sender_id: SettlementId(1),
+            receiver_id: SettlementId(2),
             book: TradeBook::new(7, Default::default()),
         };
         let cargo =
@@ -272,8 +278,8 @@ mod tests {
         let mut caravan = Caravan::new(
             &map,
             &mut finder,
-            1,
-            2,
+            SettlementId(1),
+            SettlementId(2),
             Point(0, 0),
             Point(4, 0),
             TradeBook::default(),

@@ -1,5 +1,6 @@
 use crate::economy::allocation::{AllocationRecipient, AllocationResult};
 use crate::economy::{ResourceInventory, ResourceType};
+use crate::ids::SettlementId;
 pub use crate::settlement::population::ConsumptionResult;
 use crate::settlement::projects::ProjectOutcome;
 use crate::trade::caravan::CaravanOutcome;
@@ -148,7 +149,7 @@ pub struct TurnReport {
 /// A trade made at this settlement's market with a visiting caravan.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MarketTrade {
-    pub caravan_sender_id: u32,
+    pub caravan_sender_id: SettlementId,
     /// Seen from this settlement.
     pub execution: TradeExecution,
 }
@@ -156,7 +157,7 @@ pub struct MarketTrade {
 /// A caravan funded and sent out this turn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DispatchedCaravan {
-    pub receiver_id: u32,
+    pub receiver_id: SettlementId,
     pub cargo: MaterialTotals,
     pub gold: u64,
 }
@@ -164,7 +165,7 @@ pub struct DispatchedCaravan {
 /// A caravan unloaded this turn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReturnedCaravan {
-    pub receiver_id: u32,
+    pub receiver_id: SettlementId,
     pub outcome: CaravanOutcome,
     /// Seen from this settlement.
     pub trades: Vec<TradeExecution>,
@@ -190,7 +191,7 @@ pub struct TradeTurnReport {
     pub market_unsold: MaterialTotals,
     pub caravans_dispatched: Vec<DispatchedCaravan>,
     /// Receiver IDs of caravan orders skipped because nothing could be funded.
-    pub unfunded_caravan_orders: Vec<u32>,
+    pub unfunded_caravan_orders: Vec<SettlementId>,
     pub caravans_returned: Vec<ReturnedCaravan>,
     /// All materials returned from trade this turn, before warehouse losses.
     pub received: MaterialTotals,

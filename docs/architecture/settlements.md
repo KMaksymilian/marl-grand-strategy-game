@@ -11,7 +11,7 @@ This document describes the implemented settlement model. Accounting rules are d
 
 | `Settlement` field | Type | Responsibility |
 | --- | --- | --- |
-| `id` | `u32` | Settlement identity |
+| `id` | `SettlementId` | Immutable identity within the world's registry |
 | `inventory_manager` | `SettlementInventoryManager` | Warehouse and production buffer |
 | `building_manager` | `BuildingManager` | Building collection, productivity calculator, requests, production and upgrades |
 | `population_manager` | `PopulationManager` | Population count, needs registry and grant evaluation |
@@ -20,7 +20,7 @@ This document describes the implemented settlement model. Accounting rules are d
 ```mermaid
 classDiagram
     class Settlement {
-        -u32 id
+        -SettlementId id
         -SettlementInventoryManager inventory_manager
         -BuildingManager building_manager
         -PopulationManager population_manager
@@ -63,7 +63,7 @@ classDiagram
     ProjectManager *-- Project
 ```
 
-`Settlement::new(id, initial_capacity, initial_population, need_registry)` creates an empty warehouse and buffer with the requested capacity, no buildings or projects, no distance penalty (`BuildingManager.productivity_calculator = None`), and a population manager with a shared `Arc<NeedRegistry>`.
+`Settlement::new(id: SettlementId, initial_capacity, initial_population, need_registry)` creates an empty warehouse and buffer with the requested capacity, no buildings or projects, no distance penalty (`BuildingManager.productivity_calculator = None`), and a population manager with a shared `Arc<NeedRegistry>`. The world's `SettlementRegistry` rejects duplicate identities and supplies stable iteration. `Simulation::initialize_settlement` can allocate an unused ID and register a new settlement in one operation; see [simulation.md](simulation.md).
 
 Each settlement owns an independent ordered storage list. `set_storage_order(materials: impl AsRef<[ResourceType]>)` validates it against the material catalogue; `storage_order()` returns a read-only slice. No numerical priority weights are stored. See [economy.md](economy.md).
 
@@ -77,7 +77,7 @@ Use `deposit()`, `withdraw()` and `set_inventory_capacity()` to change warehouse
 
 ## 3. Turn Sequence
 
-`process_turn(&mut self, map: &Map, finder: &mut PathFinder, territory: &mut TerritoryManager) -> TurnReport` receives the current map, a reusable pathfinding buffer and the shared spatial registry used when queuing projects. It refreshes A* travel costs before gathering economic requests and accepts neither actions nor a time parameter. It performs these steps:
+`process_turn(&mut self, map: &Map, finder: &mut PathFinder, territory: &mut TerritoryManager, visitors: &mut [&mut Caravan]) -> TurnReport` receives the current map, a reusable pathfinding buffer and the shared spatial registry used when queuing projects. It refreshes A* travel costs before gathering economic requests and accepts neither actions nor a time parameter. It performs these steps:
 
 0. **Refresh building productivity:** compute current A* travel costs from the capital using the configured policy. Then **validate projects:** remove unsupported projects and upgrades without a target, recording their errors before allocation.
 1. **Refresh labour:** set `main[Labour] = population`.
@@ -208,7 +208,7 @@ Queue errors are returned immediately and do not enter the active list. At turn 
 
 If an upgrade target disappears after earlier partial payment, the next turn reports failure without further allocation. Previously paid materials remain spent. Explicit cancellation follows the same no-refund rule.
 
-`inventory` records local material stock, production, internal returns, consumption categories and stage-specific overflow losses. `inventory.is_balanced()` checks this accounting separately for each material, excluding renewed labour. Trade reservations/returns are not accounted for, so this check does not establish conservation for nonempty trade activity. The local balance equation is documented in [economy.md](economy.md); trade limitations are in [trading.md](trading.md).
+`inventory` records local material stock, production, internal returns, consumption categories and stage-specific overflow losses. `inventory.is_balanced()` checks this accounting separately for each material, excluding renewed labour. Trade reservations and received materials are included in the balance equation. The local balance equation is documented in [economy.md](economy.md); trade limitations are in [trading.md](trading.md).
 
 ## Spatial Registration and Construction
 
@@ -229,7 +229,7 @@ Construction sites are checked again before allocation and completion. Invalid c
 ## 8. Limitations and Open Questions
 
 - Recruitment remains unimplemented and is explicitly rejected.
-- There is no cost refund, population change or global turn scheduler. `World::process_settlement_turn` advances one registered settlement.
+- There is no cost refund or automatic population change. `Simulation::step` runs global phases; `World::process_settlement_turn` remains a local convenience entry point. See [simulation.md](simulation.md).
 - Overflow uses a configurable ordered material list. There is no automatic policy choosing this order. Resource maps are private; capacity changes use validated commands.
 
 These limitations describe current code rather than approving final game rules. Policies requiring further decisions are collected in [0001-economy.md](../decisions/0001-economy.md).

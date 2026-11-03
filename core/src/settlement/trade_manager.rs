@@ -1,5 +1,6 @@
 //! Published market offers, caravan orders, funded departures and returns waiting to be unloaded.
 use crate::economy::ResourceType;
+use crate::ids::SettlementId;
 use crate::trade::caravan::{CaravanCargo, CaravanReturn};
 use crate::trade::offer::TradeOffer;
 use std::collections::HashMap;
@@ -7,7 +8,7 @@ use std::collections::HashMap;
 /// Request to fund and send one caravan in the next turn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaravanOrder {
-    pub receiver_id: u32,
+    pub receiver_id: SettlementId,
     pub offers: HashMap<ResourceType, TradeOffer>,
 }
 

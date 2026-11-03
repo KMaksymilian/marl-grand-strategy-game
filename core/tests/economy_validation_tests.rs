@@ -1,3 +1,4 @@
+use simulation_core::ids::SettlementId;
 use simulation_core::world::map as core_map;
 use simulation_core::world::pathfinding::path_finder as test_path;
 use simulation_core::world::terrain::area as test_area;
@@ -90,7 +91,7 @@ fn invalid_registration_and_upgrade_preserve_existing_definition() {
 #[test]
 fn invalid_efficiencies_do_not_change_existing_target() {
     let mut territory = TerritoryManager::default();
-    let mut settlement = Settlement::new(1, 10, 1, Arc::default());
+    let mut settlement = Settlement::new(SettlementId(1), 10, 1, Arc::default());
     let mut building = Building::new(
         BuildingId(1),
         Position { x: 0, y: 0 },
@@ -119,7 +120,7 @@ fn invalid_efficiencies_do_not_change_existing_target() {
 #[test]
 fn invalid_project_is_rejected_before_queueing_or_spending() {
     let mut territory = TerritoryManager::default();
-    let mut settlement = Settlement::new(1, 10, 1, Arc::default());
+    let mut settlement = Settlement::new(SettlementId(1), 10, 1, Arc::default());
     settlement.deposit(Wood, 10);
     let invalid = Arc::new(definition(vec![], vec![(Grain, u32::MAX), (Grain, 1)]));
     assert_eq!(
@@ -147,7 +148,7 @@ fn invalid_project_is_rejected_before_queueing_or_spending() {
 
 #[test]
 fn variable_length_storage_order_is_validated_atomically() {
-    let mut settlement = Settlement::new(1, 10, 1, Arc::default());
+    let mut settlement = Settlement::new(SettlementId(1), 10, 1, Arc::default());
     settlement
         .set_storage_order(vec![Grain, Wood, Stone])
         .unwrap();

@@ -71,7 +71,7 @@ impl Settlement {
         let mut guests: Vec<&mut Caravan> = visitors
             .iter_mut()
             .filter(|caravan| {
-                caravan.state() == CaravanState::Trading && caravan.receiver_id == self.id as usize
+                caravan.state() == CaravanState::Trading && caravan.receiver_id == self.id
             })
             .map(|caravan| &mut **caravan)
             .collect();
@@ -86,7 +86,7 @@ impl Settlement {
             self.book.trade_with_visitors(&mut books)
         };
         for (caravan, executions) in guests.into_iter().zip(log) {
-            let caravan_sender_id = caravan.sender_id as u32;
+            let caravan_sender_id = caravan.sender_id;
             report
                 .market_trades
                 .extend(executions.iter().map(|&execution| MarketTrade {
@@ -144,6 +144,7 @@ impl Settlement {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ids::SettlementId;
     use crate::settlement::TradeCommandError;
     use crate::trade::offer::TradeOffer;
     use crate::world::map::Map;
@@ -163,7 +164,7 @@ mod tests {
 
     #[test]
     fn unsold_market_stock_and_gold_return_each_turn_and_stay_published() {
-        let mut settlement = Settlement::new(1, 50, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 50, 0, Arc::default());
         settlement.deposit(ResourceType::Wood, 5);
         settlement.deposit_gold(20);
         settlement
@@ -187,7 +188,7 @@ mod tests {
 
     #[test]
     fn caravan_orders_are_funded_after_the_market_in_queue_order() {
-        let mut settlement = Settlement::new(1, 50, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 50, 0, Arc::default());
         settlement.deposit(ResourceType::Grain, 10);
         settlement
             .publish_trade_offers(HashMap::from([(
@@ -198,7 +199,7 @@ mod tests {
         for receiver in [2, 3] {
             settlement
                 .order_caravan(
-                    receiver,
+                    SettlementId(receiver),
                     HashMap::from([(ResourceType::Grain, TradeOffer::sell(3, 1))]),
                 )
                 .unwrap();
@@ -225,7 +226,7 @@ mod tests {
 
     #[test]
     fn published_offer_does_not_carry_earlier_purchases() {
-        let mut settlement = Settlement::new(1, 50, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 50, 0, Arc::default());
         settlement.deposit_gold(10);
         settlement
             .publish_trade_offers(HashMap::from([(
@@ -244,11 +245,11 @@ mod tests {
 
     #[test]
     fn caravan_order_does_not_carry_earlier_purchases() {
-        let mut settlement = Settlement::new(1, 50, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 50, 0, Arc::default());
         settlement.deposit_gold(10);
         settlement
             .order_caravan(
-                2,
+                SettlementId(2),
                 HashMap::from([(ResourceType::Wood, partially_bought(3, 1, 2))]),
             )
             .unwrap();
@@ -259,24 +260,24 @@ mod tests {
 
     #[test]
     fn invalid_trade_commands_are_rejected() {
-        let mut settlement = Settlement::new(1, 50, 0, Arc::default());
+        let mut settlement = Settlement::new(SettlementId(1), 50, 0, Arc::default());
         let labour = HashMap::from([(ResourceType::Labour, TradeOffer::sell(1, 1))]);
         assert_eq!(
             settlement.publish_trade_offers(labour.clone()),
             Err(TradeCommandError::LabourIsNotTradable)
         );
         assert_eq!(
-            settlement.order_caravan(2, labour),
+            settlement.order_caravan(SettlementId(2), labour),
             Err(TradeCommandError::LabourIsNotTradable)
         );
         let wood = HashMap::from([(ResourceType::Wood, TradeOffer::buy(1, 1))]);
         assert_eq!(
-            settlement.order_caravan(1, wood),
+            settlement.order_caravan(SettlementId(1), wood),
             Err(TradeCommandError::TradeWithSelf)
         );
         assert_eq!(
             settlement.order_caravan(
-                2,
+                SettlementId(2),
                 HashMap::from([(ResourceType::Wood, TradeOffer::buy(0, 1))])
             ),
             Err(TradeCommandError::EmptyOrder)

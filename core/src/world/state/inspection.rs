@@ -89,13 +89,14 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ids::SettlementId;
 
     #[test]
     fn dangling_structural_reference_is_an_explicit_error() {
         let mut world = world();
         let position = Position { x: 0, y: 0 };
         let reference = crate::world::territory::BuildingReference {
-            settlement_id: 1,
+            settlement_id: SettlementId(1),
             building_id: crate::ids::BuildingId(99),
         };
         world
@@ -114,7 +115,7 @@ mod tests {
         let position = Position { x: 0, y: 0 };
         world
             .queue_construction(
-                1,
+                SettlementId(1),
                 ProjectId(7),
                 position,
                 definition(),
@@ -122,12 +123,12 @@ mod tests {
             )
             .unwrap();
         world
-            .add_settlement(20, Settlement::new(2, 100, 0, Arc::default()))
+            .add_settlement(20, Settlement::new(SettlementId(2), 100, 0, Arc::default()))
             .unwrap();
         world.map.territory[0] = 20;
         let view = world.inspect_tile(position).unwrap();
-        assert_eq!(view.province_settlement.unwrap().id(), 2);
-        assert_eq!(view.occupant_settlement.unwrap().id(), 1);
+        assert_eq!(view.province_settlement.unwrap().id(), SettlementId(2));
+        assert_eq!(view.occupant_settlement.unwrap().id(), SettlementId(1));
         assert!(view.project.is_some());
     }
     use crate::buildings::definition::BuildingDefinition;
@@ -147,7 +148,7 @@ mod tests {
             vec![Province::new(10), Province::new(20)],
         );
         world
-            .add_settlement(10, Settlement::new(1, 100, 0, Arc::default()))
+            .add_settlement(10, Settlement::new(SettlementId(1), 100, 0, Arc::default()))
             .unwrap();
         world
     }
@@ -171,7 +172,7 @@ mod tests {
         assert_eq!(view.position, position);
         assert!(std::ptr::eq(view.terrain, &world.map.terrain[0]));
         assert_eq!(view.province_id, 10);
-        assert_eq!(view.province_settlement.unwrap().id(), 1);
+        assert_eq!(view.province_settlement.unwrap().id(), SettlementId(1));
         assert_eq!(view.tile.occupancy(), TileOccupancy::Empty);
         assert!(view.project.is_none());
         assert!(view.building.is_none());
@@ -193,7 +194,7 @@ mod tests {
         let position = Position { x: 0, y: 0 };
         world
             .queue_construction(
-                1,
+                SettlementId(1),
                 ProjectId(7),
                 position,
                 definition(),
@@ -203,18 +204,23 @@ mod tests {
         let view = world.inspect_tile(position).unwrap();
         assert!(std::ptr::eq(
             view.project.unwrap(),
-            &world.settlement(1).unwrap().active_projects()[0]
+            &world.settlement(SettlementId(1)).unwrap().active_projects()[0]
         ));
         assert!(view.building.is_none());
 
         world
-            .process_settlement_turn(1, &mut PathFinder::new(2, 1))
+            .process_settlement_turn(SettlementId(1), &mut PathFinder::new(2, 1))
             .unwrap();
         let view = world.inspect_tile(position).unwrap();
         assert!(view.project.is_none());
         assert!(std::ptr::eq(
             view.building.unwrap(),
-            world.settlement(1).unwrap().buildings().next().unwrap()
+            world
+                .settlement(SettlementId(1))
+                .unwrap()
+                .buildings()
+                .next()
+                .unwrap()
         ));
         assert_eq!(view.building.unwrap().position(), position);
     }
@@ -225,14 +231,14 @@ mod tests {
         let position = Position { x: 0, y: 0 };
         world
             .queue_construction(
-                1,
+                SettlementId(1),
                 ProjectId(7),
                 position,
                 definition(),
                 ProjectCost::default(),
             )
             .unwrap();
-        world.cancel_project(1, ProjectId(7)).unwrap();
+        world.cancel_project(SettlementId(1), ProjectId(7)).unwrap();
         let view = world.inspect_tile(position).unwrap();
         assert!(view.project.is_none());
         assert!(view.building.is_none());

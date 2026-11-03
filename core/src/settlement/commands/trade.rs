@@ -2,6 +2,7 @@
 use super::super::Settlement;
 use super::super::trade_manager::CaravanOrder;
 use crate::economy::ResourceType;
+use crate::ids::SettlementId;
 use crate::trade::book::TradeBook;
 use crate::trade::caravan::{CaravanCargo, CaravanReturn};
 use crate::trade::offer::TradeOffer;
@@ -38,7 +39,7 @@ impl Settlement {
     /// Queues a caravan funded from stock and gold at the start of the next turn.
     pub fn order_caravan(
         &mut self,
-        receiver_id: u32,
+        receiver_id: SettlementId,
         offers: HashMap<ResourceType, TradeOffer>,
     ) -> Result<(), TradeCommandError> {
         if receiver_id == self.id {

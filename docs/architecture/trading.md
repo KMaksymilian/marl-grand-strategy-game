@@ -6,7 +6,7 @@ and does not start economic turns automatically.
 
 ## World turn
 
-`TradeNetwork::process_turn(&mut World, &HashMap<u32, Point>, &mut PathFinder)`
+`TradeNetwork::process_turn(&mut World, &HashMap<SettlementId, Point>, &mut PathFinder)`
 returns `Result<Vec<TurnReport>, WorldError>`; reports follow ascending settlement ID.
 The locations map supplies explicit route endpoints. Missing endpoints or routes
 return funded cargo to the sender for unloading in a later turn.
@@ -57,3 +57,8 @@ receiver; returning cargo is unloaded into its sender's registered settlement.
 - Network unit tests cover trade, shared markets, movement, failed routes and overflow.
 - Territory/trade integration tests cover construction, cancellation and accounting
   against the same persistent settlement state.
+
+`Simulation::step` also advances this transport lifecycle around its global phases.
+It uses the same registered state and typed settlement IDs. Its default endpoints
+are the first land tiles of registered provinces; the network entry point accepts
+explicit endpoints. Use one entry point per intended world turn.

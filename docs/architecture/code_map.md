@@ -32,6 +32,41 @@ Contains `Configuration`, `EconomyConfiguration`, private TOML DTOs
 at the root declares workspace members; each crate's `Cargo.toml` declares its
 package and dependencies. `Cargo.lock` records their resolved versions.
 
+## Simulation coordinator
+
+### [core/src/simulation/mod.rs](../../core/src/simulation/mod.rs)
+
+Contains `Simulation` and `SimulationError`; `World` remains the only settlement registry.
+
+| Method | Purpose |
+| --- | --- |
+| `Simulation::new` | Validate map shape, terrain and province IDs; initialize turn zero and search buffers. |
+| `current_turn` | Read the number of completed global turns. |
+| `world` | Read the owned world without mutable access. |
+| `settlements` | Read settlements from the world registry. |
+| `settlement_registry` | Read the same ordered persistent registry owned through World. |
+| `settlement` | Look up a typed ID or return `MissingSettlement`. |
+| `initialize_settlement` | Delegate initialization and unique automatic ID allocation. |
+| `add_settlement` | Delegate one-province settlement registration. |
+| `queue_decision` | Queue a known settlement's command for the next successful step. |
+| `into_world` | Recover the world, discarding pending commands. |
+| `SimulationError::fmt` | Format map, counter or preflight failures. |
+
+### [core/src/simulation/decisions.rs](../../core/src/simulation/decisions.rs)
+
+Defines `SettlementDecision`, `DecisionError` and `DecisionOutcome`.
+`Simulation::apply_decision` dispatches spatial commands through `World` and
+operational commands to the settlement; invalid commands become outcomes.
+
+### [core/src/simulation/turn.rs](../../core/src/simulation/turn.rs)
+
+`Simulation::step` preflights all settlements, consumes decisions once and executes
+each phase globally in ascending settlement ID order before incrementing the counter.
+
+### [core/src/simulation/turn_report.rs](../../core/src/simulation/turn_report.rs)
+
+Defines `TurnPhase`, `PhaseExecution` and `SimulationTurnReport`; no explicit methods.
+
 ## Buildings
 
 ### [core/src/buildings/building.rs](../../core/src/buildings/building.rs)
@@ -107,6 +142,21 @@ Owns `Settlement`, `BuildingCommandError`, module visibility and re-exports of
 | `building_productivity_calculator` | Inspect the optional travel-cost configuration. |
 | `storage_order` | Borrow the ordered material storage policy. |
 
+### [core/src/settlement/registry.rs](../../core/src/settlement/registry.rs)
+
+`SettlementRegistry` stores persistent instances in `BTreeMap<SettlementId, Settlement>`.
+Only crate-internal world registration/commands can mutate the store.
+
+| Method | Purpose |
+| --- | --- |
+| `default` | Initialize an empty ordered registry and automatic ID candidate zero. |
+| `get` | Look up a settlement by its typed ID. |
+| `iter` | Visit instances in ascending ID order. |
+| `len`, `is_empty` | Read registry cardinality. |
+| `get_mut` | Internally borrow an instance for validated commands or phases. |
+| `next_id` | Read the next unregistered automatic ID, or None on exhaustion. |
+| `register` | Reject duplicates, insert the persistent instance and skip occupied ID candidates without overflow. |
+
 ### [core/src/settlement/commands/mod.rs](../../core/src/settlement/commands/mod.rs)
 
 Declares the three private command groups below; it contains no methods.
@@ -149,6 +199,12 @@ Requests that create construction/upgrade projects.
 | Method on `Settlement` | Purpose |
 | --- | --- |
 | `process_turn` | Refresh productivity, reserve trade resources, allocate local demands, execute production/projects, collect stock and return a report. |
+| `prepare_turn` | Refresh productivity/labour, snapshot opening stock, reject invalid projects and reserve trade resources. |
+| `allocate_turn` | Gather demands and allocate from existing stock. |
+| `consume_turn` | Evaluate population allocations and shortages. |
+| `progress_construction` | Pay project allocations and advance time once. |
+| `produce_turn` | Execute buildings and record produced/unused materials. |
+| `finish_turn` | Collect stock, report overflow, finalize projects and return trade resources. |
 
 Contains inline unit tests of turn behavior and private aggregate invariants.
 
@@ -294,7 +350,8 @@ at zero. Currency is separate from warehouse materials.
 
 ### [core/src/ids.rs](../../core/src/ids.rs)
 
-`BuildingId` and `ProjectId` are distinct `u32` tuple types. No explicit methods.
+`SettlementId`, `BuildingId` and `ProjectId` are distinct `u32` tuple types.
+`SettlementId::fmt` formats the numeric ID without conflating it with other ID types.
 
 ## Trade and transport
 
@@ -372,8 +429,11 @@ See [current limitations](trading.md) before using this prototype in a simulatio
 | Method on `World` | Purpose |
 | --- | --- |
 | `new` | Store map/provinces and initialize empty caravans, settlements and territory. |
+| `settlement_turn_parts` | Internally split mutable settlement/territory and shared map borrows for global phases. |
 | `add_settlement` | Register an empty settlement in exactly one existing, unoccupied province. |
-| `settlement`, `settlements` | Read settlement instances; hash-map iteration order is unspecified. |
+| `settlement`, `settlements` | Read settlement instances; iteration follows ascending SettlementId. |
+| `settlement_registry` | Borrow the central registry without public mutation access. |
+| `initialize_settlement` | Allocate an unused ID and register an initialized settlement atomically. |
 | `territory` | Read the global occupancy registry without mutation access. |
 | `province_settlement` | Return the optional settlement ID in an existing province. |
 | `province_at` | Resolve valid map coordinates to an existing province ID. |
@@ -406,6 +466,7 @@ Contains `Tile`, `TileOccupancy`, settlement-qualified references and `Territory
 | `queue_upgrade` | Validate the target's province and delegate the upgrade. |
 | `cancel_project` | Delegate cancellation using the shared registry, even after map edits. |
 | `process_settlement_turn` | Recheck project membership and advance one settlement with shared spatial state. |
+| `validate_settlement_turn` | Preflight existing project positions without mutating world state. |
 
 ### [core/src/world/state/inspection.rs](../../core/src/world/state/inspection.rs)
 
@@ -551,6 +612,9 @@ The following files only declare/export modules; they contain no explicit method
 | [core/tests/building_productivity_tests.rs](../../core/tests/building_productivity_tests.rs) | Public-interface tests of travel costs, configuration, output scaling and settlement isolation. |
 | [core/tests/territory_construction_tests.rs](../../core/tests/territory_construction_tests.rs) | World construction, overlap rejection, placement, upgrades and atomic failures. |
 | [core/tests/project_cancellation_tests.rs](../../core/tests/project_cancellation_tests.rs) | Cancellation, no refunds, upgrade preservation, reservation matching and identifier reuse. |
+| [core/tests/simulation_tests.rs](../../core/tests/simulation_tests.rs) | Global progression/order, decisions, local economic equivalence and headless multi-turn execution. |
+| [core/tests/settlement_registry_tests.rs](../../core/tests/settlement_registry_tests.rs) | Initialization, typed references, duplicates, stable traversal, ID allocation and persistent economic/spatial identity. |
+| [core/examples/headless.rs](../../core/examples/headless.rs) | `main` creates a farm scenario and runs a requested number of turns without graphics. |
 | Inline `#[cfg(test)]` modules | Unit tests alongside the feature they verify, including turn tests in `settlement/turn.rs`. |
 | [.github/workflows/ci.yml](../../.github/workflows/ci.yml) | Rust formatting, Clippy and workspace test checks. |
 | [ml_brain/src/requirements.txt](../../ml_brain/src/requirements.txt) | Empty dependency placeholder; no Python runtime implementation exists yet. |

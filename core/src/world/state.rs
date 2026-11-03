@@ -1,12 +1,16 @@
 use crate::ids::SettlementId;
 use std::collections::HashMap;
+mod commands;
 mod construction;
+pub use commands::CommandError;
 mod inspection;
+mod map_commands;
 mod trade;
 pub use inspection::TileView;
 
+use super::settlement_registry::SettlementRegistry;
 use super::territory::{TerritoryManager, Tile};
-use crate::settlement::{NeedRegistry, Settlement, registry::SettlementRegistry};
+use crate::settlement::{NeedRegistry, Settlement};
 use crate::trade::caravan::Caravan;
 use crate::world::{Position, coordinates::Point, map::Map, province::Province};
 use std::sync::Arc;
@@ -26,6 +30,7 @@ pub enum WorldError {
         settlement_id: SettlementId,
     },
     InvalidMapPosition(Position),
+    InvalidTerrain(Position),
     InconsistentOccupancy {
         position: Position,
         occupancy: super::territory::TileOccupancy,
@@ -37,15 +42,37 @@ pub enum WorldError {
     },
 }
 
+/// World layers are read-only outside the aggregate.
+/// ```compile_fail
+/// use simulation_core::world::World;
+/// fn replace_layers(world: &mut World) {
+///     world.map.territory.clear();
+/// }
+/// ```
 pub struct World {
-    pub map: Map,
-    pub provinces: Vec<Province>,
+    map: Map,
+    provinces: Vec<Province>,
     pub caravans: Vec<Caravan>,
     territory: TerritoryManager,
     settlements: SettlementRegistry,
     province_settlements: HashMap<usize, SettlementId>,
 }
 impl World {
+    pub fn map(&self) -> &Map {
+        &self.map
+    }
+
+    pub fn provinces(&self) -> &[Province] {
+        &self.provinces
+    }
+
+    pub fn province(&self, id: usize) -> Result<&Province, WorldError> {
+        self.provinces
+            .iter()
+            .find(|province| province.id == id)
+            .ok_or(WorldError::MissingProvince(id))
+    }
+
     /// Initializes and registers an empty settlement with an unused ID.
     /// A failed registration does not consume that ID.
     pub fn initialize_settlement(
@@ -71,14 +98,21 @@ impl World {
     }
 
     /// Internal split borrow for coordinated phases; never exposes mutable collections publicly.
-    pub(crate) fn settlement_turn_parts(
-        &mut self,
+    pub(crate) fn settlement_turn_parts<'a>(
+        &'a mut self,
         settlement_id: SettlementId,
-    ) -> Option<(&mut Settlement, &Map, &mut TerritoryManager)> {
+        finder: &'a mut crate::world::pathfinding::path_finder::PathFinder,
+    ) -> Option<(
+        &'a mut Settlement,
+        crate::world::settlement_environment::MapSettlementEnvironment<'a>,
+    )> {
         Some((
             self.settlements.get_mut(settlement_id)?,
-            &self.map,
-            &mut self.territory,
+            crate::world::settlement_environment::MapSettlementEnvironment::new(
+                &self.map,
+                finder,
+                &mut self.territory,
+            ),
         ))
     }
 
@@ -151,13 +185,7 @@ impl World {
         &self,
         province_id: usize,
     ) -> Result<Option<SettlementId>, WorldError> {
-        if !self
-            .provinces
-            .iter()
-            .any(|province| province.id == province_id)
-        {
-            return Err(WorldError::MissingProvince(province_id));
-        }
+        self.province(province_id)?;
         Ok(self.province_settlements.get(&province_id).copied())
     }
 
@@ -210,13 +238,15 @@ impl World {
             caravan.travel();
         }
     }
-    pub fn centroid(&self, id: usize) -> Point {
-        self.provinces[id].centroid()
+    pub fn centroid(&self, province_id: usize) -> Result<Point, WorldError> {
+        Ok(self.province(province_id)?.centroid())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::world::settlement_environment::{MapConstructionSpace, MapSettlementEnvironment};
+
     use super::*;
     use crate::buildings::definition::BuildingDefinition;
     use crate::ids::ProjectId;
@@ -339,22 +369,17 @@ mod tests {
         let mut territory = TerritoryManager::default();
         let mut world = world();
         let mut settlement = settlement(1);
-        let definition = Arc::new(BuildingDefinition {
-            id: "house".into(),
-            name: "House".into(),
-            tier: 1,
-            max_workers: 0,
-            behaviors: vec![],
-            construction_cost: ProjectCost::default(),
-        });
+        let definition = Arc::new(
+            BuildingDefinition::new("house", "House", 1, 0, vec![], ProjectCost::default())
+                .unwrap(),
+        );
         settlement
             .queue_construction(
                 ProjectId(1),
                 Position { x: 0, y: 0 },
                 definition,
                 ProjectCost::default(),
-                &world.map,
-                &mut territory,
+                &mut MapConstructionSpace::new(&world.map, &mut territory),
             )
             .unwrap();
         assert_eq!(
@@ -374,22 +399,20 @@ mod tests {
 
         let mut world = world();
         let mut settlement = settlement(1);
-        let definition = Arc::new(BuildingDefinition {
-            id: "house".into(),
-            name: "House".into(),
-            tier: 1,
-            max_workers: 0,
-            behaviors: vec![],
-            construction_cost: ProjectCost::default(),
-        });
+        let definition = Arc::new(
+            BuildingDefinition::new("house", "House", 1, 0, vec![], ProjectCost::default())
+                .unwrap(),
+        );
         let position = Position { x: 0, y: 0 };
-        let building = Building::new(BuildingId(1), position, definition).unwrap();
+        let building = Building::new(BuildingId(1), position, definition);
         settlement
             .add_building(
                 building,
-                &world.map,
-                &mut PathFinder::new(3, 2),
-                &mut territory,
+                &mut MapSettlementEnvironment::new(
+                    &world.map,
+                    &mut PathFinder::new(3, 2),
+                    &mut territory,
+                ),
             )
             .unwrap();
         assert_eq!(

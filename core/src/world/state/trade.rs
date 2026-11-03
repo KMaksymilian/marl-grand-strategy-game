@@ -20,7 +20,14 @@ impl World {
         self.settlements
             .get_mut(id)
             .expect("registered settlement")
-            .prepare_turn(&self.map, finder, &mut self.territory, &mut visitors)
+            .prepare_turn(
+                &mut crate::world::settlement_environment::MapSettlementEnvironment::new(
+                    &self.map,
+                    finder,
+                    &mut self.territory,
+                ),
+                &mut visitors,
+            )
     }
 
     /// First land tile of each registered province, in row-major order.

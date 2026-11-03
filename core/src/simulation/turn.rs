@@ -37,7 +37,7 @@ impl Simulation {
                 settlement_id: id,
             });
             for decision in pending.remove(&id).unwrap_or_default() {
-                let result = self.apply_decision(id, &decision);
+                let result = self.world.execute_settlement_command(id, &decision);
                 decisions.push(DecisionOutcome {
                     settlement_id: id,
                     decision,
@@ -62,9 +62,9 @@ impl Simulation {
                 phase: TurnPhase::Allocation,
                 settlement_id: id,
             });
-            let (settlement, _, _) = self
+            let settlement = self
                 .world
-                .settlement_turn_parts(id)
+                .settlement_mut(id)
                 .expect("registered settlement");
             allocated.push((id, settlement.allocate_turn(state)));
         }
@@ -75,9 +75,9 @@ impl Simulation {
                 phase: TurnPhase::Consumption,
                 settlement_id: id,
             });
-            let (settlement, _, _) = self
+            let settlement = self
                 .world
-                .settlement_turn_parts(id)
+                .settlement_mut(id)
                 .expect("registered settlement");
             consumed.push((id, settlement.consume_turn(state)));
         }
@@ -88,9 +88,9 @@ impl Simulation {
                 phase: TurnPhase::Construction,
                 settlement_id: id,
             });
-            let (settlement, _, _) = self
+            let settlement = self
                 .world
-                .settlement_turn_parts(id)
+                .settlement_mut(id)
                 .expect("registered settlement");
             settlement.progress_construction(state);
         }
@@ -101,9 +101,9 @@ impl Simulation {
                 phase: TurnPhase::Production,
                 settlement_id: id,
             });
-            let (settlement, _, _) = self
+            let settlement = self
                 .world
-                .settlement_turn_parts(id)
+                .settlement_mut(id)
                 .expect("registered settlement");
             produced.push((id, settlement.produce_turn(state)));
         }
@@ -114,14 +114,11 @@ impl Simulation {
                 phase: TurnPhase::EconomicUpdates,
                 settlement_id: id,
             });
-            let (settlement, map, territory) = self
+            let (settlement, mut environment) = self
                 .world
-                .settlement_turn_parts(id)
+                .settlement_turn_parts(id, &mut self.finder)
                 .expect("registered settlement");
-            settlements.insert(
-                id,
-                settlement.finish_turn(state, map, &mut self.finder, territory),
-            );
+            settlements.insert(id, settlement.finish_turn(state, &mut environment));
         }
         let locations = self.world.default_trade_locations();
         self.world.finish_trade_turn(&locations, &mut self.finder);
@@ -156,14 +153,10 @@ mod tests {
             Map::new(2, 1, vec![Area::new(0.5, 0.5); 2], vec![10, 20]),
             vec![Province::new(10), Province::new(20)],
         );
-        let definition = Arc::new(BuildingDefinition {
-            id: "house".into(),
-            name: "House".into(),
-            tier: 1,
-            max_workers: 0,
-            behaviors: vec![],
-            construction_cost: ProjectCost::default(),
-        });
+        let definition = Arc::new(
+            BuildingDefinition::new("house", "House", 1, 0, vec![], ProjectCost::default())
+                .unwrap(),
+        );
         for (province, id, x) in [(10, 1, 0), (20, 2, 1)] {
             let mut settlement = Settlement::new(SettlementId(id), 100, 0, Arc::default());
             settlement.deposit(Wood, 5);
@@ -181,7 +174,9 @@ mod tests {
                 )
                 .unwrap();
         }
-        world.map.territory[1] = 10;
+        world
+            .set_tile_province(Position { x: 1, y: 0 }, 10)
+            .unwrap();
         let mut simulation = Simulation::new(world).unwrap();
         simulation
             .queue_decision(
@@ -207,7 +202,10 @@ mod tests {
                 );
             }
         }
-        simulation.world.map.territory[1] = 20;
+        simulation
+            .world
+            .set_tile_province(Position { x: 1, y: 0 }, 20)
+            .unwrap();
         let report = simulation.step().unwrap();
         assert_eq!(report.decisions.len(), 1);
         assert_eq!(report.decisions[0].result, Ok(()));

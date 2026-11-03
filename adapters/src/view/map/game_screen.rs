@@ -42,6 +42,19 @@ impl GameScreen {
         }
     }
 
+    fn cursor_tile(&self, width: u32, height: u32) -> Option<Point> {
+        let position = self
+            .camera
+            .camera
+            .screen_to_world(Vec2::from(mouse_position()));
+        if !(position.x >= 0.0 && position.y >= 0.0) {
+            return None;
+        }
+        let x = position.x.floor() as u32;
+        let y = position.y.floor() as u32;
+        (x < width && y < height).then_some(Point(x as usize, y as usize))
+    }
+
     pub fn run(&mut self, world: &World, path_finder: &mut PathFinder) {
         self.camera.update();
         if let Some(camera_type) = self.camera.select_camera_type() {
@@ -52,72 +65,54 @@ impl GameScreen {
         let width: u32 = active_texture.width() as u32;
         let height: u32 = active_texture.height() as u32;
 
-        if is_mouse_button_pressed(MouseButton::Left) {
-            let screen_pos: Vec2 = Vec2::from(mouse_position());
-            let world_pos: Vec2 = self.camera.camera.screen_to_world(screen_pos);
+        if is_mouse_button_pressed(MouseButton::Left)
+            && let Some(point) = self.cursor_tile(width, height)
+        {
+            self.a_star_clicked_provinces.push(point);
 
-            if world_pos.x >= 0.0 && world_pos.y >= 0.0 {
-                let tile_x = world_pos.x.floor() as u32;
-                let tile_y = world_pos.y.floor() as u32;
+            if self.a_star_clicked_provinces.len() > 2 {
+                self.a_star_clicked_provinces.remove(0);
+            }
 
-                if tile_x < width && tile_y < height {
-                    self.a_star_clicked_provinces
-                        .push(Point(tile_x as usize, tile_y as usize));
-
-                    if self.a_star_clicked_provinces.len() > 2 {
-                        self.a_star_clicked_provinces.remove(0);
-                    }
-
-                    if self.a_star_clicked_provinces.len() == 2 {
-                        if let Some(points) = AStar::a_star(
-                            &world.map,
-                            path_finder,
-                            (
-                                self.a_star_clicked_provinces[0].0,
-                                self.a_star_clicked_provinces[0].1,
-                            ),
-                            (
-                                self.a_star_clicked_provinces[1].0,
-                                self.a_star_clicked_provinces[1].1,
-                            ),
-                        ) {
-                            self.a_star_path = points;
-                        } else {
-                            self.a_star_path.clear();
-                        }
-                    }
+            if self.a_star_clicked_provinces.len() == 2 {
+                if let Some(points) = AStar::a_star(
+                    world.map(),
+                    path_finder,
+                    (
+                        self.a_star_clicked_provinces[0].0,
+                        self.a_star_clicked_provinces[0].1,
+                    ),
+                    (
+                        self.a_star_clicked_provinces[1].0,
+                        self.a_star_clicked_provinces[1].1,
+                    ),
+                ) {
+                    self.a_star_path = points;
+                } else {
+                    self.a_star_path.clear();
                 }
             }
         }
 
-        if is_mouse_button_pressed(MouseButton::Right) {
-            let screen_pos: Vec2 = Vec2::from(mouse_position());
-            let world_pos: Vec2 = self.camera.camera.screen_to_world(screen_pos);
+        if is_mouse_button_pressed(MouseButton::Right)
+            && let Some(point) = self.cursor_tile(width, height)
+        {
+            self.dijkstra_flood_clicked_provinces.push(point);
 
-            if world_pos.x >= 0.0 && world_pos.y >= 0.0 {
-                let tile_x = world_pos.x.floor() as u32;
-                let tile_y = world_pos.y.floor() as u32;
+            if self.dijkstra_flood_clicked_provinces.len() > 1 {
+                self.dijkstra_flood_clicked_provinces.remove(0);
+            }
 
-                if tile_x < width && tile_y < height {
-                    self.dijkstra_flood_clicked_provinces
-                        .push(Point(tile_x as usize, tile_y as usize));
-
-                    if self.dijkstra_flood_clicked_provinces.len() > 1 {
-                        self.dijkstra_flood_clicked_provinces.remove(0);
-                    }
-
-                    if self.dijkstra_flood_clicked_provinces.len() == 1 {
-                        self.dijkstra_flood_path = DijkstraFlood::dijkstra_flood(
-                            &world.map,
-                            path_finder,
-                            (
-                                self.dijkstra_flood_clicked_provinces[0].0,
-                                self.dijkstra_flood_clicked_provinces[0].1,
-                            ),
-                            1000,
-                        );
-                    }
-                }
+            if self.dijkstra_flood_clicked_provinces.len() == 1 {
+                self.dijkstra_flood_path = DijkstraFlood::dijkstra_flood(
+                    world.map(),
+                    path_finder,
+                    (
+                        self.dijkstra_flood_clicked_provinces[0].0,
+                        self.dijkstra_flood_clicked_provinces[0].1,
+                    ),
+                    1000,
+                );
             }
         }
 

@@ -12,14 +12,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 fn definition() -> Arc<BuildingDefinition> {
-    Arc::new(BuildingDefinition {
-        id: "house".into(),
-        name: "House".into(),
-        tier: 1,
-        max_workers: 0,
-        behaviors: vec![],
-        construction_cost: ProjectCost::default(),
-    })
+    Arc::new(
+        BuildingDefinition::new("house", "House", 1, 0, vec![], ProjectCost::default()).unwrap(),
+    )
 }
 
 fn scenario(capacity: u32) -> (World, HashMap<SettlementId, Point>, PathFinder) {
@@ -229,7 +224,9 @@ fn invalid_membership_blocks_the_whole_turn_before_funding_or_movement() {
             },
         )
         .unwrap();
-    world.map.territory[1] = 20;
+    world
+        .set_tile_province(Position { x: 1, y: 0 }, 20)
+        .unwrap();
     assert!(matches!(
         TradeNetwork::process_turn(&mut world, &locations, &mut finder),
         Err(WorldError::SettlementOutsideProvince { .. })

@@ -2,6 +2,7 @@
 mod building;
 pub mod catalog;
 pub mod definition;
+pub mod effects;
 pub mod productivity;
 
-pub use building::{Building, BuildingUpdateResult, LoadError, ProductionResult};
+pub use building::{Building, LoadError, ProductionResult};

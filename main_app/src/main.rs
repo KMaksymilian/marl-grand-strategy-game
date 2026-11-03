@@ -23,7 +23,7 @@ async fn main() {
     );
     let world: World = WorldBuilder::generate_default();
     let mut game_screen: GameScreen = ViewGenerator::generate(&world);
-    let mut path_finder: PathFinder = PathFinder::new(world.map.width, world.map.height);
+    let mut path_finder: PathFinder = PathFinder::new(world.map().width, world.map().height);
 
     loop {
         clear_background(LIGHTGRAY);

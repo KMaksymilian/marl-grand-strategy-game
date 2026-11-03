@@ -1,42 +1,35 @@
-# Functional Modules and Explicit Spatial Dependencies
+# 0003 - Functional Modules and Spatial Dependencies
 
-Status: implemented on `fix/code-organization`, following the initial method
-grouping in [0002](0002-code-organization.md).
+Status: implemented. Summary updated October 29, 2026.
 
-## Decision
+## Context
 
-Replace the broad `domain/services` split with functional modules at the library
-root: `world`, `economy`, `buildings`, `settlement`, `trade`, `ids` and
-`configuration`. World state, terrain classification, generation and pathfinding
-belong together under `world`. The Rust package becomes `simulation_core` to
-avoid confusion with Rust's standard `core`; its workspace directory stays `core/`.
+The `domain/services` split scattered related code across technical directories.
+Caravan construction also depended on the whole world and confused participant
+identities with province indices. This decision follows the method grouping in 0002.
 
-Separate resource catalogue data (`economy/resources.rs`) from stock management
-(`economy/inventory.rs`), re-exporting the common types at `economy`. Rename the
-blueprint registry to `BuildingCatalog`, active funded offers to `TradeBook`, and
-spatial seed/assignment/centroid helpers to `Voronoi`. Shorten trade file names
-because their parent module already supplies the trade context.
+## Decisions
 
-Keep `Point` and `Position` together in `world/coordinates.rs`, preserving their
-unsigned and signed representations respectively. Their numeric contracts are
-not changed by this reorganization.
+1. **Group by function.** Place related models and operations together, such as
+   economy, settlements and trade. Keep terrain, generation and pathfinding under `world`.
+2. **Use an unambiguous package name.** Name the Rust package `simulation_core`
+   while retaining the `core/` directory, avoiding confusion with Rust's standard library.
+3. **Keep coordinate contracts explicit.** Store `Point` and `Position` together,
+   preserving unsigned grid indices and signed placement coordinates.
+4. **Pass spatial dependencies directly.** Construct caravans using a map, pathfinder,
+   participant IDs, explicit endpoints and a trade book. Return `None` for invalid
+   or unreachable routes instead of requiring the whole `World`.
+5. **Make migration explicit.** Remove old namespaces without compatibility aliases.
+   Update imports and the caravan constructor contract; preserve economic arithmetic
+   and movement behavior as part of this reorganization.
 
-## Caravan dependency
+## Still to decide
 
-Previously `World` owned caravans while `Caravan::new()` required a whole `World`
-and treated participant IDs as province indices. The constructor now receives
-`&Map`, `&mut PathFinder`, participant IDs, explicit start/end `Point` values and
-a `TradeBook`. Its return type is `Option<Caravan>` so invalid or unreachable
-routes can be handled by the caller. `World` still owns and advances caravans.
+None recorded for this decision.
 
-This is an intentional constructor-contract change, with inline tests for explicit
-endpoints/opaque participant IDs and absent routes. Matching, travel speed,
-return movement, local turn order and economic arithmetic remain unchanged.
+## Details
 
-## Consequences
-
-Public imports change; no aliases preserve the removed technical namespaces.
-No new dependency, trait hierarchy, API wrapper, crate split or simulation loop is
-introduced. `Cargo.lock` changes only to rename the local package and references
-to it. See the [structure guide](../architecture/project_structure.md) for the
-complete migration table and [code map](../architecture/code_map.md) for sources.
+- [Code organization](0002-code-organization.md)
+- [Project structure and import migration](../architecture/implementation/project_structure.md)
+- [Source file and method map](../architecture/implementation/code_map.md)
+- [Trading and caravans](../architecture/systems/trading.md)

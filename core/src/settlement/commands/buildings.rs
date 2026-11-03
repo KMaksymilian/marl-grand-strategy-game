@@ -2,27 +2,22 @@
 use super::super::{BuildingCommandError, Settlement};
 use crate::buildings::Building;
 use crate::buildings::productivity::BuildingProductivityCalculator;
+use crate::buildings::productivity::TravelCostSource;
 use crate::ids::BuildingId;
-use crate::world::map::Map;
-use crate::world::pathfinding::path_finder::PathFinder;
-use crate::world::territory::{BuildingReference, TerritoryManager};
+use crate::spatial::{BuildingReference, ConstructionSpace};
 
 impl Settlement {
     pub fn add_building(
         &mut self,
         building: Building,
-        map: &Map,
-        finder: &mut PathFinder,
-        territory: &mut TerritoryManager,
+        environment: &mut (impl ConstructionSpace + TravelCostSource),
     ) -> Result<(), BuildingCommandError> {
         let id = building.instance_id();
         let position = building.position();
         if self.building_manager.contains(id) {
             return Err(BuildingCommandError::DuplicateBuilding(id));
         }
-        map.validate_building_position(position)
-            .map_err(BuildingCommandError::Territory)?;
-        territory
+        environment
             .register_building(
                 position,
                 BuildingReference {
@@ -33,7 +28,7 @@ impl Settlement {
             .map_err(BuildingCommandError::Territory)?;
         // The duplicate check above makes registration infallible under this exclusive borrow.
         self.building_manager
-            .construct_building(building, map, finder)
+            .construct_building(building, environment)
             .expect("building ID was checked before spatial registration");
         Ok(())
     }
@@ -44,9 +39,7 @@ impl Settlement {
         value: f32,
     ) -> Result<(), BuildingCommandError> {
         self.building_manager
-            .buildings
-            .iter_mut()
-            .find(|building| building.instance_id() == id)
+            .get_mut(id)
             .ok_or(BuildingCommandError::MissingBuilding(id))?
             .set_target_load(value)
             .map_err(|_| BuildingCommandError::InvalidLoad)
@@ -58,9 +51,7 @@ impl Settlement {
         active: bool,
     ) -> Result<(), BuildingCommandError> {
         self.building_manager
-            .buildings
-            .iter_mut()
-            .find(|building| building.instance_id() == id)
+            .get_mut(id)
             .ok_or(BuildingCommandError::MissingBuilding(id))?
             .set_active(active);
         Ok(())
@@ -70,10 +61,9 @@ impl Settlement {
     pub fn set_building_productivity_calculator(
         &mut self,
         calculator: Option<BuildingProductivityCalculator>,
-        map: &Map,
-        finder: &mut PathFinder,
+        source: &mut impl TravelCostSource,
     ) {
         self.building_manager
-            .set_productivity_calculator(calculator, map, finder);
+            .set_productivity_calculator(calculator, source);
     }
 }

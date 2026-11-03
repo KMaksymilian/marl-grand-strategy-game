@@ -10,7 +10,8 @@ pub use turn_report::{PhaseExecution, SimulationTurnReport, TurnPhase};
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
-use crate::settlement::{NeedRegistry, Settlement, registry::SettlementRegistry};
+use crate::settlement::{NeedRegistry, Settlement};
+use crate::world::settlement_registry::SettlementRegistry;
 use crate::world::{World, WorldError, pathfinding::path_finder::PathFinder};
 use std::sync::Arc;
 
@@ -80,16 +81,20 @@ impl Simulation {
 
     /// Takes a configured world. Turn zero means no global turns have completed.
     pub fn new(world: World) -> Result<Self, SimulationError> {
-        let map = &world.map;
+        let map = world.map();
         let area = map
             .width
             .checked_mul(map.height)
             .ok_or(SimulationError::InvalidMap)?;
-        let provinces: HashSet<_> = world.provinces.iter().map(|province| province.id).collect();
+        let provinces: HashSet<_> = world
+            .provinces()
+            .iter()
+            .map(|province| province.id)
+            .collect();
         if area == 0
             || map.terrain.len() != area
             || map.territory.len() != area
-            || provinces.len() != world.provinces.len()
+            || provinces.len() != world.provinces().len()
             || map.territory.iter().any(|id| !provinces.contains(id))
             || map
                 .terrain

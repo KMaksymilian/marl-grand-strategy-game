@@ -1,6 +1,6 @@
 //! Treasury, market offers and caravan orders.
 use super::super::Settlement;
-use super::super::trade_manager::CaravanOrder;
+use super::super::trading::CaravanOrder;
 use crate::economy::ResourceType;
 use crate::ids::SettlementId;
 use crate::trade::book::TradeBook;

@@ -9,7 +9,7 @@ impl ViewGenerator {
     pub fn generate(world: &World) -> GameScreen {
         let map_texture: MapTextureData = MapTextureData::generate_from_world(world);
         let map_camera: MapCamera =
-            MapCamera::new(0.5, world.map.width as f32, world.map.height as f32);
+            MapCamera::new(0.5, world.map().width as f32, world.map().height as f32);
         GameScreen::new(map_texture, map_camera)
     }
 }

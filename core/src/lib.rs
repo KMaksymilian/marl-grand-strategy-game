@@ -5,5 +5,6 @@ pub mod economy;
 pub mod ids;
 pub mod settlement;
 pub mod simulation;
+pub mod spatial;
 pub mod trade;
 pub mod world;

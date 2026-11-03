@@ -1,5 +1,6 @@
 //! Resource catalogue, stock, currency and allocation rules.
 pub mod allocation;
+pub mod cost;
 pub mod gold_inventory;
 pub mod inventory;
 pub mod resources;

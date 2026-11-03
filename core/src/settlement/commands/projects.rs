@@ -3,9 +3,8 @@ use super::super::Settlement;
 use super::super::projects::{Project, ProjectCost, ProjectError, ProjectResult};
 use crate::buildings::definition::BuildingDefinition;
 use crate::ids::{BuildingId, ProjectId};
-use crate::world::coordinates::Position;
-use crate::world::map::Map;
-use crate::world::territory::{ProjectReference, TerritoryManager};
+use crate::spatial::Position;
+use crate::spatial::{ConstructionSpace, ProjectReference};
 use std::sync::Arc;
 
 impl Settlement {
@@ -14,7 +13,7 @@ impl Settlement {
     pub fn cancel_project(
         &mut self,
         project_id: ProjectId,
-        territory: &mut TerritoryManager,
+        space: &mut impl ConstructionSpace,
     ) -> Result<(), ProjectError> {
         let index = self
             .project_manager
@@ -24,7 +23,7 @@ impl Settlement {
             .ok_or(ProjectError::MissingProject(project_id))?;
         let project = &self.project_manager.active_projects[index];
         if let ProjectResult::ConstructBuilding { position, .. } = project.result() {
-            territory
+            space
                 .cancel_construction(
                     *position,
                     ProjectReference {
@@ -41,15 +40,13 @@ impl Settlement {
     }
 
     /// Requests construction and reserves its position in the shared registry.
-    #[allow(clippy::too_many_arguments)]
     pub fn queue_construction(
         &mut self,
         project_id: ProjectId,
         position: Position,
         definition: Arc<BuildingDefinition>,
         cost: ProjectCost,
-        map: &Map,
-        territory: &mut TerritoryManager,
+        space: &mut impl ConstructionSpace,
     ) -> Result<(), ProjectError> {
         let project = Project::new(
             project_id,
@@ -68,18 +65,16 @@ impl Settlement {
         {
             return Err(ProjectError::DuplicateProject(project_id));
         }
-        map.validate_building_position(position)
-            .map_err(ProjectError::Territory)?;
         let reference = ProjectReference {
             settlement_id: self.id(),
             project_id,
         };
-        territory
+        space
             .reserve_construction(position, reference)
             .map_err(ProjectError::Territory)?;
         // ID uniqueness was checked before reserving; rollback if registration fails.
         self.project_manager.add_project(project).map_err(|id| {
-            territory
+            space
                 .cancel_construction(position, reference)
                 .expect("new reservation is unchanged");
             ProjectError::DuplicateProject(id)
@@ -98,7 +93,6 @@ impl Settlement {
             target_instance_id,
             new_definition,
         };
-        Self::validate_project_result(&result, &self.building_manager)?;
         let project = Project::new(project_id, result, cost);
 
         Self::validate_project_result(&project.result, &self.building_manager)?;

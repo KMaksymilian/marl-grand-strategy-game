@@ -1,4 +1,7 @@
 use simulation_core::ids::SettlementId;
+use simulation_core::world::settlement_environment::{
+    MapConstructionSpace, MapSettlementEnvironment,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -18,14 +21,9 @@ const SITE: Position = Position { x: 0, y: 0 };
 const NEXT_SITE: Position = Position { x: 1, y: 0 };
 
 fn definition() -> Arc<BuildingDefinition> {
-    Arc::new(BuildingDefinition {
-        id: "house".into(),
-        name: "House".into(),
-        tier: 1,
-        max_workers: 0,
-        behaviors: vec![],
-        construction_cost: ProjectCost::default(),
-    })
+    Arc::new(
+        BuildingDefinition::new("house", "House", 1, 0, vec![], ProjectCost::default()).unwrap(),
+    )
 }
 
 fn world() -> World {
@@ -127,7 +125,9 @@ fn construction_reserves_a_tile_until_materials_and_time_are_paid() {
 #[test]
 fn invalid_sites_do_not_create_projects_or_spend_materials() {
     let mut world = world();
-    world.map.terrain[0] = Area::new(0.1, 0.5);
+    world
+        .set_tile_terrain(Position { x: 0, y: 0 }, Area::new(0.1, 0.5))
+        .unwrap();
     assert_eq!(
         world.queue_construction(
             SettlementId(1),
@@ -279,7 +279,7 @@ fn direct_building_registration_cannot_bypass_spatial_checks() {
             ProjectCost::default(),
         )
         .unwrap();
-    let create = |id, position| Building::new(BuildingId(id), position, definition()).unwrap();
+    let create = |id, position| Building::new(BuildingId(id), position, definition());
     assert_eq!(
         world.add_building(SettlementId(1), create(3, SITE), &mut finder),
         Err(WorldError::Building(BuildingCommandError::Territory(
@@ -340,7 +340,9 @@ fn direct_building_registration_cannot_bypass_spatial_checks() {
         ),
         Err(WorldError::InvalidMapPosition(_))
     ));
-    world.map.terrain[4] = Area::new(0.1, 0.5);
+    world
+        .set_tile_terrain(Position { x: 0, y: 1 }, Area::new(0.1, 0.5))
+        .unwrap();
     assert_eq!(
         world.add_building(SettlementId(1), create(4, spare), &mut finder),
         Err(WorldError::Building(BuildingCommandError::Territory(
@@ -364,12 +366,20 @@ fn upgrades_keep_the_building_on_its_tile_throughout_the_project() {
     world
         .add_building(
             SettlementId(1),
-            Building::new(BuildingId(9), SITE, definition()).unwrap(),
+            Building::new(BuildingId(9), SITE, definition()),
             &mut finder,
         )
         .unwrap();
-    let mut upgraded = Arc::try_unwrap(definition()).unwrap();
-    upgraded.tier = 2;
+    let original = definition();
+    let upgraded = BuildingDefinition::new(
+        original.id(),
+        original.name(),
+        2,
+        original.max_workers(),
+        original.behaviors().to_vec(),
+        original.construction_cost().clone(),
+    )
+    .unwrap();
     world
         .queue_upgrade(
             SettlementId(1),
@@ -403,7 +413,7 @@ fn upgrades_keep_the_building_on_its_tile_throughout_the_project() {
             .next()
             .unwrap()
             .definition()
-            .tier,
+            .tier(),
         2
     );
 }
@@ -456,7 +466,9 @@ fn flooded_construction_is_rejected_before_spending_and_releases_its_reservation
             },
         )
         .unwrap();
-    world.map.terrain[0] = Area::new(0.1, 0.5);
+    world
+        .set_tile_terrain(Position { x: 0, y: 0 }, Area::new(0.1, 0.5))
+        .unwrap();
     let report = world
         .process_settlement_turn(SettlementId(1), &mut PathFinder::new(4, 2))
         .unwrap();
@@ -501,7 +513,9 @@ fn changed_province_membership_stops_the_turn_before_spending() {
             },
         )
         .unwrap();
-    world.map.territory[0] = 20;
+    world
+        .set_tile_province(Position { x: 0, y: 0 }, 20)
+        .unwrap();
     assert!(matches!(
         world.process_settlement_turn(SettlementId(1), &mut PathFinder::new(4, 2)),
         Err(WorldError::SettlementOutsideProvince { .. })
@@ -545,8 +559,7 @@ fn invalid_project_cannot_release_another_settlements_reservation() {
                 needed_resources: HashMap::from([(ResourceType::Wood, 2)]),
                 turn_cost: 1,
             },
-            &map,
-            &mut territory,
+            &mut MapConstructionSpace::new(&map, &mut territory),
         )
         .unwrap();
     territory
@@ -564,7 +577,10 @@ fn invalid_project_cannot_release_another_settlements_reservation() {
     };
     territory.reserve_construction(SITE, other).unwrap();
 
-    let report = settlement.process_turn(&map, &mut PathFinder::new(1, 1), &mut territory, &mut []);
+    let report = settlement.process_turn(
+        &mut MapSettlementEnvironment::new(&map, &mut PathFinder::new(1, 1), &mut territory),
+        &mut [],
+    );
     assert!(matches!(
         report.projects[0].result,
         Err(ProjectError::Territory(

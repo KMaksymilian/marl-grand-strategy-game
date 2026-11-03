@@ -1,36 +1,59 @@
 # Documentation
 
-Start with the [project structure](architecture/project_structure.md) and the
-[source file and method map](architecture/code_map.md).
+Start with the [architecture guide](architecture/README.md), then move from the
+system overview to functional areas and implementation references.
 
 | Directory | Contents |
 | --- | --- |
-| `architecture/` | Implemented structure, algorithms and runtime behavior |
-| `decisions/` | Recorded choices and policies that need a decision |
-| `planning/` | Target architecture, roadmap and proposed game content |
-| `analysis/` | Dated historical reviews; paths and findings reflect their original revision |
+| `architecture/overview/` | System scope, components, aggregate ownership and global turn lifecycle |
+| `architecture/systems/` | Rules, classes and lifecycle diagrams for one functional area |
+| `architecture/implementation/` | Source map, API contracts, formulas and configuration |
+| `decisions/` | Short records of architectural choices and their rationale |
+| `planning/` | Proposed behavior, separate from the implemented system |
+| `analysis/` | Dated reviews reflecting their original code revision |
 | `thesis/` | Thesis requirements and prioritization |
 
-## Implemented systems
+## Recommended reading order
 
-- [Project structure and organization rules](architecture/project_structure.md)
-- [Source files, types and methods](architecture/code_map.md)
-- [Economy](architecture/economy.md)
-- [Global simulation and headless execution](architecture/simulation.md)
-- [Settlements and turn processing](architecture/settlements.md)
-- [Territory, construction and tile inspection](architecture/territory.md)
-- [Building productivity and configuration](architecture/building_productivity.md)
-- [Trading and caravans](architecture/trading.md)
-- [Pathfinding](architecture/algorithms.md)
-- [World generation](architecture/world_generation.md)
-- [Map rendering and camera](architecture/camera.md)
+1. [System overview](architecture/overview/system.md).
+2. [Components](architecture/overview/components.md) and [aggregate ownership](architecture/overview/state_ownership.md).
+3. [Global turn lifecycle](architecture/overview/turn_lifecycle.md).
+4. [Settlements](architecture/systems/settlements.md), [registry](architecture/systems/settlement_registry.md), [territory](architecture/systems/territory.md) and [economy](architecture/systems/economy.md).
+5. [Project structure](architecture/implementation/project_structure.md) and [source map](architecture/implementation/code_map.md) when locating implementation details.
 
-## Decisions, proposals and history
+## Architecture references
 
-- [Economy decisions](decisions/0001-economy.md)
+- [Architecture and diagram index](architecture/README.md)
+- [Buildings](architecture/systems/buildings.md)
+- [Trading and caravans](architecture/systems/trading.md)
+- [World generation](architecture/systems/world_generation.md)
+- [Pathfinding](architecture/systems/pathfinding.md)
+- [Rendering and camera](architecture/systems/rendering.md)
+- [Headless execution and simulation API](architecture/implementation/simulation_commands.md)
+- [Configuration](architecture/implementation/configuration.md)
+- [Building productivity](architecture/implementation/building_productivity.md)
+
+## Architectural decisions
+
+- [Economy rules](decisions/0001-economy.md)
 - [Code organization](decisions/0002-code-organization.md)
-- [Functional modules and caravan dependencies](decisions/0003-functional-modules.md)
+- [Functional modules and spatial dependencies](decisions/0003-functional-modules.md)
+- [Map-independent settlement](decisions/0004-settlement-spatial-boundary.md)
+- [World and blueprint encapsulation](decisions/0005-world-blueprint-encapsulation.md)
+
+## Plans and proposals
+
 - [Target simulation aggregates](planning/aggregates.md)
-- [Economy roadmap](planning/economy_roadmap.md)
-- [Historical review: 2026-10-13](analysis/2026-10-13.md)
+
+## Thesis requirements
+
 - [Thesis MoSCoW priorities](thesis/moscow.md)
+
+## Historical reviews
+
+Historical documents describe their original revision. Source paths and findings
+may differ from the current implementation.
+
+- [Historical review: 2026-10-13](analysis/2026-10-13.md)
+
+- [Trading file and method reference](architecture/implementation/trading.md)

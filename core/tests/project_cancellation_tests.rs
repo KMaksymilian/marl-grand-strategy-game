@@ -1,4 +1,5 @@
 use simulation_core::ids::SettlementId;
+use simulation_core::world::settlement_environment::MapConstructionSpace;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -17,14 +18,9 @@ use simulation_core::world::{Map, Position, Province, World, WorldError};
 const SITE: Position = Position { x: 0, y: 0 };
 
 fn definition(tier: u8) -> Arc<BuildingDefinition> {
-    Arc::new(BuildingDefinition {
-        id: "house".into(),
-        name: "House".into(),
-        tier,
-        max_workers: 0,
-        behaviors: vec![],
-        construction_cost: ProjectCost::default(),
-    })
+    Arc::new(
+        BuildingDefinition::new("house", "House", tier, 0, vec![], ProjectCost::default()).unwrap(),
+    )
 }
 
 fn cost() -> ProjectCost {
@@ -139,7 +135,7 @@ fn canceling_an_upgrade_preserves_the_existing_building_and_occupancy() {
     world
         .add_building(
             SettlementId(1),
-            Building::new(BuildingId(9), SITE, original.clone()).unwrap(),
+            Building::new(BuildingId(9), SITE, original.clone()),
             &mut finder,
         )
         .unwrap();
@@ -229,7 +225,9 @@ fn cancellation_does_not_require_the_original_map_membership() {
     world
         .queue_construction(SettlementId(1), ProjectId(7), SITE, definition(1), cost())
         .unwrap();
-    world.map.territory[0] = 20;
+    world
+        .set_tile_province(Position { x: 0, y: 0 }, 20)
+        .unwrap();
     world.cancel_project(SettlementId(1), ProjectId(7)).unwrap();
     assert_eq!(
         world.tile_at(SITE).unwrap().occupancy(),
@@ -255,8 +253,7 @@ fn mismatched_reservation_preserves_the_project_and_other_occupant() {
             SITE,
             definition(1),
             cost(),
-            &map,
-            &mut territory,
+            &mut MapConstructionSpace::new(&map, &mut territory),
         )
         .unwrap();
     territory
@@ -274,7 +271,10 @@ fn mismatched_reservation_preserves_the_project_and_other_occupant() {
     };
     territory.reserve_construction(SITE, other).unwrap();
     assert!(matches!(
-        settlement.cancel_project(ProjectId(7), &mut territory),
+        settlement.cancel_project(
+            ProjectId(7),
+            &mut MapConstructionSpace::new(&map, &mut territory)
+        ),
         Err(ProjectError::Territory(
             TerritoryError::ReservationMismatch { .. }
         ))

@@ -34,19 +34,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     world
         .add_settlement(0, settlement)
         .expect("valid example settlement");
-    let definition = Arc::new(BuildingDefinition {
-        id: "farm".into(),
-        name: "Farm".into(),
-        tier: 1,
-        max_workers: 1,
-        behaviors: vec![BuildingBehavior::Production {
-            inputs: vec![],
-            outputs: vec![(Grain, 2)],
-        }],
-        construction_cost: ProjectCost::default(),
-    });
-    let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, definition)
-        .expect("valid example building");
+    let definition = Arc::new(
+        BuildingDefinition::new(
+            "farm",
+            "Farm",
+            1,
+            1,
+            vec![BuildingBehavior::Production {
+                inputs: vec![],
+                outputs: vec![(Grain, 2)],
+            }],
+            ProjectCost::default(),
+        )
+        .unwrap(),
+    );
+    let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, definition);
     building.set_target_load(1.0).expect("valid load");
     world
         .add_building(SettlementId(1), building, &mut PathFinder::new(1, 1))

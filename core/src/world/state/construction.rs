@@ -7,6 +7,7 @@ use crate::buildings::{Building, definition::BuildingDefinition};
 use crate::ids::{BuildingId, ProjectId};
 use crate::settlement::projects::{ProjectCost, ProjectError, ProjectResult};
 use crate::settlement::turn_report::TurnReport;
+use crate::world::settlement_environment::{MapConstructionSpace, MapSettlementEnvironment};
 use crate::world::{Position, pathfinding::path_finder::PathFinder};
 
 impl World {
@@ -19,7 +20,10 @@ impl World {
         self.settlements
             .get_mut(settlement_id)
             .ok_or(WorldError::MissingSettlement(settlement_id))?
-            .cancel_project(project_id, &mut self.territory)
+            .cancel_project(
+                project_id,
+                &mut MapConstructionSpace::new(&self.map, &mut self.territory),
+            )
             .map_err(WorldError::Project)
     }
 
@@ -40,8 +44,7 @@ impl World {
                 position,
                 definition,
                 cost,
-                &self.map,
-                &mut self.territory,
+                &mut MapConstructionSpace::new(&self.map, &mut self.territory),
             )
             .map_err(WorldError::Project)
     }
@@ -56,7 +59,10 @@ impl World {
         self.settlements
             .get_mut(settlement_id)
             .expect("settlement was validated")
-            .add_building(building, &self.map, finder, &mut self.territory)
+            .add_building(
+                building,
+                &mut MapSettlementEnvironment::new(&self.map, finder, &mut self.territory),
+            )
             .map_err(WorldError::Building)
     }
 
@@ -104,8 +110,11 @@ impl World {
         Ok(self
             .settlements
             .get_mut(settlement_id)
-            .expect("validated settlement")
-            .process_turn(&self.map, finder, &mut self.territory, &mut visitors))
+            .expect("settlement was validated")
+            .process_turn(
+                &mut MapSettlementEnvironment::new(&self.map, finder, &mut self.territory),
+                &mut visitors,
+            ))
     }
 
     pub(crate) fn validate_settlement_turn(

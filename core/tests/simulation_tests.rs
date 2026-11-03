@@ -19,17 +19,20 @@ use simulation_core::world::territory::TileOccupancy;
 use simulation_core::world::{Map, Position, Province, World, WorldError};
 
 fn definition() -> Arc<BuildingDefinition> {
-    Arc::new(BuildingDefinition {
-        id: "farm".into(),
-        name: "Farm".into(),
-        tier: 1,
-        max_workers: 1,
-        behaviors: vec![BuildingBehavior::Production {
-            inputs: vec![(Wood, 1)],
-            outputs: vec![(Grain, 2)],
-        }],
-        construction_cost: ProjectCost::default(),
-    })
+    Arc::new(
+        BuildingDefinition::new(
+            "farm",
+            "Farm",
+            1,
+            1,
+            vec![BuildingBehavior::Production {
+                inputs: vec![(Wood, 1)],
+                outputs: vec![(Grain, 2)],
+            }],
+            ProjectCost::default(),
+        )
+        .unwrap(),
+    )
 }
 
 fn world(order: &[u32]) -> World {
@@ -55,8 +58,7 @@ fn world(order: &[u32]) -> World {
                 y: 0,
             },
             definition(),
-        )
-        .unwrap();
+        );
         building.set_target_load(1.0).unwrap();
         world
             .add_building(SettlementId(id), building, &mut finder)
@@ -535,12 +537,19 @@ fn storage_order_decision_is_applied_before_economic_updates() {
 #[test]
 fn an_upgrade_changes_output_only_after_the_turn_in_which_it_completes() {
     let mut simulation = Simulation::new(world(&[1])).unwrap();
-    let mut upgraded = Arc::try_unwrap(definition()).unwrap();
-    upgraded.tier = 2;
-    upgraded.behaviors = vec![BuildingBehavior::Production {
-        inputs: vec![(Wood, 1)],
-        outputs: vec![(Grain, 4)],
-    }];
+    let original = definition();
+    let upgraded = BuildingDefinition::new(
+        original.id(),
+        original.name(),
+        2,
+        original.max_workers(),
+        vec![BuildingBehavior::Production {
+            inputs: vec![(Wood, 1)],
+            outputs: vec![(Grain, 4)],
+        }],
+        original.construction_cost().clone(),
+    )
+    .unwrap();
     simulation
         .queue_decision(
             SettlementId(1),

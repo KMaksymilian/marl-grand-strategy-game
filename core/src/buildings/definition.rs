@@ -1,6 +1,6 @@
+use crate::buildings::effects::StatType;
 use crate::economy::ResourceType;
-use crate::settlement::projects::ProjectCost;
-use crate::settlement::stat::StatType;
+use crate::economy::cost::ProjectCost;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -16,14 +16,21 @@ pub enum BuildingBehavior {
     },
 }
 
+/// Immutable validated blueprint. All instances must pass through `new`.
+/// ```compile_fail
+/// use simulation_core::buildings::definition::BuildingDefinition;
+/// fn mutate(definition: &mut BuildingDefinition) {
+///     definition.max_workers = u32::MAX;
+/// }
+/// ```
 #[derive(Debug)]
 pub struct BuildingDefinition {
-    pub id: String,
-    pub name: String,
-    pub tier: u8,
-    pub max_workers: u32,
-    pub behaviors: Vec<BuildingBehavior>,
-    pub construction_cost: ProjectCost,
+    id: String,
+    name: String,
+    tier: u8,
+    max_workers: u32,
+    behaviors: Vec<BuildingBehavior>,
+    construction_cost: ProjectCost,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +41,46 @@ pub enum DefinitionError {
     StatOverflow,
 }
 impl BuildingDefinition {
-    pub fn validate(&self) -> Result<(), DefinitionError> {
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        tier: u8,
+        max_workers: u32,
+        behaviors: Vec<BuildingBehavior>,
+        construction_cost: ProjectCost,
+    ) -> Result<Self, DefinitionError> {
+        let definition = Self {
+            id: id.into(),
+            name: name.into(),
+            tier,
+            max_workers,
+            behaviors,
+            construction_cost,
+        };
+        definition.validate()?;
+        Ok(definition)
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn tier(&self) -> u8 {
+        self.tier
+    }
+    pub fn max_workers(&self) -> u32 {
+        self.max_workers
+    }
+    pub fn behaviors(&self) -> &[BuildingBehavior] {
+        &self.behaviors
+    }
+    pub fn construction_cost(&self) -> &ProjectCost {
+        &self.construction_cost
+    }
+
+    fn validate(&self) -> Result<(), DefinitionError> {
         let mut inputs = HashMap::<ResourceType, u32>::new();
         let mut outputs = HashMap::<ResourceType, u32>::new();
         for behavior in &self.behaviors {

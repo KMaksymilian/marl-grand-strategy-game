@@ -1,31 +1,8 @@
 //! Global occupancy registry. Map bounds and ownership are validated by callers.
-use crate::ids::SettlementId;
 use std::collections::HashMap;
 
-use crate::ids::{BuildingId, ProjectId};
-use crate::world::Position;
-
-/// Project IDs are local to their settlement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ProjectReference {
-    pub settlement_id: SettlementId,
-    pub project_id: ProjectId,
-}
-
-/// Building IDs are local to their settlement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BuildingReference {
-    pub settlement_id: SettlementId,
-    pub building_id: BuildingId,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub enum TileOccupancy {
-    #[default]
-    Empty,
-    Construction(ProjectReference),
-    Building(BuildingReference),
-}
+use crate::spatial::Position;
+pub use crate::spatial::{BuildingReference, ProjectReference, TerritoryError, TileOccupancy};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Tile {
@@ -36,25 +13,6 @@ impl Tile {
     pub fn occupancy(&self) -> TileOccupancy {
         self.occupancy
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TerritoryError {
-    InvalidMapPosition(Position),
-    OceanTile(Position),
-    Occupied {
-        position: Position,
-        occupancy: TileOccupancy,
-    },
-    ReservationMismatch {
-        position: Position,
-        expected: ProjectReference,
-        actual: TileOccupancy,
-    },
-    SettlementMismatch {
-        project: ProjectReference,
-        building: BuildingReference,
-    },
 }
 
 /// Sparse spatial registry: absent entries represent empty tiles, not map bounds.
@@ -71,20 +29,7 @@ impl TerritoryManager {
         position: Position,
         building: BuildingReference,
     ) -> Result<(), TerritoryError> {
-        let occupancy = self.tile_at(position).occupancy();
-        if occupancy != TileOccupancy::Empty {
-            return Err(TerritoryError::Occupied {
-                position,
-                occupancy,
-            });
-        }
-        self.tiles.insert(
-            position,
-            Tile {
-                occupancy: TileOccupancy::Building(building),
-            },
-        );
-        Ok(())
+        self.occupy_empty(position, TileOccupancy::Building(building))
     }
 
     /// Returns a read-only snapshot. This does not validate map coordinates.
@@ -97,6 +42,14 @@ impl TerritoryManager {
         position: Position,
         project: ProjectReference,
     ) -> Result<(), TerritoryError> {
+        self.occupy_empty(position, TileOccupancy::Construction(project))
+    }
+
+    fn occupy_empty(
+        &mut self,
+        position: Position,
+        occupant: TileOccupancy,
+    ) -> Result<(), TerritoryError> {
         let occupancy = self.tile_at(position).occupancy();
         if occupancy != TileOccupancy::Empty {
             return Err(TerritoryError::Occupied {
@@ -104,11 +57,10 @@ impl TerritoryManager {
                 occupancy,
             });
         }
-
         self.tiles.insert(
             position,
             Tile {
-                occupancy: TileOccupancy::Construction(project),
+                occupancy: occupant,
             },
         );
         Ok(())
@@ -165,7 +117,7 @@ impl TerritoryManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ids::SettlementId;
+    use crate::ids::{BuildingId, ProjectId, SettlementId};
 
     const POSITION: Position = Position { x: 2, y: 3 };
     const PROJECT: ProjectReference = ProjectReference {

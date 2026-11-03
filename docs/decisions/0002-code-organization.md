@@ -1,43 +1,37 @@
-# Code Organization
 
-Status: implemented on `fix/code-organization`, based on develop `8335e26`.
 
-The initial file grouping remains in use. Its technical directory layout is
-superseded by [functional modules](0003-functional-modules.md); consult the
-[current structure guide](../architecture/project_structure.md) for imports.
+Status: implemented. Summary updated October 29, 2026.
 
-## Decision
+## Context
 
-Organize the existing modules by responsibility while preserving simulation
-behavior. `Settlement` remains the single aggregate and public command surface.
-Its state and reads live at the module root; commands are grouped under
-`commands/{inventory,buildings,projects}.rs`. `turn.rs` coordinates the turn and
-`project_lifecycle.rs` validates/applies project effects. These are additional
-`impl Settlement` blocks in private child modules. Managers stay private.
+Large files made related operations difficult to find. Split methods by responsibility
+while preserving their behavior. This record covers method grouping; the subsequent
+directory reorganization is described in decision 0003.
 
-Expose the runtime building model from `buildings`, separate validated definition
-data from the factory registry, and locate caravan transport within `trade`.
-Group production methods under `building/production.rs`, matching methods under
-`book/matching.rs`, and terrain/province generation under
-`world_builder/{terrain,provinces}.rs`. Keep type state and pipeline orchestration
-in their parent modules. Move existing method bodies without changing algorithms;
-only private visibility is widened to the owning module where cross-file calls
-require it. Public calls and imports remain unchanged by this additional split.
-Module path changes are listed in the [structure guide](../architecture/project_structure.md).
+## Decisions
 
-Keep unit tests inline with the implementation and public integration tests under
-the crate's `tests/` directory. The reorganization adds no dependencies or runtime
-configuration fields.
+1. **One settlement interface.** Keep commands on `Settlement`, using additional
+   implementation blocks in private child modules instead of a separate API object.
+2. **Group related methods.** Separate inventory, building and project commands.
+   Keep turn execution, project lifecycle, building production, trade matching and
+   world-generation operations in dedicated files.
+3. **Protect internal state.** Keep settlement managers and their collections private.
+   Expose validated commands and read-only views.
+4. **Keep tests near their subject.** Place unit tests alongside the implementation
+   and public integration tests in the crate's `tests/` directory.
+5. **Give documentation clear roles.** Use `architecture/` for implemented systems,
+   `decisions/` for rationale, `planning/` for proposals and `analysis/` for dated reviews.
+6. **Maintain navigation.** Update the documentation index and source map when files
+   or methods move. List runtime methods in the source map; keep test names and
+   derived methods in source or generated documentation.
 
-## Documentation
+## Still to decide
 
-Use `architecture/` for implemented systems, `planning/` for future behavior,
-`decisions/` for rationale and `analysis/` for dated reviews. Rename `economic.md`
-to `economy.md`, fix `agregates.md` to `planning/aggregates.md`, and move the economy
-roadmap to `planning/`. Maintain the [documentation index](../README.md) and
-[source map](../architecture/code_map.md) whenever files or methods move.
+None recorded for this decision.
 
-The source map documents explicitly implemented runtime methods, including private
-helpers, and identifies data-only and module-registration files. Inline test names
-and compiler-generated trait methods stay in source/rustdoc rather than being
-duplicated in the manual index.
+## Details
+
+- [Project structure](../architecture/implementation/project_structure.md)
+- [Source file and method map](../architecture/implementation/code_map.md)
+- [Functional modules](0003-functional-modules.md)
+- [Documentation index](../README.md)

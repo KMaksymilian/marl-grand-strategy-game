@@ -79,12 +79,3 @@ Routing occurs after local reports are assembled. A failed departure is reported
 as funded now and as a return when unloaded next turn. Market executions are seen
 from the host; returned caravan logs use the sender's perspective. The material
 balance excludes gold and cargo outside warehouse/buffer snapshots.
-
-## Verification
-
-Unit tests are inline in offers, books, matching, market, caravan and settlement
-trade lifecycle files. [territory_trade_integration_tests.rs](../../../core/tests/territory_trade_integration_tests.rs)
-checks shared persistent state, construction/cancellation, capacity losses,
-preflight rejection and global/local runner equivalence.
-[simulation_tests.rs](../../../core/tests/simulation_tests.rs) checks global
-phase order, deterministic registry iteration and headless turn progression.

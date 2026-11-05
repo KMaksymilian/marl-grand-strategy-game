@@ -120,6 +120,7 @@ impl Simulation {
         let locations = self.world.default_trade_locations();
         self.world.finish_trade_turn(&locations, &mut self.finder);
         self.current_turn = turn;
+        self.last_reports = settlements.clone();
         Ok(SimulationTurnReport {
             turn,
             decisions,

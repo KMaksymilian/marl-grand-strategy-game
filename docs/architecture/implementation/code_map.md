@@ -609,6 +609,8 @@ projects outside their settlement's province after a membership change.
 | [buildings/productivity.rs](../../../core/src/buildings/productivity.rs) | `TravelCostSource::travel_cost` supplies a directed optional cost to the calculator. |
 | [settlement/commands/command.rs](../../../core/src/settlement/commands/command.rs) | `SettlementCommand`: resolved commands for construction, upgrade, cancellation, building settings, storage order and trade. |
 | [world/state/execution.rs](../../../core/src/world/state/execution.rs) | `World::apply_decision`: validate, execute accepted actions, return `DecisionOutcome`. |
+| [world/state/observation.rs](../../../core/src/world/state/observation.rs) | `World::observe_settlement` (crate-internal) builds a `SettlementObservation`; `settlement_province` finds a settlement's province. |
+| [settlement/observation.rs](../../../core/src/settlement/observation.rs) | Serializable observation types. See [settlement observations](settlement_observations.md). |
 | [settlement/decision.rs](../../../core/src/settlement/decision.rs) | Agent contract: `SettlementDecision`, `SettlementAction`, `ActionKind`, `OfferSpec`; `to_json`/`from_json`. See [settlement decisions](settlement_decisions.md). |
 | [world/settlement_environment.rs](../../../core/src/world/settlement_environment.rs) | `AStarTravelCosts::new/travel_cost`, `MapConstructionSpace::new` and its construction operations, `MapSettlementEnvironment::new` and delegation of both ports. |
 | [world/state/commands.rs](../../../core/src/world/state/commands.rs) | `CommandError`; `World::execute_settlement_command` is the single typed command dispatcher. |

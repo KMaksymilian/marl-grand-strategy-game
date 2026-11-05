@@ -17,6 +17,7 @@ This reference describes the implemented coordinator API.
 | `initialize_settlement(province_id, capacity, population, needs)` | Allocate an unused ID, create a settlement and register it; return the ID. |
 | `queue_decision(decision)` | Queue a `SettlementDecision` of a known settlement; no immediate world mutation. |
 | `step()` | Execute one global turn and return `SimulationTurnReport`. |
+| `observe(id)`, `observe_all()` | Build agent [observations](settlement_observations.md) from the current state and the latest turn reports. |
 | `into_world()` | Consume the coordinator and recover its world; pending decisions are discarded. |
 
 The registry retains its ID-allocation cursor in the recovered world. Creating a

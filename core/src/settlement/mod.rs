@@ -3,6 +3,7 @@
 mod commands;
 pub mod decision;
 mod economy;
+pub mod observation;
 pub mod projects;
 mod trading;
 mod turn;
@@ -77,6 +78,11 @@ impl Settlement {
 
     pub fn population(&self) -> u32 {
         self.population_manager.population
+    }
+
+    /// Materials the population requests every turn at its current size.
+    pub fn needs_per_turn(&self) -> std::collections::HashMap<ResourceType, u32> {
+        self.population_manager.calculate_demand()
     }
 
     pub fn inventory(&self) -> &crate::economy::ResourceInventory {

@@ -60,7 +60,7 @@ impl PopulationManager {
 
     /// Use the same whole resource units as inventories, recipes and projects.
     /// Request generation and satisfaction evaluation share this demand.
-    fn calculate_demand(&self) -> HashMap<ResourceType, u32> {
+    pub(crate) fn calculate_demand(&self) -> HashMap<ResourceType, u32> {
         if self.population == 0 {
             return HashMap::new();
         }

@@ -1,6 +1,7 @@
 //! Settlement state, read-only views and construction.
 //! Commands and turn processing are implemented on the same type in child modules.
 mod commands;
+pub mod decision;
 mod economy;
 pub mod projects;
 mod trading;

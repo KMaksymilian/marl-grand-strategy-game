@@ -11,7 +11,7 @@ use simulation_core::ids::{BuildingId, ProjectId};
 use simulation_core::settlement::projects::{ProjectCompletion, ProjectCost};
 use simulation_core::settlement::{BuildingCommandError, NeedRegistry, NeedTier, Settlement};
 use simulation_core::simulation::{
-    DecisionError, SettlementDecision, Simulation, SimulationError, TurnPhase,
+    DecisionError, SettlementCommand, Simulation, SimulationError, TurnPhase,
 };
 use simulation_core::world::pathfinding::path_finder::PathFinder;
 use simulation_core::world::terrain::area::Area;
@@ -196,7 +196,7 @@ fn decisions_wait_for_step_apply_in_submission_order_and_are_not_replayed() {
     simulation
         .queue_decision(
             SettlementId(1),
-            SettlementDecision::SetBuildingActive {
+            SettlementCommand::SetBuildingActive {
                 building_id: BuildingId(7),
                 active: false,
             },
@@ -205,7 +205,7 @@ fn decisions_wait_for_step_apply_in_submission_order_and_are_not_replayed() {
     simulation
         .queue_decision(
             SettlementId(1),
-            SettlementDecision::SetBuildingActive {
+            SettlementCommand::SetBuildingActive {
                 building_id: BuildingId(7),
                 active: true,
             },
@@ -214,7 +214,7 @@ fn decisions_wait_for_step_apply_in_submission_order_and_are_not_replayed() {
     simulation
         .queue_decision(
             SettlementId(1),
-            SettlementDecision::SetBuildingLoad {
+            SettlementCommand::SetBuildingLoad {
                 building_id: BuildingId(7),
                 load: 0.0,
             },
@@ -263,7 +263,7 @@ fn invalid_decisions_are_reported_without_aborting_valid_commands_or_the_turn() 
     simulation
         .queue_decision(
             SettlementId(1),
-            SettlementDecision::SetBuildingLoad {
+            SettlementCommand::SetBuildingLoad {
                 building_id: BuildingId(99),
                 load: 1.0,
             },
@@ -272,7 +272,7 @@ fn invalid_decisions_are_reported_without_aborting_valid_commands_or_the_turn() 
     simulation
         .queue_decision(
             SettlementId(1),
-            SettlementDecision::SetBuildingLoad {
+            SettlementCommand::SetBuildingLoad {
                 building_id: BuildingId(7),
                 load: f32::NAN,
             },
@@ -281,7 +281,7 @@ fn invalid_decisions_are_reported_without_aborting_valid_commands_or_the_turn() 
     simulation
         .queue_decision(
             SettlementId(1),
-            SettlementDecision::SetBuildingActive {
+            SettlementCommand::SetBuildingActive {
                 building_id: BuildingId(7),
                 active: false,
             },
@@ -316,7 +316,7 @@ fn construction_progresses_once_per_global_turn_and_finishes_after_production() 
     simulation
         .queue_decision(
             SettlementId(1),
-            SettlementDecision::SetBuildingActive {
+            SettlementCommand::SetBuildingActive {
                 building_id: BuildingId(7),
                 active: false,
             },
@@ -325,7 +325,7 @@ fn construction_progresses_once_per_global_turn_and_finishes_after_production() 
     simulation
         .queue_decision(
             SettlementId(1),
-            SettlementDecision::Construct {
+            SettlementCommand::Construct {
                 project_id: ProjectId(9),
                 position: Position { x: 1, y: 0 },
                 definition: definition(),
@@ -362,7 +362,7 @@ fn construction_progresses_once_per_global_turn_and_finishes_after_production() 
     simulation
         .queue_decision(
             SettlementId(1),
-            SettlementDecision::SetBuildingLoad {
+            SettlementCommand::SetBuildingLoad {
                 building_id: BuildingId(0),
                 load: 1.0,
             },
@@ -387,7 +387,7 @@ fn construction_can_be_canceled_in_the_same_decision_phase_without_spending() {
     simulation
         .queue_decision(
             SettlementId(1),
-            SettlementDecision::Construct {
+            SettlementCommand::Construct {
                 project_id: ProjectId(9),
                 position: Position { x: 1, y: 0 },
                 definition: definition(),
@@ -401,7 +401,7 @@ fn construction_can_be_canceled_in_the_same_decision_phase_without_spending() {
     simulation
         .queue_decision(
             SettlementId(1),
-            SettlementDecision::CancelProject(ProjectId(9)),
+            SettlementCommand::CancelProject(ProjectId(9)),
         )
         .unwrap();
     let report = simulation.step().unwrap();
@@ -437,7 +437,7 @@ fn registration_uses_the_world_registry_and_unknown_decisions_are_rejected() {
     assert_eq!(
         simulation.queue_decision(
             SettlementId(1),
-            SettlementDecision::CancelProject(ProjectId(1))
+            SettlementCommand::CancelProject(ProjectId(1))
         ),
         Err(WorldError::MissingSettlement(SettlementId(1)))
     );
@@ -519,7 +519,7 @@ fn storage_order_decision_is_applied_before_economic_updates() {
     simulation
         .queue_decision(
             SettlementId(1),
-            SettlementDecision::SetStorageOrder(vec![Grain, Wood, Stone]),
+            SettlementCommand::SetStorageOrder(vec![Grain, Wood, Stone]),
         )
         .unwrap();
     let report = simulation.step().unwrap();
@@ -553,7 +553,7 @@ fn an_upgrade_changes_output_only_after_the_turn_in_which_it_completes() {
     simulation
         .queue_decision(
             SettlementId(1),
-            SettlementDecision::Upgrade {
+            SettlementCommand::Upgrade {
                 project_id: ProjectId(9),
                 building_id: BuildingId(7),
                 definition: Arc::new(upgraded),
@@ -591,7 +591,7 @@ fn invalid_storage_order_is_reported_and_does_not_replace_the_existing_order() {
     simulation
         .queue_decision(
             SettlementId(1),
-            SettlementDecision::SetStorageOrder(vec![Wood, Wood]),
+            SettlementCommand::SetStorageOrder(vec![Wood, Wood]),
         )
         .unwrap();
     let report = simulation.step().unwrap();

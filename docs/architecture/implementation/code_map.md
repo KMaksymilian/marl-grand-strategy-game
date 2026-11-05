@@ -57,8 +57,7 @@ Contains `Simulation` and `SimulationError`; `World` remains the only settlement
 
 ### [core/src/simulation/decisions.rs](../../../core/src/simulation/decisions.rs)
 
-Re-exports `SettlementCommand` as `SettlementDecision` and world `CommandError` as
-`DecisionError`. Defines `DecisionOutcome`; dispatch belongs to `World::execute_settlement_command`.
+Re-exports `SettlementCommand` and world `CommandError` as `DecisionError`. Defines `DecisionOutcome`; dispatch belongs to `World::execute_settlement_command`.
 
 ### [core/src/simulation/turn.rs](../../../core/src/simulation/turn.rs)
 
@@ -609,6 +608,7 @@ projects outside their settlement's province after a membership change.
 | [buildings/effects.rs](../../../core/src/buildings/effects.rs) | `StatType`: shared housing, inventory and trade modifier targets. |
 | [buildings/productivity.rs](../../../core/src/buildings/productivity.rs) | `TravelCostSource::travel_cost` supplies a directed optional cost to the calculator. |
 | [settlement/commands/command.rs](../../../core/src/settlement/commands/command.rs) | `SettlementCommand`: construction, upgrade, cancellation, building settings and storage order. |
+| [settlement/decision.rs](../../../core/src/settlement/decision.rs) | Agent contract: `SettlementDecision`, `SettlementAction`, `ActionKind`, `OfferSpec`; `to_json`/`from_json`. See [settlement decisions](settlement_decisions.md). |
 | [world/settlement_environment.rs](../../../core/src/world/settlement_environment.rs) | `AStarTravelCosts::new/travel_cost`, `MapConstructionSpace::new` and its construction operations, `MapSettlementEnvironment::new` and delegation of both ports. |
 | [world/state/commands.rs](../../../core/src/world/state/commands.rs) | `CommandError`; `World::execute_settlement_command` is the single typed command dispatcher. |
 

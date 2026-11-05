@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn all_settlements_are_validated_before_decisions_or_economic_mutations() {
-        use super::super::SettlementDecision;
+        use super::super::SettlementCommand;
         use crate::buildings::definition::BuildingDefinition;
         use crate::economy::ResourceType::Wood;
         use crate::ids::ProjectId;
@@ -181,7 +181,7 @@ mod tests {
         simulation
             .queue_decision(
                 SettlementId(1),
-                SettlementDecision::CancelProject(ProjectId(7)),
+                SettlementCommand::CancelProject(ProjectId(7)),
             )
             .unwrap();
         for _ in 0..2 {
@@ -251,7 +251,7 @@ mod tests {
         simulation
             .queue_decision(
                 SettlementId(1),
-                super::super::SettlementDecision::CancelProject(crate::ids::ProjectId(7)),
+                super::super::SettlementCommand::CancelProject(crate::ids::ProjectId(7)),
             )
             .unwrap();
         simulation.current_turn = u64::MAX;

@@ -4,7 +4,7 @@ mod decisions;
 mod turn;
 pub mod turn_report;
 
-pub use decisions::{DecisionError, DecisionOutcome, SettlementDecision};
+pub use decisions::{DecisionError, DecisionOutcome, SettlementCommand};
 pub use turn_report::{PhaseExecution, SimulationTurnReport, TurnPhase};
 
 use std::collections::{BTreeMap, HashSet};
@@ -49,7 +49,7 @@ pub struct Simulation {
     world: World,
     current_turn: u64,
     finder: PathFinder,
-    pending_decisions: BTreeMap<SettlementId, Vec<SettlementDecision>>,
+    pending_decisions: BTreeMap<SettlementId, Vec<SettlementCommand>>,
 }
 
 impl Simulation {
@@ -137,7 +137,7 @@ impl Simulation {
     pub fn queue_decision(
         &mut self,
         settlement_id: SettlementId,
-        decision: SettlementDecision,
+        decision: SettlementCommand,
     ) -> Result<(), WorldError> {
         if self.world.settlement(settlement_id).is_none() {
             return Err(WorldError::MissingSettlement(settlement_id));

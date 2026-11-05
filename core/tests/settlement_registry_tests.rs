@@ -5,7 +5,7 @@ use simulation_core::buildings::definition::BuildingDefinition;
 use simulation_core::economy::ResourceType::Wood;
 use simulation_core::ids::{ProjectId, SettlementId};
 use simulation_core::settlement::{NeedRegistry, NeedTier, Settlement, projects::ProjectCost};
-use simulation_core::simulation::{SettlementDecision, Simulation, TurnPhase};
+use simulation_core::simulation::{SettlementCommand, Simulation, TurnPhase};
 use simulation_core::world::territory::{ProjectReference, TileOccupancy};
 use simulation_core::world::{Map, Position, Province, World, WorldError, terrain::area::Area};
 
@@ -160,7 +160,7 @@ fn duplicate_registration_and_unknown_references_do_not_change_existing_state() 
     );
     assert!(simulation.settlement_registry().get(missing).is_none());
     assert_eq!(
-        simulation.queue_decision(missing, SettlementDecision::CancelProject(ProjectId(1))),
+        simulation.queue_decision(missing, SettlementCommand::CancelProject(ProjectId(1))),
         Err(WorldError::MissingSettlement(missing))
     );
     let report = simulation.step().unwrap();
@@ -220,7 +220,7 @@ fn registry_owns_the_same_persistent_economic_and_spatial_state_across_turns() {
     simulation
         .queue_decision(
             id,
-            SettlementDecision::Construct {
+            SettlementCommand::Construct {
                 project_id: ProjectId(7),
                 position: site,
                 definition: definition(),

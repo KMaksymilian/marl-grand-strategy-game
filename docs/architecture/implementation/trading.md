@@ -43,7 +43,8 @@ Child modules add methods to their owning types rather than extra service object
 | `receive_caravan(returned)` | Queue cargo for unloading/reporting at the next local economic update. |
 
 `TradeCommandError` contains `LabourIsNotTradable`, `TradeWithSelf`, `EmptyOrder`.
-These methods do not automatically create queued `SettlementDecision` variants.
+Agent trade actions (`PublishMarketOffers`, `ClearMarketOffers`, `OrderCaravan`) are
+defined in the [decision contract](settlement_decisions.md) but not executed yet.
 
 ## Routing and global orchestration
 

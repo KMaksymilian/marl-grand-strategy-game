@@ -25,7 +25,9 @@ No public mutable world getter allows callers to bypass coordinated mutation.
 
 ## Decision contracts
 
-`SettlementDecision` supports:
+`queue_decision` currently takes a `SettlementCommand`. The serializable agent
+contract is [`SettlementDecision`](settlement_decisions.md); it is not connected
+to the queue yet. `SettlementCommand` supports:
 
 | Variant | Target and effect |
 | --- | --- |

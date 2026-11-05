@@ -1,5 +1,6 @@
 //! Settlement state, read-only views and construction.
 //! Commands and turn processing are implemented on the same type in child modules.
+pub mod action_mask;
 mod commands;
 pub mod decision;
 mod economy;

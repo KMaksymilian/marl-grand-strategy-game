@@ -79,7 +79,7 @@ impl Checked {
 }
 
 /// Settlement state as changed by the decision's earlier accepted actions.
-struct Batch {
+pub(super) struct Batch {
     claimed: HashMap<Target, usize>,
     next_project: u64,
     /// Staff requested by each building before this decision.
@@ -90,7 +90,7 @@ struct Batch {
 }
 
 impl Batch {
-    fn new(settlement: &Settlement) -> Self {
+    pub(super) fn new(settlement: &Settlement) -> Self {
         let staff_before: HashMap<_, _> = settlement
             .buildings()
             .map(|building| (building.instance_id(), requested_staff(building)))
@@ -112,6 +112,22 @@ impl Batch {
             Some(&with_index) => Err(ActionError::Conflict { with_index }),
             None => Ok(()),
         }
+    }
+
+    /// Highest staff the building may request. Raising staff must keep all
+    /// buildings within the population; keeping or lowering staff is always allowed.
+    pub(super) fn worker_limit(
+        &self,
+        settlement: &Settlement,
+        building_id: BuildingId,
+        max_workers: u32,
+    ) -> u32 {
+        let before = self.staff_before[&building_id];
+        let others = self.total_staff - u64::from(before);
+        let free = u64::from(settlement.population()).saturating_sub(others);
+        u32::try_from(free.max(u64::from(before)))
+            .unwrap_or(u32::MAX)
+            .min(max_workers)
     }
 
     fn project_id(&self) -> Result<ProjectId, ActionError> {
@@ -180,6 +196,16 @@ impl World {
             accepted,
             rejected,
         })
+    }
+
+    /// The validator's verdict on `action` as the first action of a decision.
+    pub(super) fn check_single_action(
+        &self,
+        settlement: &Settlement,
+        action: &SettlementAction,
+        batch: &Batch,
+    ) -> Result<(), ActionError> {
+        self.check_action(settlement, action, batch).map(|_| ())
     }
 
     fn check_action(
@@ -275,12 +301,10 @@ impl World {
                     },
                 )?;
                 batch.ensure_free(Target::Workers(*building_id))?;
-                let before = batch.staff_before[building_id];
-                let requested = batch.total_staff - u64::from(before) + u64::from(*workers);
-                // Reductions stay possible even when buildings already ask for too many.
-                if *workers > before && requested > u64::from(settlement.population()) {
+                if *workers > batch.worker_limit(settlement, *building_id, max_workers) {
+                    let before = batch.staff_before[building_id];
                     return Err(ActionError::InsufficientWorkers {
-                        requested,
+                        requested: batch.total_staff - u64::from(before) + u64::from(*workers),
                         available: settlement.population(),
                     });
                 }

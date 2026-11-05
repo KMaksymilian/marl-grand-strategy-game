@@ -6,6 +6,7 @@ mod execution;
 pub use commands::CommandError;
 mod inspection;
 mod map_commands;
+mod mask;
 mod observation;
 mod trade;
 mod validation;

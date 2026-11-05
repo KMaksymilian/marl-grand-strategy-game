@@ -7,7 +7,8 @@ settlement agent wants to do in one turn. Rule-based and learning agents
 
 Status: the contract, its JSON format, validation and execution are implemented;
 `Simulation::queue_decision` takes a `SettlementDecision`. Agents read the state
-through [observations](settlement_observations.md); action masks are a later stage.
+through [observations](settlement_observations.md), which include an
+[action mask](settlement_observations.md#action-mask) of currently legal actions.
 
 ## Types
 

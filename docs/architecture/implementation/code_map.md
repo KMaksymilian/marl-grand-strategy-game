@@ -611,6 +611,8 @@ projects outside their settlement's province after a membership change.
 | [world/state/execution.rs](../../../core/src/world/state/execution.rs) | `World::apply_decision`: validate, execute accepted actions, return `DecisionOutcome`. |
 | [world/state/observation.rs](../../../core/src/world/state/observation.rs) | `World::observe_settlement` (crate-internal) builds a `SettlementObservation`; `settlement_province` finds a settlement's province. |
 | [settlement/observation.rs](../../../core/src/settlement/observation.rs) | Serializable observation types. See [settlement observations](settlement_observations.md). |
+| [settlement/action_mask.rs](../../../core/src/settlement/action_mask.rs) | `ActionMask` and its option types. |
+| [world/state/mask.rs](../../../core/src/world/state/mask.rs) | `World::action_mask` (crate-internal): options confirmed by the action validator. |
 | [settlement/decision.rs](../../../core/src/settlement/decision.rs) | Agent contract: `SettlementDecision`, `SettlementAction`, `ActionKind`, `OfferSpec`; `to_json`/`from_json`. See [settlement decisions](settlement_decisions.md). |
 | [world/settlement_environment.rs](../../../core/src/world/settlement_environment.rs) | `AStarTravelCosts::new/travel_cost`, `MapConstructionSpace::new` and its construction operations, `MapSettlementEnvironment::new` and delegation of both ports. |
 | [world/state/commands.rs](../../../core/src/world/state/commands.rs) | `CommandError`; `World::execute_settlement_command` is the single typed command dispatcher. |

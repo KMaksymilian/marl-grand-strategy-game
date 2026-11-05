@@ -8,6 +8,7 @@
 //! offers, caravans and any tile outside the own province.
 use crate::economy::ResourceType;
 use crate::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
+use crate::settlement::action_mask::ActionMask;
 use crate::settlement::decision::OfferSpec;
 use crate::spatial::Position;
 use crate::world::terrain::elevation::Elevation;
@@ -46,6 +47,8 @@ pub struct SettlementObservation {
     pub trade_partners: Vec<TradePartner>,
     /// Building types available for construction and upgrades, ascending ID.
     pub building_types: Vec<BuildingTypeObservation>,
+    /// Actions the settlement may submit now; checked by the action validator.
+    pub action_mask: ActionMask,
 }
 
 impl SettlementObservation {

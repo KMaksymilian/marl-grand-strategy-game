@@ -76,6 +76,7 @@ impl World {
             territory: self.own_tiles(settlement_id, province_id),
             trade_partners: self.trade_partners(settlement_id),
             building_types: self.building_types(),
+            action_mask: self.action_mask(settlement_id)?,
         })
     }
 
@@ -87,7 +88,8 @@ impl World {
             .map(|(&province_id, _)| province_id)
     }
 
-    fn own_tiles(&self, settlement_id: SettlementId, province_id: usize) -> Vec<TileObservation> {
+    /// Tiles of a province in row-major order.
+    pub(super) fn province_positions(&self, province_id: usize) -> Vec<Position> {
         let width = self.map.width;
         self.map
             .territory
@@ -99,7 +101,16 @@ impl World {
                     x: i32::try_from(index % width).ok()?,
                     y: i32::try_from(index / width).ok()?,
                 };
-                let area = self.map.terrain.get(index)?;
+                self.map.tile_index(position).map(|_| position)
+            })
+            .collect()
+    }
+
+    fn own_tiles(&self, settlement_id: SettlementId, province_id: usize) -> Vec<TileObservation> {
+        self.province_positions(province_id)
+            .into_iter()
+            .filter_map(|position| {
+                let area = &self.map.terrain[self.map.tile_index(position)?];
                 let occupancy = match self.territory.tile_at(position).occupancy() {
                     TileOccupancy::Empty => TileState::Empty,
                     TileOccupancy::Building(reference)

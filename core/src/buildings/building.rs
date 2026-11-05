@@ -78,6 +78,15 @@ impl Building {
         (f64::from(max_workers) * f64::from(load)).floor() as u32
     }
 
+    /// Staff this building requests from the next allocation; zero when inactive.
+    pub fn requested_workers(&self) -> u32 {
+        if self.is_active {
+            Self::workers_at_load(self.definition.max_workers(), self.target_load)
+        } else {
+            0
+        }
+    }
+
     /// Smallest load that requests exactly `workers` staff, or `None` when
     /// `workers` exceeds `max_workers` or no `f32` load gives that count.
     pub fn load_for_workers(workers: u32, max_workers: u32) -> Option<f32> {
@@ -155,6 +164,31 @@ mod tests {
                 None
             );
         }
+    }
+
+    #[test]
+    fn worker_counts_stay_exact_up_to_the_definition_limit() {
+        let max = BuildingDefinition::MAX_WORKERS;
+        let sampled = (0..=max)
+            .step_by(9_973)
+            .chain(max - 2_000..=max)
+            .chain(0..=2_000);
+        for workers in sampled {
+            let load = Building::load_for_workers(workers, max)
+                .unwrap_or_else(|| panic!("{workers}/{max} has no exact load"));
+            assert_eq!(Building::workers_at_load(max, load), workers);
+        }
+    }
+
+    #[test]
+    fn inactive_buildings_request_no_workers() {
+        let def = create_test_def("staffed", 4, vec![]);
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
+        building.set_target_load(1.0).unwrap();
+        assert_eq!(building.requested_workers(), 4);
+        building.set_active(false);
+        assert_eq!(building.requested_workers(), 0);
+        assert!(building.calculate_demand().is_empty());
     }
 
     #[test]

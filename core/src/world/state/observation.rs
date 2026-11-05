@@ -222,11 +222,7 @@ fn building_observation(building: &Building) -> BuildingObservation {
         position: building.position(),
         active: building.is_active(),
         max_workers,
-        requested_workers: if building.is_active() {
-            Building::workers_at_load(max_workers, building.target_load())
-        } else {
-            0
-        },
+        requested_workers: building.requested_workers(),
         current_workers: building.current_workers(),
         location_productivity: building.location_productivity(),
     }
@@ -309,6 +305,8 @@ fn last_turn_observation(report: &TurnReport) -> LastTurnObservation {
         trade_received: report.inventory.trade_received.clone(),
         gold_received: report.trade.gold_received,
         market_trades: report.trade.market_trades.len(),
+        caravans_dispatched: report.trade.caravans_dispatched.len(),
+        unfunded_caravan_orders: report.trade.unfunded_caravan_orders.len(),
         completed_projects: ids(true),
         failed_projects: ids(false),
     }

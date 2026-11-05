@@ -5,7 +5,8 @@
 //! decision and are not expressed here; the validator still enforces them:
 //! - at most one action per target (tile, building, project, storage order,
 //!   market), see `ActionError::Conflict`;
-//! - caravan stock and gold limits are shared by all caravans of one decision.
+//! - caravan stock and gold limits are shared by all caravans of one decision,
+//!   and a new market action must leave what caravans of the same decision use.
 use crate::economy::ResourceType;
 use crate::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
 use crate::settlement::decision::ActionKind;
@@ -32,11 +33,14 @@ pub struct ActionMask {
     /// Resources allowed in market and caravan offers; at most one offer each,
     /// with at least one unit.
     pub tradable_resources: Vec<ResourceType>,
-    /// `OrderCaravan`: valid receivers.
+    /// `OrderCaravan`: valid receivers. A caravan must also carry something:
+    /// at least one unit to sell or a purchase budget above zero.
     pub caravan_receivers: Vec<SettlementId>,
-    /// Units a caravan may sell per resource: the current stock.
+    /// Units a caravan may sell per resource: current stock minus what the
+    /// market reserves first and what caravans ordered earlier this turn take.
     pub caravan_sell_limits: BTreeMap<ResourceType, u32>,
-    /// Gold a caravan may commit to purchases (units × price): the treasury.
+    /// Gold a caravan may commit to purchases (units × price), after the market
+    /// and earlier caravans in the same way.
     pub caravan_gold_limit: u32,
 }
 

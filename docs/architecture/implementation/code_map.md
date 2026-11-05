@@ -101,7 +101,8 @@ Additional methods on the same `Building` type, grouped around the production cy
 
 Contains `BuildingDefinition`, composed `BuildingBehavior` variants and
 `DefinitionError`. `BuildingDefinition::new()` calls private `validate()` to check
-recipe sums, forbid labour in material recipes and validate stat arithmetic.
+recipe sums, forbid labour in material recipes, validate stat arithmetic and limit
+`max_workers` to `MAX_WORKERS` (2^24, so every staff count has an exact load).
 `id`, `name`, `tier`, `max_workers`, `behaviors` and `construction_cost` expose
 read-only views; fields are private. Construction returns Result.
 

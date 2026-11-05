@@ -193,6 +193,14 @@ fn rejects_invalid_staffing_and_labour_recipes_at_creation() {
         .unwrap_err(),
         DefinitionError::StatOverflow
     );
+    let staffed = |max_workers| {
+        BuildingDefinition::new("big", "Big", 1, max_workers, vec![], Default::default())
+    };
+    assert!(staffed(BuildingDefinition::MAX_WORKERS).is_ok());
+    assert_eq!(
+        staffed(BuildingDefinition::MAX_WORKERS + 1).unwrap_err(),
+        DefinitionError::TooManyWorkers
+    );
     assert_eq!(
         try_definition(vec![BuildingBehavior::Production {
             inputs: vec![(ResourceType::Labour, 1)],

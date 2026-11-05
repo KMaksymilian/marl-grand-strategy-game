@@ -30,7 +30,7 @@ generation: [world/state/observation.rs](../../../core/src/world/state/observati
 | `projects` | Queue order: `target` (`construct` with type and position, `upgrade` with building and type), remaining materials and turns. |
 | `next_project_id` | ID the next accepted construction or upgrade receives. |
 | `trade` | Own `market_offers` as `OfferSpec`s, own `caravans_in_transit` and `caravans_returning`. |
-| `last_turn` | Satisfaction, missing needs, produced, consumed by population/projects/production, lost, trade reserved/received, gold received, market trade count, completed and failed project IDs. |
+| `last_turn` | Satisfaction, missing needs, produced, consumed by population/projects/production, lost, trade reserved/received, gold received, market trade count, caravans dispatched, unfunded caravan orders, completed and failed project IDs. |
 | `territory` | Every tile of the own province in row-major order: elevation and moisture class, occupancy (`empty`, `own_building`, `own_construction`, `foreign`) and `buildable`. |
 | `trade_partners` | Other settlements as `{settlement_id, province_id}`, ascending ID. |
 | `building_types` | The public catalog: name, tier, `max_workers`, construction cost and turns, recipes. |
@@ -56,7 +56,7 @@ actions so agents can avoid invalid decisions.
 | `storage_materials` | A valid storage order lists each exactly once. |
 | `tradable_resources` | Resources allowed in offers (at most one offer each, at least one unit). |
 | `caravan_receivers` | Valid caravan receivers. |
-| `caravan_sell_limits`, `caravan_gold_limit` | Current stock per resource and treasury: what a caravan may sell and commit to purchases (`units × price`). |
+| `caravan_sell_limits`, `caravan_gold_limit` | What a caravan may sell per resource and commit to purchases (`units × price`): current stock and gold minus what the market reserves first and caravans ordered earlier this turn. A caravan must carry something (a sale or a budget above zero). |
 
 **Same rules as the validator.** Every construct, upgrade, cancel and receiver
 option is produced by running the action validator on that candidate, and the

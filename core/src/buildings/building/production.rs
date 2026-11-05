@@ -12,7 +12,7 @@ impl Building {
             return demand;
         }
 
-        let labor_needed = Self::workers_at_load(self.definition.max_workers(), self.target_load);
+        let labor_needed = self.requested_workers();
         if labor_needed > 0 {
             demand.insert(ResourceType::Labour, labor_needed);
         }

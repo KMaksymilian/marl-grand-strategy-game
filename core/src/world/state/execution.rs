@@ -1,9 +1,7 @@
 //! Applies validated agent decisions through the existing settlement commands.
 use super::{World, WorldError};
-use crate::settlement::command::SettlementCommand;
 use crate::settlement::decision::{
-    ActionEffect, ActionError, ActionOutcome, ActionResult, DecisionOutcome, SettlementAction,
-    SettlementDecision,
+    ActionError, ActionOutcome, ActionResult, DecisionOutcome, SettlementDecision,
 };
 
 impl World {
@@ -31,7 +29,7 @@ impl World {
             let outcome =
                 match self.execute_settlement_command(decision.settlement_id, &accepted.command) {
                     Ok(()) => ActionOutcome::Applied {
-                        effect: effect(action, &accepted.command),
+                        effect: accepted.effect,
                     },
                     Err(error) => {
                         debug_assert!(false, "validated action failed: {error:?}");
@@ -51,33 +49,5 @@ impl World {
             settlement_id: decision.settlement_id,
             results,
         })
-    }
-}
-
-fn effect(action: &SettlementAction, command: &SettlementCommand) -> ActionEffect {
-    match action {
-        SettlementAction::Construct { .. } | SettlementAction::Upgrade { .. } => match command {
-            SettlementCommand::Construct { project_id, .. }
-            | SettlementCommand::Upgrade { project_id, .. } => ActionEffect::ProjectQueued {
-                project_id: *project_id,
-            },
-            other => unreachable!("project action resolved to {other:?}"),
-        },
-        SettlementAction::CancelProject { project_id } => ActionEffect::ProjectCanceled {
-            project_id: *project_id,
-        },
-        SettlementAction::SetBuildingWorkers {
-            building_id,
-            workers,
-        } => ActionEffect::WorkersSet {
-            building_id: *building_id,
-            workers: *workers,
-        },
-        SettlementAction::SetStorageOrder { .. } => ActionEffect::StorageOrderSet,
-        SettlementAction::PublishMarketOffers { .. } => ActionEffect::MarketOffersPublished,
-        SettlementAction::ClearMarketOffers => ActionEffect::MarketOffersCleared,
-        SettlementAction::OrderCaravan { receiver_id, .. } => ActionEffect::CaravanOrdered {
-            receiver_id: *receiver_id,
-        },
     }
 }

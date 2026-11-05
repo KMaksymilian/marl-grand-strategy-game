@@ -232,14 +232,19 @@ pub enum ActionError {
     },
     /// A caravan order without offers.
     EmptyOrder,
+    /// A caravan order that would carry neither goods nor gold (e.g. only
+    /// purchases at price 0); the engine would skip it.
+    NothingToCarry,
     TradeWithSelf,
-    /// Caravans in this decision would sell more than the warehouse holds.
+    /// Not enough stock for this action at funding time: `available` is what is
+    /// left after the market (funded first) and earlier caravan orders.
     InsufficientStock {
         resource: ResourceType,
         requested: u64,
         available: u32,
     },
-    /// Caravans in this decision would need more gold than the treasury holds.
+    /// Not enough gold for this action at funding time: `available` is what is
+    /// left after the market (funded first) and earlier caravan orders.
     InsufficientGold {
         requested: u64,
         available: u32,

@@ -65,10 +65,11 @@ load from `Building::load_for_workers`; offers become fresh `TradeOffer`s.
 | Identifiers | `UnknownBuildingType` (not in `World::building_catalog()`), `UnknownBuilding`, `UnknownProject`, `UnknownSettlement` (caravan receiver) |
 | Placement | `InvalidPosition` (off the map), `OutsideOwnProvince`, `OceanTile`, `TileOccupied` (building or construction site) |
 | Upgrades | `SameBuildingType`, `BuildingAlreadyUpgrading` (active upgrade project) |
-| Workers | `WorkersAboveCapacity` (`workers > max_workers`), `InsufficientWorkers` (all buildings would request more staff than the population; reductions are always allowed), `UnsupportedWorkerCount` (count no `f32` load expresses; not reachable for realistic sizes) |
+| Workers | `WorkersAboveCapacity` (`workers > max_workers`), `InsufficientWorkers` (all buildings would request more staff than the population; reductions are always allowed), `UnsupportedWorkerCount` (count no `f32` load expresses; unreachable because definitions reject `max_workers` above `BuildingDefinition::MAX_WORKERS` = 2^24) |
 | Storage order | `InvalidStorageOrder` with the engine's `StorageOrderError` (`StorageOrder::validate`) |
 | Offers (market and caravans) | `LabourIsNotTradable`, `ZeroUnits`, `DuplicateOffer` |
-| Caravans | `EmptyOrder`, `TradeWithSelf`, `InsufficientStock`, `InsufficientGold`: sold units and the buying budget (`units × price`) of all caravans in the decision must fit current stock and gold |
+| Caravans | `EmptyOrder`, `TradeWithSelf`, `UnknownSettlement`, `NothingToCarry` (no goods and a zero purchase budget; the engine would skip it), `InsufficientStock`, `InsufficientGold` (see funding order) |
+| Market after caravans | `InsufficientStock`, `InsufficientGold`: a `PublishMarketOffers` may not reserve goods or gold already committed to caravans of this turn |
 | Same target twice | `Conflict { with_index }`: the earlier accepted action wins |
 | Exhausted IDs | `ProjectIdsExhausted` |
 
@@ -86,8 +87,22 @@ Not checked, by design:
   not have to hold the full cost when construction starts.
 - Market offer stock and gold. Published offers persist and every turn reserves
   what is available at that time.
-- Caravan funding is checked against current stock; at execution the market is
-  funded first, so a caravan can still receive less.
+
+**Funding order.** At the start of the turn the market is funded first, then
+caravan orders in queue order, from the stock and gold the settlement holds at
+decision time (nothing changes them in between). The validator follows this order:
+
+- a caravan can use the current stock and gold minus what the market reserves
+  (the published offers, or the new ones if this decision publishes or clears
+  earlier) minus caravans already queued this turn or accepted earlier in the
+  decision;
+- a market action after caravans in the same decision may not take what those
+  caravans were promised; without competing caravans market offers stay
+  unlimited, since each turn reserves what is available;
+- `InsufficientStock`/`InsufficientGold` report the amount of this action as
+  `requested` and what is left for it as `available`.
+
+So every accepted caravan is funded in full.
 
 Errors serialize as `{"index": 1, "kind": "construct", "error": {"reason":
 "tile_occupied", "position": {"x": 0, "y": 0}}}`.
@@ -110,7 +125,7 @@ to the same turn's allocation.
 | `SetStorageOrder` | `set_storage_order` | `StorageOrderSet` |
 | `PublishMarketOffers` | `publish_trade_offers` | `MarketOffersPublished` |
 | `ClearMarketOffers` | `clear_trade_offers` | `MarketOffersCleared` |
-| `OrderCaravan` | `order_caravan`; funded later in the same turn | `CaravanOrdered { receiver_id }` |
+| `OrderCaravan` | `order_caravan`; funded later in the same turn | `CaravanOrdered { receiver_id }` (the order is queued; see the funding note below) |
 
 Result JSON:
 
@@ -124,6 +139,23 @@ Result JSON:
                "error": {"reason": "outside_own_province", "position": {"x": 3, "y": 0}}}}
 ]}
 ```
+
+The effect is determined by the validator together with the command
+(`AcceptedAction::effect`) and reported once the command has run.
+
+## Design notes and open questions
+
+- **Market before population (intended).** Market and caravan reservations take
+  goods from the warehouse before population and building allocation. Offering all
+  food can starve the settlement in that turn; that is the agent's choice.
+- **Workers versus project labour (open).** `InsufficientWorkers` and the mask
+  compare building staff with the population only. A project whose catalog cost
+  includes `Labour` competes for the same labour in allocation, so a building can
+  receive fewer workers than validated. No current definition does this.
+- **Decision-level rules in masks.** Masks describe single actions; conflicts and
+  shared caravan limits within one decision are enforced only by the validator.
+- **Python side.** Decisions, results and observations are JSON values; the
+  Python bridge and the encoding into fixed-size vectors belong to the Python side.
 
 ## JSON format
 

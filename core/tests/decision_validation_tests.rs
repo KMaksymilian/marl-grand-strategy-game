@@ -8,7 +8,7 @@ use simulation_core::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
 use simulation_core::settlement::Settlement;
 use simulation_core::settlement::command::SettlementCommand;
 use simulation_core::settlement::decision::{
-    ActionError, ActionKind, OfferSide, OfferSpec, RejectedAction, SettlementAction,
+    ActionEffect, ActionError, ActionKind, OfferSide, OfferSpec, RejectedAction, SettlementAction,
     SettlementDecision,
 };
 use simulation_core::settlement::projects::ProjectCost;
@@ -180,6 +180,22 @@ fn construction_and_upgrade_use_catalog_costs_and_new_project_ids() {
         ],
     );
     assert!(result.rejected.is_empty(), "{:?}", result.rejected);
+    let effects: Vec<_> = result
+        .accepted
+        .iter()
+        .map(|action| action.effect.clone())
+        .collect();
+    assert_eq!(
+        effects,
+        vec![
+            ActionEffect::ProjectQueued {
+                project_id: ProjectId(1)
+            },
+            ActionEffect::ProjectQueued {
+                project_id: ProjectId(2)
+            },
+        ]
+    );
     match &result.accepted[0].command {
         SettlementCommand::Construct {
             project_id,
@@ -558,25 +574,197 @@ fn caravans_need_a_receiver_and_enough_stock_and_gold_together() {
                 }
             ),
             (3, ActionError::LabourIsNotTradable),
+            // What is left for this caravan after the earlier ones.
             (
                 5,
                 ActionError::InsufficientStock {
                     resource: Wood,
-                    requested: 12,
-                    available: 10
+                    requested: 6,
+                    available: 4
                 }
             ),
             (
                 7,
                 ActionError::InsufficientGold {
-                    requested: 22,
-                    available: 20
+                    requested: 10,
+                    available: 8
                 }
             ),
         ]
     );
     // Several caravans to the same receiver are allowed while stock lasts.
     assert_eq!(accepted_indices(&result), vec![4, 6, 8]);
+}
+
+/// Settlement 1 publishes market offers before the decision is validated.
+fn world_with_market(offers: Vec<OfferSpec>) -> World {
+    let mut world = world();
+    world
+        .execute_settlement_command(
+            ME,
+            &SettlementCommand::PublishMarketOffers(
+                offers
+                    .iter()
+                    .map(|offer| (offer.resource, offer.to_offer()))
+                    .collect(),
+            ),
+        )
+        .unwrap();
+    world
+}
+
+#[test]
+fn caravans_get_only_what_the_published_market_leaves() {
+    // Stock: Wood 10, gold 20. The market reserves 7 Wood and 4 × 3 = 12 gold first.
+    let world = world_with_market(vec![
+        offer(Wood, OfferSide::Sell, 7, 1),
+        offer(Stone, OfferSide::Buy, 4, 3),
+    ]);
+    let result = validate(
+        &world,
+        vec![
+            caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 4, 1)]),
+            caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 3, 1)]),
+            caravan(NEIGHBOUR, vec![offer(Grain, OfferSide::Buy, 3, 3)]),
+            caravan(NEIGHBOUR, vec![offer(Grain, OfferSide::Buy, 4, 2)]),
+        ],
+    );
+    assert_eq!(
+        errors(&result),
+        vec![
+            (
+                0,
+                ActionError::InsufficientStock {
+                    resource: Wood,
+                    requested: 4,
+                    available: 3
+                }
+            ),
+            (
+                2,
+                ActionError::InsufficientGold {
+                    requested: 9,
+                    available: 8
+                }
+            ),
+        ]
+    );
+    assert_eq!(accepted_indices(&result), vec![1, 3]);
+}
+
+#[test]
+fn a_market_action_in_the_same_decision_changes_what_caravans_get() {
+    let world = world_with_market(vec![offer(Wood, OfferSide::Sell, 10, 1)]);
+    let caravan_wood = |units| caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, units, 1)]);
+    // Clearing or shrinking the market first frees its stock for caravans.
+    let result = validate(
+        &world,
+        vec![SettlementAction::ClearMarketOffers, caravan_wood(10)],
+    );
+    assert!(result.rejected.is_empty(), "{:?}", result.rejected);
+    let result = validate(
+        &world,
+        vec![
+            publish(vec![offer(Wood, OfferSide::Sell, 6, 1)]),
+            caravan_wood(4),
+            caravan_wood(1),
+        ],
+    );
+    assert_eq!(
+        errors(&result),
+        vec![(
+            2,
+            ActionError::InsufficientStock {
+                resource: Wood,
+                requested: 1,
+                available: 0
+            }
+        )]
+    );
+}
+
+#[test]
+fn a_later_market_action_cannot_take_what_caravans_were_promised() {
+    let world = world();
+    let result = validate(
+        &world,
+        vec![
+            caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 6, 1)]),
+            caravan(NEIGHBOUR, vec![offer(Grain, OfferSide::Buy, 5, 3)]),
+            publish(vec![offer(Wood, OfferSide::Sell, 5, 1)]),
+            publish(vec![offer(Stone, OfferSide::Buy, 2, 3)]),
+            publish(vec![
+                offer(Wood, OfferSide::Sell, 4, 1),
+                offer(Stone, OfferSide::Buy, 1, 5),
+            ]),
+        ],
+    );
+    assert_eq!(
+        errors(&result),
+        vec![
+            (
+                2,
+                ActionError::InsufficientStock {
+                    resource: Wood,
+                    requested: 5,
+                    available: 4
+                }
+            ),
+            (
+                3,
+                ActionError::InsufficientGold {
+                    requested: 6,
+                    available: 5
+                }
+            ),
+        ]
+    );
+    // Exactly what is left is fine; markets without competing caravans stay unlimited.
+    assert_eq!(accepted_indices(&result), vec![0, 1, 4]);
+    let result = validate(
+        &world,
+        vec![publish(vec![offer(Wood, OfferSide::Sell, 999, 1)])],
+    );
+    assert!(result.rejected.is_empty());
+}
+
+#[test]
+fn caravans_queued_earlier_in_the_turn_count_too() {
+    let mut world = world();
+    let earlier = SettlementDecision::new(
+        ME,
+        vec![caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 8, 1)])],
+    );
+    assert!(world.apply_decision(&earlier).unwrap().results[0].is_applied());
+    let result = validate(
+        &world,
+        vec![caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 3, 1)])],
+    );
+    assert_eq!(
+        errors(&result),
+        vec![(
+            0,
+            ActionError::InsufficientStock {
+                resource: Wood,
+                requested: 3,
+                available: 2
+            }
+        )]
+    );
+}
+
+#[test]
+fn caravans_must_carry_goods_or_gold() {
+    let world = world();
+    let result = validate(
+        &world,
+        vec![
+            caravan(NEIGHBOUR, vec![offer(Grain, OfferSide::Buy, 5, 0)]),
+            caravan(NEIGHBOUR, vec![offer(Grain, OfferSide::Buy, 5, 1)]),
+        ],
+    );
+    assert_eq!(errors(&result), vec![(0, ActionError::NothingToCarry)]);
+    assert_eq!(accepted_indices(&result), vec![1]);
 }
 
 #[test]

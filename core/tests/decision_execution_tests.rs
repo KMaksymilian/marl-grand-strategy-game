@@ -353,6 +353,106 @@ fn rejected_actions_change_nothing_while_valid_ones_apply() {
 }
 
 #[test]
+fn caravans_are_checked_against_what_the_market_leaves() {
+    let mut simulation = Simulation::new(world()).unwrap();
+    let sell_wood = |units| offer(Wood, OfferSide::Sell, units, 1);
+    // Stock 10: the market, funded first, takes all of it, so nothing is left.
+    let report = step_with(
+        &mut simulation,
+        vec![
+            SettlementAction::PublishMarketOffers {
+                offers: vec![sell_wood(10)],
+            },
+            SettlementAction::OrderCaravan {
+                receiver_id: NEIGHBOUR,
+                offers: vec![sell_wood(5)],
+            },
+        ],
+    );
+    assert_eq!(
+        outcomes(&report)[1],
+        rejected(ActionError::InsufficientStock {
+            resource: Wood,
+            requested: 5,
+            available: 0
+        })
+    );
+    assert!(
+        report.settlements[&ME]
+            .trade
+            .unfunded_caravan_orders
+            .is_empty()
+    );
+
+    // The published offer persists: a caravan in a later turn sees the same limit.
+    let report = step_with(
+        &mut simulation,
+        vec![SettlementAction::OrderCaravan {
+            receiver_id: NEIGHBOUR,
+            offers: vec![sell_wood(1)],
+        }],
+    );
+    assert!(!report.decisions[0].results[0].is_applied());
+    assert_eq!(
+        simulation
+            .observe(ME)
+            .unwrap()
+            .action_mask
+            .caravan_sell_limits[&Wood],
+        0
+    );
+
+    // Caravan first: a later market action may not take what it was promised.
+    let report = step_with(
+        &mut simulation,
+        vec![
+            SettlementAction::ClearMarketOffers,
+            SettlementAction::OrderCaravan {
+                receiver_id: NEIGHBOUR,
+                offers: vec![sell_wood(4)],
+            },
+        ],
+    );
+    assert!(
+        report.decisions[0]
+            .results
+            .iter()
+            .all(|result| result.is_applied())
+    );
+    let local = &report.settlements[&ME].trade;
+    assert_eq!(local.caravans_dispatched[0].cargo[&Wood], 4);
+    let last = simulation.observe(ME).unwrap().last_turn.unwrap();
+    assert_eq!(last.caravans_dispatched, 1);
+    assert_eq!(last.unfunded_caravan_orders, 0);
+
+    let stock = simulation.settlement(ME).unwrap().inventory().amount(Wood);
+    let report = step_with(
+        &mut simulation,
+        vec![
+            SettlementAction::OrderCaravan {
+                receiver_id: NEIGHBOUR,
+                offers: vec![sell_wood(2)],
+            },
+            SettlementAction::PublishMarketOffers {
+                offers: vec![sell_wood(stock)],
+            },
+        ],
+    );
+    assert_eq!(
+        outcomes(&report)[1],
+        rejected(ActionError::InsufficientStock {
+            resource: Wood,
+            requested: u64::from(stock),
+            available: stock - 2
+        })
+    );
+    assert_eq!(
+        report.settlements[&ME].trade.caravans_dispatched[0].cargo[&Wood],
+        2
+    );
+}
+
+#[test]
 fn conflicting_actions_apply_only_the_first() {
     let mut simulation = Simulation::new(world()).unwrap();
     let report = step_with(&mut simulation, vec![workers(4), workers(1)]);

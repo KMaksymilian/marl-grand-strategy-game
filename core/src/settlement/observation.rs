@@ -153,6 +153,11 @@ pub struct LastTurnObservation {
     pub gold_received: u64,
     /// Trades made at the own market with visiting caravans.
     pub market_trades: usize,
+    /// Caravans funded and sent out.
+    pub caravans_dispatched: usize,
+    /// Caravan orders skipped because nothing could be funded, e.g. when the
+    /// market, which is funded first, took the stock.
+    pub unfunded_caravan_orders: usize,
     pub completed_projects: Vec<ProjectId>,
     pub failed_projects: Vec<ProjectId>,
 }

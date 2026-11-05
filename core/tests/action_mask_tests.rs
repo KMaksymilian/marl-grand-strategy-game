@@ -131,7 +131,7 @@ fn offer(resource: ResourceType, side: OfferSide, units: u32, price: u32) -> Off
 /// Valid and invalid actions of every kind, including off-map positions, foreign
 /// and missing IDs, out-of-range staff and offers at and beyond the limits.
 fn candidates(simulation: &Simulation) -> Vec<SettlementAction> {
-    let me = simulation.settlement(ME).unwrap();
+    let limits = mask(simulation);
     let types = ["farm", "mill", "castle"];
     let mut actions = Vec::new();
     for x in -1..=5 {
@@ -175,21 +175,23 @@ fn candidates(simulation: &Simulation) -> Vec<SettlementAction> {
     });
     actions.push(SettlementAction::ClearMarketOffers);
     for receiver in 0..=3 {
-        actions.push(SettlementAction::OrderCaravan {
-            receiver_id: SettlementId(receiver),
-            offers: vec![offer(Grain, OfferSide::Buy, 1, 0)],
-        });
-    }
-    for resource in ResourceType::MATERIALS {
-        let stock = me.inventory().amount(*resource);
-        for units in [stock, stock + 1] {
+        for price in [0, 1] {
             actions.push(SettlementAction::OrderCaravan {
-                receiver_id: NEIGHBOUR,
-                offers: vec![offer(*resource, OfferSide::Sell, units, 1)],
+                receiver_id: SettlementId(receiver),
+                offers: vec![offer(Grain, OfferSide::Buy, 1, price)],
             });
         }
     }
-    for price in [me.gold(), me.gold() + 1] {
+    // At and just beyond the limits left after the market.
+    for (&resource, &limit) in &limits.caravan_sell_limits {
+        for units in [limit, limit + 1] {
+            actions.push(SettlementAction::OrderCaravan {
+                receiver_id: NEIGHBOUR,
+                offers: vec![offer(resource, OfferSide::Sell, units, 1)],
+            });
+        }
+    }
+    for price in [limits.caravan_gold_limit, limits.caravan_gold_limit + 1] {
         actions.push(SettlementAction::OrderCaravan {
             receiver_id: NEIGHBOUR,
             offers: vec![offer(Wood, OfferSide::Buy, 1, price)],
@@ -264,9 +266,11 @@ fn mask_allows(mask: &ActionMask, action: &SettlementAction) -> bool {
                 .filter(|offer| offer.side == OfferSide::Buy)
                 .map(|offer| u64::from(offer.units) * u64::from(offer.price_per_unit))
                 .sum();
+            let carries = budget > 0 || offers.iter().any(|offer| offer.side == OfferSide::Sell);
             mask.caravan_receivers.contains(receiver_id)
                 && !offers.is_empty()
                 && offers_fit(mask, offers)
+                && carries
                 && sells_fit
                 && budget <= u64::from(mask.caravan_gold_limit)
         }

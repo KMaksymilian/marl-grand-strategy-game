@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::{
-    DecisionOutcome, PhaseExecution, Simulation, SimulationError, SimulationTurnReport, TurnPhase,
-};
+use super::{PhaseExecution, Simulation, SimulationError, SimulationTurnReport, TurnPhase};
 
 impl Simulation {
     /// Advances exactly one global turn. All settlements finish a phase before
@@ -37,12 +35,11 @@ impl Simulation {
                 settlement_id: id,
             });
             for decision in pending.remove(&id).unwrap_or_default() {
-                let result = self.world.execute_settlement_command(id, &decision);
-                decisions.push(DecisionOutcome {
-                    settlement_id: id,
-                    decision,
-                    result,
-                });
+                decisions.push(
+                    self.world
+                        .apply_decision(&decision)
+                        .expect("queued decisions belong to registered settlements"),
+                );
             }
         }
 
@@ -140,7 +137,7 @@ mod tests {
 
     #[test]
     fn all_settlements_are_validated_before_decisions_or_economic_mutations() {
-        use super::super::SettlementCommand;
+        use super::super::{SettlementAction, SettlementDecision};
         use crate::buildings::definition::BuildingDefinition;
         use crate::economy::ResourceType::Wood;
         use crate::ids::ProjectId;
@@ -179,10 +176,12 @@ mod tests {
             .unwrap();
         let mut simulation = Simulation::new(world).unwrap();
         simulation
-            .queue_decision(
+            .queue_decision(SettlementDecision::new(
                 SettlementId(1),
-                SettlementCommand::CancelProject(ProjectId(7)),
-            )
+                vec![SettlementAction::CancelProject {
+                    project_id: ProjectId(7),
+                }],
+            ))
             .unwrap();
         for _ in 0..2 {
             assert!(matches!(
@@ -208,7 +207,7 @@ mod tests {
             .unwrap();
         let report = simulation.step().unwrap();
         assert_eq!(report.decisions.len(), 1);
-        assert_eq!(report.decisions[0].result, Ok(()));
+        assert!(report.decisions[0].results[0].is_applied());
         assert!(
             simulation
                 .world()
@@ -249,10 +248,12 @@ mod tests {
             )
             .unwrap();
         simulation
-            .queue_decision(
+            .queue_decision(super::super::SettlementDecision::new(
                 SettlementId(1),
-                super::super::SettlementCommand::CancelProject(crate::ids::ProjectId(7)),
-            )
+                vec![super::super::SettlementAction::CancelProject {
+                    project_id: crate::ids::ProjectId(7),
+                }],
+            ))
             .unwrap();
         simulation.current_turn = u64::MAX;
         assert_eq!(

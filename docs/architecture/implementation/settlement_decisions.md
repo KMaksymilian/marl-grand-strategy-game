@@ -5,10 +5,9 @@ settlement agent wants to do in one turn. Rule-based and learning agents
 (including Python agents through JSON) submit the same values. Source:
 [settlement/decision.rs](../../../core/src/settlement/decision.rs).
 
-Status: the contract, its JSON format and validation are implemented. Execution,
-observations and action masks are separate later stages. Until execution is
-connected, `Simulation::queue_decision` still takes the older
-[`SettlementCommand`](simulation_commands.md#decision-contracts).
+Status: the contract, its JSON format, validation and execution are implemented;
+`Simulation::queue_decision` takes a `SettlementDecision`. Observations and
+action masks are later stages.
 
 ## Types
 
@@ -91,6 +90,39 @@ Not checked, by design:
 
 Errors serialize as `{"index": 1, "kind": "construct", "error": {"reason":
 "tile_occupied", "position": {"x": 0, "y": 0}}}`.
+
+## Execution
+
+`World::apply_decision(&decision) -> Result<DecisionOutcome, WorldError>`
+([world/state/execution.rs](../../../core/src/world/state/execution.rs)) validates,
+then executes each accepted action through `World::execute_settlement_command`,
+the same dispatcher used for scenario commands. `Simulation::step` calls it in the
+`Decisions` phase, before any economic phase, so effects such as new staff apply
+to the same turn's allocation.
+
+| Action | Settlement operation | Effect reported |
+| --- | --- | --- |
+| `Construct` | `queue_construction` with catalog definition and cost; reserves the tile | `ProjectQueued { project_id }` |
+| `Upgrade` | `queue_upgrade` with catalog definition and cost | `ProjectQueued { project_id }` |
+| `CancelProject` | `cancel_project`; releases a construction reservation | `ProjectCanceled { project_id }` |
+| `SetBuildingWorkers` | `set_building_staff`: activates the building and sets the exact load | `WorkersSet { building_id, workers }` |
+| `SetStorageOrder` | `set_storage_order` | `StorageOrderSet` |
+| `PublishMarketOffers` | `publish_trade_offers` | `MarketOffersPublished` |
+| `ClearMarketOffers` | `clear_trade_offers` | `MarketOffersCleared` |
+| `OrderCaravan` | `order_caravan`; funded later in the same turn | `CaravanOrdered { receiver_id }` |
+
+Result JSON:
+
+```json
+{"settlement_id": 1, "results": [
+  {"index": 0, "kind": "set_building_workers",
+   "outcome": {"status": "applied",
+               "effect": {"effect": "workers_set", "building_id": 1, "workers": 2}}},
+  {"index": 1, "kind": "construct",
+   "outcome": {"status": "rejected",
+               "error": {"reason": "outside_own_province", "position": {"x": 3, "y": 0}}}}
+]}
+```
 
 ## JSON format
 

@@ -31,6 +31,11 @@ pub enum SettlementCommand {
         building_id: BuildingId,
         active: bool,
     },
+    /// Activate the building and set its load; used for agent staff decisions.
+    SetBuildingStaff {
+        building_id: BuildingId,
+        load: f32,
+    },
     SetStorageOrder(Vec<ResourceType>),
     PublishMarketOffers(HashMap<ResourceType, TradeOffer>),
     ClearMarketOffers,

@@ -249,6 +249,64 @@ pub enum ActionError {
     Conflict {
         with_index: usize,
     },
+    /// The engine refused an action that passed validation. This indicates a
+    /// mismatch between validator and engine rules; the state is unchanged.
+    ExecutionFailed,
+}
+
+/// What an applied action changed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "effect", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ActionEffect {
+    /// Construction or upgrade queued under a simulation-assigned ID.
+    ProjectQueued {
+        project_id: ProjectId,
+    },
+    ProjectCanceled {
+        project_id: ProjectId,
+    },
+    /// The building is active and requests this staff from the next allocation on.
+    WorkersSet {
+        building_id: BuildingId,
+        workers: u32,
+    },
+    StorageOrderSet,
+    MarketOffersPublished,
+    MarketOffersCleared,
+    /// Funded from stock and gold during this turn, then sent to the receiver.
+    CaravanOrdered {
+        receiver_id: SettlementId,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ActionOutcome {
+    Applied { effect: ActionEffect },
+    Rejected { error: ActionError },
+}
+
+/// Result of one submitted action, identified by its position in the decision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActionResult {
+    pub index: usize,
+    pub kind: ActionKind,
+    pub outcome: ActionOutcome,
+}
+
+impl ActionResult {
+    pub fn is_applied(&self) -> bool {
+        matches!(self.outcome, ActionOutcome::Applied { .. })
+    }
+}
+
+/// Results of one decision, one entry per action in submission order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionOutcome {
+    pub settlement_id: SettlementId,
+    pub results: Vec<ActionResult>,
 }
 
 /// A rejected action, identified by its position in `SettlementDecision::actions`.

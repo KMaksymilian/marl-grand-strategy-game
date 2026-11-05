@@ -284,7 +284,7 @@ impl World {
                         available: settlement.population(),
                     });
                 }
-                let mut checked = Checked::new(SettlementCommand::SetBuildingLoad {
+                let mut checked = Checked::new(SettlementCommand::SetBuildingStaff {
                     building_id: *building_id,
                     load,
                 })

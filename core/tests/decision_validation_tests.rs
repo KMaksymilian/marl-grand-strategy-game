@@ -352,7 +352,7 @@ fn worker_requests_respect_building_capacity_and_population() {
     );
     assert_eq!(accepted_indices(&result), vec![1, 3]);
     for (action, expected) in result.accepted.iter().zip([4, 1]) {
-        let SettlementCommand::SetBuildingLoad { load, .. } = action.command else {
+        let SettlementCommand::SetBuildingStaff { load, .. } = action.command else {
             panic!("{:?}", action.command);
         };
         assert_eq!(Building::workers_at_load(4, load), expected);

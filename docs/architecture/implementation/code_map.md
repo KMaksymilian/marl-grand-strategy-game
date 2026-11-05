@@ -51,13 +51,13 @@ Contains `Simulation` and `SimulationError`; `World` remains the only settlement
 | `settlement` | Look up a typed ID or return `MissingSettlement`. |
 | `initialize_settlement` | Delegate initialization and unique automatic ID allocation. |
 | `add_settlement` | Delegate one-province settlement registration. |
-| `queue_decision` | Queue a known settlement's command for the next successful step. |
+| `queue_decision` | Queue a known settlement's `SettlementDecision` for the next successful step. |
 | `into_world` | Recover the world, discarding pending commands. |
 | `SimulationError::fmt` | Format map, counter or preflight failures. |
 
 ### [core/src/simulation/decisions.rs](../../../core/src/simulation/decisions.rs)
 
-Re-exports `SettlementCommand` and world `CommandError` as `DecisionError`. Defines `DecisionOutcome`; dispatch belongs to `World::execute_settlement_command`.
+Re-exports the agent decision and result types from `settlement::decision`. Execution belongs to `World::apply_decision`.
 
 ### [core/src/simulation/turn.rs](../../../core/src/simulation/turn.rs)
 
@@ -607,7 +607,8 @@ projects outside their settlement's province after a membership change.
 | [economy/cost.rs](../../../core/src/economy/cost.rs) | `ProjectCost::normalize` removes zero entries; `is_fully_paid` checks materials and elapsed time. |
 | [buildings/effects.rs](../../../core/src/buildings/effects.rs) | `StatType`: shared housing, inventory and trade modifier targets. |
 | [buildings/productivity.rs](../../../core/src/buildings/productivity.rs) | `TravelCostSource::travel_cost` supplies a directed optional cost to the calculator. |
-| [settlement/commands/command.rs](../../../core/src/settlement/commands/command.rs) | `SettlementCommand`: construction, upgrade, cancellation, building settings and storage order. |
+| [settlement/commands/command.rs](../../../core/src/settlement/commands/command.rs) | `SettlementCommand`: resolved commands for construction, upgrade, cancellation, building settings, storage order and trade. |
+| [world/state/execution.rs](../../../core/src/world/state/execution.rs) | `World::apply_decision`: validate, execute accepted actions, return `DecisionOutcome`. |
 | [settlement/decision.rs](../../../core/src/settlement/decision.rs) | Agent contract: `SettlementDecision`, `SettlementAction`, `ActionKind`, `OfferSpec`; `to_json`/`from_json`. See [settlement decisions](settlement_decisions.md). |
 | [world/settlement_environment.rs](../../../core/src/world/settlement_environment.rs) | `AStarTravelCosts::new/travel_cost`, `MapConstructionSpace::new` and its construction operations, `MapSettlementEnvironment::new` and delegation of both ports. |
 | [world/state/commands.rs](../../../core/src/world/state/commands.rs) | `CommandError`; `World::execute_settlement_command` is the single typed command dispatcher. |

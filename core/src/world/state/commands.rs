@@ -57,6 +57,11 @@ impl World {
                 .map_err(CommandError::World)?
                 .set_building_active(*building_id, *active)
                 .map_err(|error| CommandError::World(WorldError::Building(error))),
+            SettlementCommand::SetBuildingStaff { building_id, load } => self
+                .settlement_mut(id)
+                .map_err(CommandError::World)?
+                .set_building_staff(*building_id, *load)
+                .map_err(|error| CommandError::World(WorldError::Building(error))),
             SettlementCommand::SetStorageOrder(materials) => self
                 .settlement_mut(id)
                 .map_err(CommandError::World)?

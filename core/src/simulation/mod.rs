@@ -4,7 +4,10 @@ mod decisions;
 mod turn;
 pub mod turn_report;
 
-pub use decisions::{DecisionError, DecisionOutcome, SettlementCommand};
+pub use decisions::{
+    ActionEffect, ActionError, ActionOutcome, ActionResult, DecisionOutcome, SettlementAction,
+    SettlementDecision,
+};
 pub use turn_report::{PhaseExecution, SimulationTurnReport, TurnPhase};
 
 use std::collections::{BTreeMap, HashSet};
@@ -49,7 +52,7 @@ pub struct Simulation {
     world: World,
     current_turn: u64,
     finder: PathFinder,
-    pending_decisions: BTreeMap<SettlementId, Vec<SettlementCommand>>,
+    pending_decisions: BTreeMap<SettlementId, Vec<SettlementDecision>>,
 }
 
 impl Simulation {
@@ -133,12 +136,11 @@ impl Simulation {
         self.world.add_settlement(province_id, settlement)
     }
 
-    /// Queues a command for the next successful step; does not change world state.
-    pub fn queue_decision(
-        &mut self,
-        settlement_id: SettlementId,
-        decision: SettlementCommand,
-    ) -> Result<(), WorldError> {
+    /// Queues an agent decision for the next successful step; does not change world
+    /// state. Several decisions of one settlement run in submission order, each
+    /// validated against the state left by the previous one.
+    pub fn queue_decision(&mut self, decision: SettlementDecision) -> Result<(), WorldError> {
+        let settlement_id = decision.settlement_id;
         if self.world.settlement(settlement_id).is_none() {
             return Err(WorldError::MissingSettlement(settlement_id));
         }

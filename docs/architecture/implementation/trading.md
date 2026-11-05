@@ -44,7 +44,7 @@ Child modules add methods to their owning types rather than extra service object
 
 `TradeCommandError` contains `LabourIsNotTradable`, `TradeWithSelf`, `EmptyOrder`.
 Agent trade actions (`PublishMarketOffers`, `ClearMarketOffers`, `OrderCaravan`) are
-defined in the [decision contract](settlement_decisions.md) and validated, but not executed yet.
+defined in the [decision contract](settlement_decisions.md); they are validated and executed by `World::apply_decision`.
 
 ## Routing and global orchestration
 

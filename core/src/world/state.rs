@@ -2,6 +2,7 @@ use crate::ids::SettlementId;
 use std::collections::HashMap;
 mod commands;
 mod construction;
+mod execution;
 pub use commands::CommandError;
 mod inspection;
 mod map_commands;

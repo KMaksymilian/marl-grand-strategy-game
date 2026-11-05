@@ -5,13 +5,21 @@ use crate::settlement::projects::Project;
 #[derive(Debug)]
 pub struct ProjectManager {
     pub(in crate::settlement) active_projects: Vec<Project>,
+    /// Lowest ID never used by this settlement; IDs are not reused after completion.
+    next_id: u64,
 }
 
 impl ProjectManager {
     pub fn new() -> Self {
         Self {
             active_projects: Vec::new(),
+            next_id: 1,
         }
+    }
+
+    /// Next unused project ID, or `None` once every `u32` ID has been used.
+    pub fn next_id(&self) -> Option<ProjectId> {
+        u32::try_from(self.next_id).ok().map(ProjectId)
     }
 
     pub fn add_project(&mut self, mut project: Project) -> Result<(), ProjectId> {
@@ -23,6 +31,7 @@ impl ProjectManager {
             return Err(project.id);
         }
         project.remaining_cost.normalize();
+        self.next_id = self.next_id.max(u64::from(project.id.0) + 1);
         self.active_projects.push(project);
         Ok(())
     }
@@ -74,6 +83,28 @@ mod tests {
     use crate::economy::allocation::AllocationResult;
     use crate::settlement::projects::{Project, ProjectCost, ProjectResult};
     use std::collections::HashMap;
+
+    #[test]
+    fn project_ids_are_never_reused() {
+        let mut manager = ProjectManager::new();
+        assert_eq!(manager.next_id(), Some(ProjectId(1)));
+        let project = |id| {
+            Project::new(
+                ProjectId(id),
+                ProjectResult::RecruitUnit {},
+                ProjectCost::default(),
+            )
+        };
+        manager.add_project(project(7)).unwrap();
+        assert_eq!(manager.next_id(), Some(ProjectId(8)));
+        manager.add_project(project(3)).unwrap();
+        assert_eq!(manager.next_id(), Some(ProjectId(8)));
+        manager.extract_completed();
+        assert!(manager.active_projects.is_empty());
+        assert_eq!(manager.next_id(), Some(ProjectId(8)));
+        manager.add_project(project(u32::MAX)).unwrap();
+        assert_eq!(manager.next_id(), None);
+    }
 
     #[test]
     fn direct_project_registration_normalizes_zero_costs() {

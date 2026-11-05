@@ -12,8 +12,7 @@ impl Building {
             return demand;
         }
 
-        let labor_needed =
-            (self.definition.max_workers() as f64 * f64::from(self.target_load)).floor() as u32;
+        let labor_needed = self.requested_workers();
         if labor_needed > 0 {
             demand.insert(ResourceType::Labour, labor_needed);
         }

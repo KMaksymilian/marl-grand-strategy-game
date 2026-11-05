@@ -1,7 +1,10 @@
 //! Settlement state, read-only views and construction.
 //! Commands and turn processing are implemented on the same type in child modules.
+pub mod action_mask;
 mod commands;
+pub mod decision;
 mod economy;
+pub mod observation;
 pub mod projects;
 mod trading;
 mod turn;
@@ -78,6 +81,11 @@ impl Settlement {
         self.population_manager.population
     }
 
+    /// Materials the population requests every turn at its current size.
+    pub fn needs_per_turn(&self) -> std::collections::HashMap<ResourceType, u32> {
+        self.population_manager.calculate_demand()
+    }
+
     pub fn inventory(&self) -> &crate::economy::ResourceInventory {
         &self.inventory_manager.main
     }
@@ -92,6 +100,12 @@ impl Settlement {
 
     pub fn active_projects(&self) -> &[Project] {
         &self.project_manager.active_projects
+    }
+
+    /// ID the simulation gives to this settlement's next project.
+    /// It is above every ID used before, including completed and canceled projects.
+    pub fn next_project_id(&self) -> Option<crate::ids::ProjectId> {
+        self.project_manager.next_id()
     }
 
     pub fn building_productivity_calculator(&self) -> Option<BuildingProductivityCalculator> {

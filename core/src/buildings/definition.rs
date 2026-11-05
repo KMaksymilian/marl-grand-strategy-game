@@ -39,8 +39,14 @@ pub enum DefinitionError {
     OutputOverflow(ResourceType),
     LabourInRecipe,
     StatOverflow,
+    /// `max_workers` above `BuildingDefinition::MAX_WORKERS`.
+    TooManyWorkers,
 }
 impl BuildingDefinition {
+    /// Largest staff for which every count `0..=max_workers` maps to an exact
+    /// `f32` building load (the integer range of `f32`).
+    pub const MAX_WORKERS: u32 = 1 << 24;
+
     pub fn new(
         id: impl Into<String>,
         name: impl Into<String>,
@@ -81,6 +87,9 @@ impl BuildingDefinition {
     }
 
     fn validate(&self) -> Result<(), DefinitionError> {
+        if self.max_workers > Self::MAX_WORKERS {
+            return Err(DefinitionError::TooManyWorkers);
+        }
         let mut inputs = HashMap::<ResourceType, u32>::new();
         let mut outputs = HashMap::<ResourceType, u32>::new();
         for behavior in &self.behaviors {

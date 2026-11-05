@@ -13,4 +13,4 @@ pub mod territory;
 pub use coordinates::{Point, Position};
 pub use map::Map;
 pub use province::Province;
-pub use state::{CommandError, TileView, World, WorldError};
+pub use state::{AcceptedAction, CommandError, TileView, ValidatedDecision, World, WorldError};

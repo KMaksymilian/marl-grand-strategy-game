@@ -2,12 +2,14 @@
 use super::{World, WorldError};
 use crate::economy::storage_order::StorageOrderError;
 use crate::ids::SettlementId;
+use crate::settlement::TradeCommandError;
 use crate::settlement::command::SettlementCommand;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandError {
     World(WorldError),
     StorageOrder(StorageOrderError),
+    Trade(TradeCommandError),
 }
 
 impl World {
@@ -55,11 +57,35 @@ impl World {
                 .map_err(CommandError::World)?
                 .set_building_active(*building_id, *active)
                 .map_err(|error| CommandError::World(WorldError::Building(error))),
+            SettlementCommand::SetBuildingStaff { building_id, load } => self
+                .settlement_mut(id)
+                .map_err(CommandError::World)?
+                .set_building_staff(*building_id, *load)
+                .map_err(|error| CommandError::World(WorldError::Building(error))),
             SettlementCommand::SetStorageOrder(materials) => self
                 .settlement_mut(id)
                 .map_err(CommandError::World)?
                 .set_storage_order(materials)
                 .map_err(CommandError::StorageOrder),
+            SettlementCommand::PublishMarketOffers(offers) => self
+                .settlement_mut(id)
+                .map_err(CommandError::World)?
+                .publish_trade_offers(offers.clone())
+                .map_err(CommandError::Trade),
+            SettlementCommand::ClearMarketOffers => {
+                self.settlement_mut(id)
+                    .map_err(CommandError::World)?
+                    .clear_trade_offers();
+                Ok(())
+            }
+            SettlementCommand::OrderCaravan {
+                receiver_id,
+                offers,
+            } => self
+                .settlement_mut(id)
+                .map_err(CommandError::World)?
+                .order_caravan(*receiver_id, offers.clone())
+                .map_err(CommandError::Trade),
         }
     }
 }

@@ -37,6 +37,8 @@ and [decisions](../decisions/0001-economy.md), respectively.
 | [Source file and method map](implementation/code_map.md) | Explicit runtime methods and their files |
 | [Simulation commands](implementation/simulation_commands.md) | Coordinator API, decisions, reports and failures |
 | [Settlement commands](implementation/settlement_commands.md) | Local commands, project costs and turn outcomes |
+| [Settlement decisions](implementation/settlement_decisions.md) | Serializable agent action contract and its JSON format |
+| [Settlement observations](implementation/settlement_observations.md) | What an agent may see and the information boundaries |
 | [Economy rules](implementation/economy_rules.md) | Integer formulas, rounding, capacity and satisfaction |
 | [Building productivity](implementation/building_productivity.md) | A* cost thresholds and exact output calculation |
 | [Pathfinding algorithms](implementation/pathfinding_algorithms.md) | Search state, heuristic and directed movement cost |

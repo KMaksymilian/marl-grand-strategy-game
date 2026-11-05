@@ -15,8 +15,9 @@ This reference describes the implemented coordinator API.
 | `settlement(SettlementId)` | Return a shared instance or `WorldError::MissingSettlement`. |
 | `add_settlement(province_id, settlement)` | Register an explicitly initialized empty-structure settlement. |
 | `initialize_settlement(province_id, capacity, population, needs)` | Allocate an unused ID, create a settlement and register it; return the ID. |
-| `queue_decision(SettlementId, decision)` | Queue one command for a known settlement; no immediate world mutation. |
+| `queue_decision(decision)` | Queue a `SettlementDecision` of a known settlement; no immediate world mutation. |
 | `step()` | Execute one global turn and return `SimulationTurnReport`. |
+| `observe(id)`, `observe_all()` | Build agent [observations](settlement_observations.md) from the current state and the latest turn reports. |
 | `into_world()` | Consume the coordinator and recover its world; pending decisions are discarded. |
 
 The registry retains its ID-allocation cursor in the recovered world. Creating a
@@ -25,40 +26,47 @@ No public mutable world getter allows callers to bypass coordinated mutation.
 
 ## Decision contracts
 
-`SettlementDecision` supports:
+Agents submit a serializable [`SettlementDecision`](settlement_decisions.md):
+a settlement ID and a list of `SettlementAction`s (construct, upgrade, cancel,
+set workers, storage order, publish/clear market offers, order caravan). Agents
+never supply costs, definitions or project IDs; the simulation takes them from
+`World::building_catalog()` and `Settlement::next_project_id()`.
 
-| Variant | Target and effect |
-| --- | --- |
-| `Construct` | Project ID, position, shared definition and explicit cost; World checks province membership and Settlement reserves the global slot. |
-| `Upgrade` | Project ID, local building ID, replacement definition and cost; existing occupancy remains a building. |
-| `CancelProject` | Stop an active project and release only its construction reservation; no refund. |
-| `SetBuildingLoad` | Validate a finite load in 0..=1 for an existing building. |
-| `SetBuildingActive` | Toggle activity for an existing building. |
-| `SetStorageOrder` | Validate a complete material ordering without duplicates or labour. |
+`SettlementCommand` is the resolved, internal form produced by validation and
+executed by `World::execute_settlement_command`. It is also used directly on a
+`World` for scenario setup (for example `SetBuildingActive` or an explicit load),
+but `Simulation` accepts only decisions. Productivity configuration, initial
+inventory seeding, direct building insertion and the building catalog are
+scenario setup operations, not actions.
 
-Costs are caller supplied and are not copied from blueprint `construction_cost`.
-Productivity configuration, initial inventory seeding and direct building insertion
-are scenario setup operations, not decision variants. There are no AI policy,
-trade, transport, population-growth or diplomacy decisions.
-
-## Errors and atomicity
+## Execution, errors and atomicity
 
 Unknown settlement IDs are rejected when queueing. Before consuming any queued
-commands, `step` checks counter overflow and all existing project memberships.
-A preflight error preserves world state, pending commands and the counter.
+decisions, `step` checks counter overflow and all existing project memberships.
+A preflight error preserves world state, pending decisions and the counter.
 
-After preflight, each command produces a `DecisionOutcome` containing its typed
-settlement ID, original command and `Result<(), DecisionError>`. Failed commands
-are consumed once and do not abort later commands or phases. Valid earlier commands
-are not rolled back. `DecisionError` wraps world/command errors or invalid storage
-order. Checked-arithmetic panics are not recoverable turn errors.
+In the `Decisions` phase, settlements run in ascending ID order and each
+settlement's decisions in submission order. `World::apply_decision` validates a
+decision against the current state, then executes its accepted actions in order.
+A later decision of the same settlement therefore sees the effects of the earlier
+one (for example, it can cancel a project the earlier one created).
+
+Each decision produces a `DecisionOutcome { settlement_id, results }` with one
+`ActionResult { index, kind, outcome }` per action in index order. The outcome is
+`Applied { effect }` (`ProjectQueued`, `ProjectCanceled`, `WorkersSet`,
+`StorageOrderSet`, `MarketOffersPublished`, `MarketOffersCleared`,
+`CaravanOrdered`) or `Rejected { error }` with an `ActionError`. Rejected actions
+change nothing and do not stop later actions, decisions or phases. Decisions are
+consumed once. `ExecutionFailed` would mean that the engine refused a validated
+action; it is a debug assertion and not expected in practice. All result types
+serialize to JSON. Checked-arithmetic panics are not recoverable turn errors.
 
 ## Reports and transient values
 
 `SimulationTurnReport` contains:
 
 - `turn: u64`: just-completed turn, starting at 1.
-- `decisions: Vec<DecisionOutcome>`: outcomes in settlement-ID/submission order.
+- `decisions: Vec<DecisionOutcome>`: per-action results, in settlement-ID/submission order.
 - `settlements: BTreeMap<SettlementId, TurnReport>`: local accounting and project outcomes.
 - `execution: Vec<PhaseExecution>`: actual phase/settlement invocation order.
 

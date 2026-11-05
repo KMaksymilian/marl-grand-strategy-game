@@ -4,12 +4,17 @@ mod decisions;
 mod turn;
 pub mod turn_report;
 
-pub use decisions::{DecisionError, DecisionOutcome, SettlementDecision};
+pub use decisions::{
+    ActionEffect, ActionError, ActionOutcome, ActionResult, DecisionOutcome, SettlementAction,
+    SettlementDecision,
+};
 pub use turn_report::{PhaseExecution, SimulationTurnReport, TurnPhase};
 
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
+use crate::settlement::observation::SettlementObservation;
+use crate::settlement::turn_report::TurnReport;
 use crate::settlement::{NeedRegistry, Settlement};
 use crate::world::settlement_registry::SettlementRegistry;
 use crate::world::{World, WorldError, pathfinding::path_finder::PathFinder};
@@ -50,6 +55,8 @@ pub struct Simulation {
     current_turn: u64,
     finder: PathFinder,
     pending_decisions: BTreeMap<SettlementId, Vec<SettlementDecision>>,
+    /// Each settlement's report from the latest completed turn, for observations.
+    last_reports: BTreeMap<SettlementId, TurnReport>,
 }
 
 impl Simulation {
@@ -109,6 +116,7 @@ impl Simulation {
             current_turn: 0,
             finder,
             pending_decisions: BTreeMap::new(),
+            last_reports: BTreeMap::new(),
         })
     }
 
@@ -133,12 +141,11 @@ impl Simulation {
         self.world.add_settlement(province_id, settlement)
     }
 
-    /// Queues a command for the next successful step; does not change world state.
-    pub fn queue_decision(
-        &mut self,
-        settlement_id: SettlementId,
-        decision: SettlementDecision,
-    ) -> Result<(), WorldError> {
+    /// Queues an agent decision for the next successful step; does not change world
+    /// state. Several decisions of one settlement run in submission order, each
+    /// validated against the state left by the previous one.
+    pub fn queue_decision(&mut self, decision: SettlementDecision) -> Result<(), WorldError> {
+        let settlement_id = decision.settlement_id;
         if self.world.settlement(settlement_id).is_none() {
             return Err(WorldError::MissingSettlement(settlement_id));
         }
@@ -147,6 +154,30 @@ impl Simulation {
             .or_default()
             .push(decision);
         Ok(())
+    }
+
+    /// What the settlement's agent may see now: its own state, last turn and
+    /// province, never other settlements' internals.
+    pub fn observe(
+        &self,
+        settlement_id: SettlementId,
+    ) -> Result<SettlementObservation, WorldError> {
+        self.world.observe_settlement(
+            settlement_id,
+            self.current_turn,
+            self.last_reports.get(&settlement_id),
+        )
+    }
+
+    /// Observations of every settlement, ascending ID.
+    pub fn observe_all(&self) -> BTreeMap<SettlementId, SettlementObservation> {
+        self.world
+            .settlements()
+            .map(|settlement| {
+                let id = settlement.id();
+                (id, self.observe(id).expect("registered settlement"))
+            })
+            .collect()
     }
 
     /// Recovers the world, e.g. to edit a scenario. Pending decisions are discarded.

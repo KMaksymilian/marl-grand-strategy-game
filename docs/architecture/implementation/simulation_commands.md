@@ -37,6 +37,8 @@ to the queue yet. `SettlementCommand` supports:
 | `SetBuildingLoad` | Validate a finite load in 0..=1 for an existing building. |
 | `SetBuildingActive` | Toggle activity for an existing building. |
 | `SetStorageOrder` | Validate a complete material ordering without duplicates or labour. |
+| `PublishMarketOffers`, `ClearMarketOffers` | Replace or remove the settlement's market offers. |
+| `OrderCaravan` | Queue a caravan order for another settlement. |
 
 Costs are caller supplied and are not copied from blueprint `construction_cost`.
 Productivity configuration, initial inventory seeding and direct building insertion

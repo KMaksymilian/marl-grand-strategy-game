@@ -1,7 +1,9 @@
 use crate::economy::ResourceType;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum StorageOrderError {
     LabourIsNotMaterial,
     DuplicateMaterial(ResourceType),
@@ -23,6 +25,13 @@ impl Default for StorageOrder {
 impl StorageOrder {
     pub fn set(&mut self, materials: impl AsRef<[ResourceType]>) -> Result<(), StorageOrderError> {
         let materials = materials.as_ref();
+        Self::validate(materials)?;
+        self.materials = materials.to_vec();
+        Ok(())
+    }
+
+    /// The rule used by `set`, without changing any order.
+    pub fn validate(materials: &[ResourceType]) -> Result<(), StorageOrderError> {
         for (index, resource) in materials.iter().enumerate() {
             if *resource == ResourceType::Labour {
                 return Err(StorageOrderError::LabourIsNotMaterial);
@@ -36,7 +45,6 @@ impl StorageOrder {
                 return Err(StorageOrderError::MissingMaterial(*resource));
             }
         }
-        self.materials = materials.to_vec();
         Ok(())
     }
     pub fn get(&self) -> &[ResourceType] {
@@ -56,6 +64,23 @@ impl StorageOrder {
 mod tests {
     use super::*;
     use ResourceType::*;
+    #[test]
+    fn validation_checks_the_same_rules_without_changing_an_order() {
+        assert_eq!(StorageOrder::validate(&[Grain, Stone, Wood]), Ok(()));
+        assert_eq!(
+            StorageOrder::validate(&[Wood, Wood, Grain]),
+            Err(StorageOrderError::DuplicateMaterial(Wood))
+        );
+        assert_eq!(
+            StorageOrder::validate(&[Wood, Stone]),
+            Err(StorageOrderError::MissingMaterial(Grain))
+        );
+        assert_eq!(
+            StorageOrder::validate(&[Labour, Wood, Stone, Grain]),
+            Err(StorageOrderError::LabourIsNotMaterial)
+        );
+    }
+
     #[test]
     fn invalid_orders_leave_previous_order_unchanged() {
         let mut order = StorageOrder::default();

@@ -5,7 +5,7 @@ settlement agent wants to do in one turn. Rule-based and learning agents
 (including Python agents through JSON) submit the same values. Source:
 [settlement/decision.rs](../../../core/src/settlement/decision.rs).
 
-Status: the contract and its JSON format are implemented. Validation, execution,
+Status: the contract, its JSON format and validation are implemented. Execution,
 observations and action masks are separate later stages. Until execution is
 connected, `Simulation::queue_decision` still takes the older
 [`SettlementCommand`](simulation_commands.md#decision-contracts).
@@ -40,11 +40,57 @@ It never contains purchase progress, so a submitted offer cannot carry goods.
 Agents never supply costs, building definitions or project IDs. Building types
 are referenced by `BuildingTypeId`, the catalog key.
 
-## Rejection policy
+## Validation
 
-Each action is accepted or rejected on its own. A rejected action changes
-nothing and does not stop later actions in the same decision. The validator
-(next stage) will report a structured error for each rejected action.
+`World::validate_decision(&decision) -> Result<ValidatedDecision, WorldError>`
+([world/state/validation.rs](../../../core/src/world/state/validation.rs)) reads
+the world and never changes it. It fails as a whole only for an unknown deciding
+settlement (`WorldError::MissingSettlement`).
+
+**Policy.** Actions are checked in list order and each one is accepted or
+rejected on its own. A rejected action changes nothing, claims nothing and does
+not stop later actions. Every action index appears exactly once, either in
+`accepted` (index plus resolved `SettlementCommand`) or in `rejected`
+(`RejectedAction { index, kind, error }`). The same world and decision always
+give the same result.
+
+**Resolution.** Accepted actions are turned into commands:
+construction and upgrade get the catalog definition, its `construction_cost` and
+a project ID from `Settlement::next_project_id()` (consecutive within a decision,
+never reused, rejected actions use none); `SetBuildingWorkers` becomes the exact
+load from `Building::load_for_workers`; offers become fresh `TradeOffer`s.
+
+| Check | Errors |
+| --- | --- |
+| Identifiers | `UnknownBuildingType` (not in `World::building_catalog()`), `UnknownBuilding`, `UnknownProject`, `UnknownSettlement` (caravan receiver) |
+| Placement | `InvalidPosition` (off the map), `OutsideOwnProvince`, `OceanTile`, `TileOccupied` (building or construction site) |
+| Upgrades | `SameBuildingType`, `BuildingAlreadyUpgrading` (active upgrade project) |
+| Workers | `WorkersAboveCapacity` (`workers > max_workers`), `InsufficientWorkers` (all buildings would request more staff than the population; reductions are always allowed), `UnsupportedWorkerCount` (count no `f32` load expresses; not reachable for realistic sizes) |
+| Storage order | `InvalidStorageOrder` with the engine's `StorageOrderError` (`StorageOrder::validate`) |
+| Offers (market and caravans) | `LabourIsNotTradable`, `ZeroUnits`, `DuplicateOffer` |
+| Caravans | `EmptyOrder`, `TradeWithSelf`, `InsufficientStock`, `InsufficientGold`: sold units and the buying budget (`units × price`) of all caravans in the decision must fit current stock and gold |
+| Same target twice | `Conflict { with_index }`: the earlier accepted action wins |
+| Exhausted IDs | `ProjectIdsExhausted` |
+
+Conflict targets: one tile per construction, one upgrade and one staff change per
+building, one cancellation per project, one storage order, and one market action
+(`PublishMarketOffers` or `ClearMarketOffers`). Several caravans are allowed.
+
+Ownership: building and project IDs are looked up only in the deciding
+settlement, so another settlement's assets are reported as unknown; positions must
+be in the own province.
+
+Not checked, by design:
+
+- Construction materials. Projects pay over several turns, so the warehouse does
+  not have to hold the full cost when construction starts.
+- Market offer stock and gold. Published offers persist and every turn reserves
+  what is available at that time.
+- Caravan funding is checked against current stock; at execution the market is
+  funded first, so a caravan can still receive less.
+
+Errors serialize as `{"index": 1, "kind": "construct", "error": {"reason":
+"tile_occupied", "position": {"x": 0, "y": 0}}}`.
 
 ## JSON format
 

@@ -73,6 +73,33 @@ impl Building {
         self.is_active = active;
     }
 
+    /// Staff requested at a given load; the same rounding as the turn's labour demand.
+    pub fn workers_at_load(max_workers: u32, load: f32) -> u32 {
+        (f64::from(max_workers) * f64::from(load)).floor() as u32
+    }
+
+    /// Smallest load that requests exactly `workers` staff, or `None` when
+    /// `workers` exceeds `max_workers` or no `f32` load gives that count.
+    pub fn load_for_workers(workers: u32, max_workers: u32) -> Option<f32> {
+        if workers > max_workers {
+            return None;
+        }
+        if workers == 0 {
+            return Some(0.0);
+        }
+        if workers == max_workers {
+            return Some(1.0);
+        }
+        let mut load = workers as f32 / max_workers as f32;
+        while load > 0.0 && Self::workers_at_load(max_workers, load.next_down()) >= workers {
+            load = load.next_down();
+        }
+        while Self::workers_at_load(max_workers, load) < workers {
+            load = load.next_up();
+        }
+        (Self::workers_at_load(max_workers, load) == workers).then_some(load)
+    }
+
     /// Requested fraction of staffing and recipe inputs, in the range 0..=1.
     pub fn set_target_load(&mut self, value: f32) -> Result<(), LoadError> {
         if !value.is_finite() || !(0.0..=1.0).contains(&value) {
@@ -110,6 +137,41 @@ mod tests {
     use crate::buildings::definition::BuildingBehavior;
     use crate::economy::ResourceType;
     use std::collections::HashMap;
+
+    #[test]
+    fn every_worker_count_maps_to_a_load_with_exactly_that_staff() {
+        for max_workers in 0..=500 {
+            for workers in 0..=max_workers {
+                let load = Building::load_for_workers(workers, max_workers).unwrap();
+                assert!((0.0..=1.0).contains(&load));
+                assert_eq!(
+                    Building::workers_at_load(max_workers, load),
+                    workers,
+                    "{workers}/{max_workers}"
+                );
+            }
+            assert_eq!(
+                Building::load_for_workers(max_workers + 1, max_workers),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn worker_load_is_what_the_building_requests_as_labour() {
+        let def = create_test_def("staffed", 7, vec![]);
+        let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
+        for workers in 0..=7 {
+            building
+                .set_target_load(Building::load_for_workers(workers, 7).unwrap())
+                .unwrap();
+            let labour = building
+                .calculate_demand()
+                .get(&ResourceType::Labour)
+                .copied();
+            assert_eq!(labour.unwrap_or(0), workers);
+        }
+    }
 
     #[test]
     fn repeated_inputs_are_aggregated_before_consumption() {

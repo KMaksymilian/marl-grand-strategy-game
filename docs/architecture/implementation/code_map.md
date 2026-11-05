@@ -611,6 +611,7 @@ projects outside their settlement's province after a membership change.
 | [settlement/decision.rs](../../../core/src/settlement/decision.rs) | Agent contract: `SettlementDecision`, `SettlementAction`, `ActionKind`, `OfferSpec`; `to_json`/`from_json`. See [settlement decisions](settlement_decisions.md). |
 | [world/settlement_environment.rs](../../../core/src/world/settlement_environment.rs) | `AStarTravelCosts::new/travel_cost`, `MapConstructionSpace::new` and its construction operations, `MapSettlementEnvironment::new` and delegation of both ports. |
 | [world/state/commands.rs](../../../core/src/world/state/commands.rs) | `CommandError`; `World::execute_settlement_command` is the single typed command dispatcher. |
+| [world/state/validation.rs](../../../core/src/world/state/validation.rs) | `World::validate_decision`: read-only check of a `SettlementDecision`, returning `ValidatedDecision` with resolved `AcceptedAction`s and `RejectedAction`s. See [settlement decisions](settlement_decisions.md#validation). |
 
 `World::settlement_turn_parts` borrows a target and temporary map adapter;
 `World::settlement_mut` is a checked internal lookup for nonspatial phases.

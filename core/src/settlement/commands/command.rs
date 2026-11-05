@@ -1,8 +1,10 @@
 //! Command values independent of the simulation scheduler and map implementation.
 use crate::buildings::definition::BuildingDefinition;
 use crate::economy::{ResourceType, cost::ProjectCost};
-use crate::ids::{BuildingId, ProjectId};
+use crate::ids::{BuildingId, ProjectId, SettlementId};
 use crate::spatial::Position;
+use crate::trade::offer::TradeOffer;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Explicit caller-supplied commands; this does not implement an AI policy.
@@ -30,4 +32,10 @@ pub enum SettlementCommand {
         active: bool,
     },
     SetStorageOrder(Vec<ResourceType>),
+    PublishMarketOffers(HashMap<ResourceType, TradeOffer>),
+    ClearMarketOffers,
+    OrderCaravan {
+        receiver_id: SettlementId,
+        offers: HashMap<ResourceType, TradeOffer>,
+    },
 }

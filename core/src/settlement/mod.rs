@@ -95,6 +95,12 @@ impl Settlement {
         &self.project_manager.active_projects
     }
 
+    /// ID the simulation gives to this settlement's next project.
+    /// It is above every ID used before, including completed and canceled projects.
+    pub fn next_project_id(&self) -> Option<crate::ids::ProjectId> {
+        self.project_manager.next_id()
+    }
+
     pub fn building_productivity_calculator(&self) -> Option<BuildingProductivityCalculator> {
         self.building_manager.productivity_calculator()
     }

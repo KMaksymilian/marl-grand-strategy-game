@@ -17,6 +17,13 @@ impl BuildingCatalog {
     pub fn get_blueprint(&self, id: &str) -> Option<Arc<BuildingDefinition>> {
         self.registry.get(id).cloned()
     }
+
+    /// Registered building type IDs in ascending order.
+    pub fn ids(&self) -> Vec<&str> {
+        let mut ids: Vec<_> = self.registry.keys().map(String::as_str).collect();
+        ids.sort_unstable();
+        ids
+    }
 }
 
 #[cfg(test)]

@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use simulation_core::buildings::catalog::BuildingCatalog;
 use simulation_core::buildings::definition::BuildingDefinition;
 use simulation_core::economy::ResourceType::Wood;
+use simulation_core::ids::BuildingTypeId;
 use simulation_core::ids::{ProjectId, SettlementId};
 use simulation_core::settlement::{NeedRegistry, NeedTier, Settlement, projects::ProjectCost};
-use simulation_core::simulation::{SettlementDecision, Simulation, TurnPhase};
+use simulation_core::simulation::{SettlementAction, SettlementDecision, Simulation, TurnPhase};
 use simulation_core::world::territory::{ProjectReference, TileOccupancy};
 use simulation_core::world::{Map, Position, Province, World, WorldError, terrain::area::Area};
 
@@ -18,12 +20,6 @@ fn world() -> World {
             vec![100, 101, 102, 103, 104],
         ),
         (100..105).rev().map(Province::new).collect(),
-    )
-}
-
-fn definition() -> Arc<BuildingDefinition> {
-    Arc::new(
-        BuildingDefinition::new("house", "House", 1, 0, vec![], ProjectCost::default()).unwrap(),
     )
 }
 
@@ -160,7 +156,12 @@ fn duplicate_registration_and_unknown_references_do_not_change_existing_state() 
     );
     assert!(simulation.settlement_registry().get(missing).is_none());
     assert_eq!(
-        simulation.queue_decision(missing, SettlementDecision::CancelProject(ProjectId(1))),
+        simulation.queue_decision(SettlementDecision::new(
+            missing,
+            vec![SettlementAction::CancelProject {
+                project_id: ProjectId(1)
+            }]
+        )),
         Err(WorldError::MissingSettlement(missing))
     );
     let report = simulation.step().unwrap();
@@ -215,21 +216,32 @@ fn registry_owns_the_same_persistent_economic_and_spatial_state_across_turns() {
     let mut settlement = Settlement::new(id, 100, 0, Arc::default());
     settlement.deposit(Wood, 5);
     world.add_settlement(100, settlement).unwrap();
+    let mut catalog = BuildingCatalog::default();
+    catalog.register(
+        BuildingDefinition::new(
+            "house",
+            "House",
+            1,
+            0,
+            vec![],
+            ProjectCost {
+                needed_resources: HashMap::from([(Wood, 2)]),
+                turn_cost: 2,
+            },
+        )
+        .unwrap(),
+    );
+    world.set_building_catalog(catalog);
     let mut simulation = Simulation::new(world).unwrap();
     let site = Position { x: 0, y: 0 };
     simulation
-        .queue_decision(
+        .queue_decision(SettlementDecision::new(
             id,
-            SettlementDecision::Construct {
-                project_id: ProjectId(7),
+            vec![SettlementAction::Construct {
+                building_type: BuildingTypeId::new("house"),
                 position: site,
-                definition: definition(),
-                cost: ProjectCost {
-                    needed_resources: HashMap::from([(Wood, 2)]),
-                    turn_cost: 2,
-                },
-            },
-        )
+            }],
+        ))
         .unwrap();
     simulation.step().unwrap();
     let settlement = simulation.settlement_registry().get(id).unwrap();
@@ -247,7 +259,7 @@ fn registry_owns_the_same_persistent_economic_and_spatial_state_across_turns() {
         simulation.world().tile_at(site).unwrap().occupancy(),
         TileOccupancy::Construction(ProjectReference {
             settlement_id: id,
-            project_id: ProjectId(7)
+            project_id: ProjectId(1)
         })
     );
     simulation.step().unwrap();

@@ -1,11 +1,5 @@
-//! Compatibility names for domain commands and world command outcomes.
-use crate::ids::SettlementId;
-pub use crate::settlement::command::SettlementCommand as SettlementDecision;
-pub use crate::world::CommandError as DecisionError;
-
-#[derive(Debug, Clone)]
-pub struct DecisionOutcome {
-    pub settlement_id: SettlementId,
-    pub decision: SettlementDecision,
-    pub result: Result<(), DecisionError>,
-}
+//! Agent decision types used by the coordinator; defined in the settlement contract.
+pub use crate::settlement::decision::{
+    ActionEffect, ActionError, ActionOutcome, ActionResult, DecisionOutcome, SettlementAction,
+    SettlementDecision,
+};

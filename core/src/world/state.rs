@@ -2,14 +2,20 @@ use crate::ids::SettlementId;
 use std::collections::HashMap;
 mod commands;
 mod construction;
+mod execution;
 pub use commands::CommandError;
 mod inspection;
 mod map_commands;
+mod mask;
+mod observation;
 mod trade;
+mod validation;
 pub use inspection::TileView;
+pub use validation::{AcceptedAction, ValidatedDecision};
 
 use super::settlement_registry::SettlementRegistry;
 use super::territory::{TerritoryManager, Tile};
+use crate::buildings::catalog::BuildingCatalog;
 use crate::settlement::{NeedRegistry, Settlement};
 use crate::trade::caravan::Caravan;
 use crate::world::{Position, coordinates::Point, map::Map, province::Province};
@@ -56,8 +62,19 @@ pub struct World {
     territory: TerritoryManager,
     settlements: SettlementRegistry,
     province_settlements: HashMap<usize, SettlementId>,
+    /// Building types agents may construct or upgrade to.
+    building_catalog: BuildingCatalog,
 }
 impl World {
+    pub fn building_catalog(&self) -> &BuildingCatalog {
+        &self.building_catalog
+    }
+
+    /// Scenario setup: replaces the building types available to agents.
+    pub fn set_building_catalog(&mut self, catalog: BuildingCatalog) {
+        self.building_catalog = catalog;
+    }
+
     pub fn map(&self) -> &Map {
         &self.map
     }
@@ -124,6 +141,7 @@ impl World {
             territory: TerritoryManager::default(),
             settlements: SettlementRegistry::default(),
             province_settlements: HashMap::new(),
+            building_catalog: BuildingCatalog::default(),
         }
     }
 

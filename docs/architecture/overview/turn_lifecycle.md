@@ -31,7 +31,7 @@ sequenceDiagram
     participant Sim as Simulation
     participant W as World
     participant S as Settlement
-    Caller->>Sim: queue_decision(id, command)
+    Caller->>Sim: queue_decision(decision)
     Sim-->>Caller: queued or MissingSettlement
     Caller->>Sim: step()
     Sim->>Sim: check counter overflow
@@ -41,7 +41,7 @@ sequenceDiagram
     alt Preflight fails
         Sim-->>Caller: SimulationError, world and queue unchanged
     else Preflight succeeds
-        Sim->>W: execute queued decisions
+        Sim->>W: apply_decision(decision): validate, execute accepted actions
         Sim->>W: begin_trade_turn()
         loop Each remaining global phase, in table order
             loop Every SettlementId in ascending order

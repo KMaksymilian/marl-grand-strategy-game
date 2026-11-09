@@ -1,8 +1,10 @@
 //! Command values independent of the simulation scheduler and map implementation.
 use crate::buildings::definition::BuildingDefinition;
 use crate::economy::{ResourceType, cost::ProjectCost};
-use crate::ids::{BuildingId, ProjectId};
+use crate::ids::{BuildingId, ProjectId, SettlementId};
 use crate::spatial::Position;
+use crate::trade::offer::TradeOffer;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Explicit caller-supplied commands; this does not implement an AI policy.
@@ -29,5 +31,16 @@ pub enum SettlementCommand {
         building_id: BuildingId,
         active: bool,
     },
+    /// Activate the building and set its load; used for agent staff decisions.
+    SetBuildingStaff {
+        building_id: BuildingId,
+        load: f32,
+    },
     SetStorageOrder(Vec<ResourceType>),
+    PublishMarketOffers(HashMap<ResourceType, TradeOffer>),
+    ClearMarketOffers,
+    OrderCaravan {
+        receiver_id: SettlementId,
+        offers: HashMap<ResourceType, TradeOffer>,
+    },
 }

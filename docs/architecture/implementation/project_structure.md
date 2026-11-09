@@ -65,7 +65,7 @@ technical layers.
 ```text
 simulation/
 ├── mod.rs                     State, validation, registry access and decision queue
-├── decisions.rs               Command/error aliases and rejection outcomes
+├── decisions.rs               Command re-export, error alias and outcomes
 ├── turn.rs                    Global phase execution and turn progression
 └── turn_report.rs             Completed turn, settlement reports and execution trace
 
@@ -78,6 +78,7 @@ settlement/
 │   ├── buildings.rs           Registration, load, activity and productivity
 │   ├── projects.rs            Queue construction/upgrades and cancel projects
 │   └── trade.rs               Treasury, market templates and caravan orders
+├── decision.rs                Serializable agent decisions and actions (JSON)
 ├── economy/
 │   ├── mod.rs                 Private local managers and public needs types
 │   ├── buildings.rs           Building collection, demand, productivity and production

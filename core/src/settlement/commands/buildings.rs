@@ -57,6 +57,23 @@ impl Settlement {
         Ok(())
     }
 
+    /// Activates the building and sets its load in one step; on error nothing changes.
+    pub fn set_building_staff(
+        &mut self,
+        id: BuildingId,
+        load: f32,
+    ) -> Result<(), BuildingCommandError> {
+        let building = self
+            .building_manager
+            .get_mut(id)
+            .ok_or(BuildingCommandError::MissingBuilding(id))?;
+        building
+            .set_target_load(load)
+            .map_err(|_| BuildingCommandError::InvalidLoad)?;
+        building.set_active(true);
+        Ok(())
+    }
+
     /// Recomputes cached multipliers immediately; `None` restores full productivity.
     pub fn set_building_productivity_calculator(
         &mut self,

@@ -50,6 +50,6 @@ validated when constructing `Simulation`; world generation has its own caller
 preconditions.
 
 Sources: [runtime parser](../../../core/src/configuration.rs),
-[world parameters](../../../core/src/world/generation/config.rs),
+[world parameters](../../../core/src/domain/world/generation/config.rs),
 [application](../../../main_app/src/main.rs),
 [headless example](../../../core/examples/headless.rs).

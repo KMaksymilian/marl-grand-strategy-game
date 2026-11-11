@@ -14,32 +14,20 @@ file and explicitly implemented runtime method.
 ├── configuration.toml               Runtime economy thresholds
 ├── core/                            Package: simulation_core
 │   ├── src/
-│   │   ├── lib.rs                   Public functional modules
+│   │   ├── lib.rs                   Layer exports and compatibility paths
 │   │   ├── configuration.rs         Runtime TOML parsing and validation
-│   │   ├── simulation/              Global turns, decisions and reports
-│   │   ├── spatial/                 Map-independent positions, references and construction contract
-│   │   ├── world/                   Spatial data and operations
-│   │   │   ├── mod.rs               Public world exports
-│   │   │   ├── state.rs             World, settlement registration and province membership
-│   │   │   ├── state/construction.rs World entry points for settlement lifecycle
-│   │   │   ├── state/map_commands.rs Controlled tile terrain/province edits
-│   │   │   ├── state/inspection.rs  Combined read-only tile view
-│   │   │   ├── state/trade.rs       Global transport, visitors and dispatch
-│   │   │   ├── territory.rs         Global sparse occupancy registry
-│   │   │   ├── map.rs               Terrain/territory buffers
-│   │   │   ├── province.rs          Province tiles and centroid
-│   │   │   ├── coordinates.rs       Compatibility re-exports of spatial coordinates
-│   │   │   ├── settlement_registry.rs Global settlement store and ID allocation
-│   │   │   ├── settlement_environment.rs Map-backed construction and A* cost adapters
-│   │   │   ├── state/commands.rs    Single world command dispatch
-│   │   │   ├── terrain/             Area, elevation, moisture and biome
-│   │   │   ├── generation/          WorldBuilder, noise and Voronoi
-│   │   │   └── pathfinding/         A*, Dijkstra and search buffers
-│   │   ├── economy/                 Resources, inventory, currency and allocation
-│   │   ├── buildings/               Instances, definitions, catalogue, productivity
-│   │   ├── settlement/              Aggregate state, commands, managers and turns
-│   │   ├── trade/                   Offers, trade books, matching and caravans
-│   │   └── ids.rs                   Typed settlement, building and project identifiers
+│   │   ├── application/
+│   │   │   ├── commands/            Agent contract, validation and execution
+│   │   │   ├── queries/             Observations and legal action masks
+│   │   │   └── simulation/          Global turns, decision queue and reports
+│   │   └── domain/
+│   │       ├── buildings/           Blueprints, instances and production
+│   │       ├── economy/             Resources, inventories, currency and allocation
+│   │       ├── settlement/          Aggregate, projects, local economy and turns
+│   │       ├── spatial/             Positions, references and construction contract
+│   │       ├── trade/               Offers, books, matching and caravans
+│   │       ├── world/               Map, registries, terrain and pathfinding
+│   │       └── ids.rs               Typed identities
 │   ├── examples/headless.rs         Simulation runner without graphics
 │   └── tests/                       Public-interface integration tests
 ├── adapters/src/view/map/           Macroquad rendering and input
@@ -55,47 +43,47 @@ currently displays a generated map and interactive pathfinding overlays. Settlem
 turns can run headlessly through `Simulation`; the graphical loop does not yet
 drive it. Global turns include caravan movement, market matching, returns and dispatch.
 
-`domain/`, `services/`, `world_data/` and the separate top-level `geography/`
-directories are removed. World-related models, generation and navigation now live
-together, so finding pathfinding or terrain code does not require switching between
-technical layers.
+The application depends on the domain. Commands mutate the world through domain
+operations. Queries project observations from shared references to that same world.
+World and SettlementRegistry own the in-memory state. Construction changes the
+settlement and the world occupancy registry together.
 
 ## Finding an operation
 
 ```text
-simulation/
+application/simulation/
 ├── mod.rs                     State, validation, registry access and decision queue
 ├── decisions.rs               Command re-export, error alias and outcomes
 ├── turn.rs                    Global phase execution and turn progression
 └── turn_report.rs             Completed turn, settlement reports and execution trace
 
-settlement/
-├── mod.rs                     Aggregate state, constructor, views and public exports
-├── commands/
-│   ├── mod.rs                 Mutation command groups
-│   ├── command.rs             SettlementCommand values
-│   ├── inventory.rs           Deposit, withdrawal, capacity and storage order
-│   ├── buildings.rs           Registration, load, activity and productivity
-│   ├── projects.rs            Queue construction/upgrades and cancel projects
-│   └── trade.rs               Treasury, market templates and caravan orders
-├── decision.rs                Serializable agent decisions and actions (JSON)
-├── economy/
-│   ├── mod.rs                 Private local managers and public needs types
-│   ├── buildings.rs           Building collection, demand, productivity and production
-│   ├── inventory.rs           Local warehouse/buffer admission and losses
-│   └── population.rs          Needs registry, population demand and satisfaction
-├── projects/
-│   ├── mod.rs                 Project model, costs reference, errors and outcomes
-│   ├── manager.rs             Local project collection, allocation and progress
-│   └── lifecycle.rs           Project validation, rejection and completion effects
-├── trading/
-│   ├── mod.rs                 TradeManager queues and public CaravanOrder
-│   └── lifecycle.rs           Reservation, funding, visitor matching and returns
-└── turn/
-    ├── mod.rs                 Shared local/global phases and inline aggregate tests
-    └── report.rs              Material accounting and turn report data
+application/commands/settlement/
+├── contract.rs                Serializable decisions, actions and outcomes
+├── response.rs                Applied effects and rejection reasons
+├── validation.rs              Input checks without world access
+├── preparation.rs              Batch preparation against current world state
+├── prepared.rs                Resolved values used for dispatch
+├── handler.rs                 Executes accepted actions and collects results
+├── dispatch.rs                Calls the corresponding domain operation
+└── compatibility.rs           Existing World entry points
 
-buildings/
+application/queries/
+├── observation.rs            Serializable observation model
+├── settlement.rs             Projects an observation from the world
+├── action_mask.rs             Serializable mask model
+└── legal_actions.rs           Builds masks using command validation
+
+domain/settlement/
+├── mod.rs                     Public domain exports
+├── model.rs                   Settlement state, constructor and accessors
+└── model/
+    ├── commands/              Building, project, inventory and trade mutations
+    ├── economy/               Local building, inventory and population managers
+    ├── projects/              Project state, costs, progress and completion
+    ├── trading/               Market reservations, caravan funding and returns
+    └── turn/                  Local turn phases and accounting reports
+
+domain/buildings/
 ├── building.rs                Runtime instance, settings and views
 ├── building/production.rs     Demand, grants and recipe execution
 ├── definition.rs              Blueprint data and validation
@@ -138,15 +126,15 @@ needed to call these operations. Managers remain private implementation details.
 
 ## Settlement directory boundaries
 
-Only `mod.rs` remains directly inside `settlement`. The five subdirectories group
+`domain/settlement/model.rs` defines the aggregate. Its child modules group
 local mutation commands, local economy managers, projects, trading state and turn processing.
 They implement operations on the same aggregate, without adding API wrapper objects.
 
-`settlement/economy` owns local collections and their turn participation.
-`core/src/economy` owns reusable resource/inventory primitives and allocation
+`domain/settlement/model/economy` owns local collections and their turn participation.
+`core/src/domain/economy` owns reusable resource/inventory primitives and allocation
 algorithms. `BuildingManager` stays local because it manages this settlement's
 instances and their turn work; building definitions, instances and productivity
-policies remain in `core/src/buildings`. Projects also stay local: payment,
+policies remain in `core/src/domain/buildings`. Projects also stay local: payment,
 upgrade targets and completion effects belong to the settlement lifecycle.
 
 World-wide settlement storage is in `world/settlement_registry.rs`, coordinates

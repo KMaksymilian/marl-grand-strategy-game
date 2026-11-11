@@ -71,7 +71,7 @@ Validation applies to commands. Collections and runtime fields are protected fro
 
 ## 7. Turn Report and Project Outcomes
 
-The public report is defined in [turn_report.rs](../../../core/src/settlement/turn/report.rs):
+The public report is defined in [turn_report.rs](../../../core/src/domain/settlement/model/turn/report.rs):
 
 ```rust
 pub struct TurnReport {
@@ -121,4 +121,4 @@ These limitations describe current code rather than approving final game rules. 
 
 ## 9. Sources
 
-Model and views: [settlement/mod.rs](../../../core/src/settlement/mod.rs). Commands: [inventory](../../../core/src/settlement/commands/inventory.rs), [buildings](../../../core/src/settlement/commands/buildings.rs), [projects](../../../core/src/settlement/commands/projects.rs). Turn processing and inline unit tests: [turn.rs](../../../core/src/settlement/turn/mod.rs). Project effects: [project_lifecycle.rs](../../../core/src/settlement/projects/lifecycle.rs). Managers: [building_manager.rs](../../../core/src/settlement/economy/buildings.rs), [project_manager.rs](../../../core/src/settlement/projects/manager.rs), [inventory_manager.rs](../../../core/src/settlement/economy/inventory.rs), [population.rs](../../../core/src/settlement/economy/population.rs). Projects: [projects.rs](../../../core/src/settlement/projects/mod.rs).
+Model and views: [domain/settlement/model.rs](../../../core/src/domain/settlement/model.rs). Commands: [inventory](../../../core/src/domain/settlement/model/commands/inventory.rs), [buildings](../../../core/src/domain/settlement/model/commands/buildings.rs), [projects](../../../core/src/domain/settlement/model/commands/projects.rs). Turn processing and inline unit tests: [turn.rs](../../../core/src/domain/settlement/model/turn/mod.rs). Project effects: [project_lifecycle.rs](../../../core/src/domain/settlement/model/projects/lifecycle.rs). Managers: [building_manager.rs](../../../core/src/domain/settlement/model/economy/buildings.rs), [project_manager.rs](../../../core/src/domain/settlement/model/projects/manager.rs), [inventory_manager.rs](../../../core/src/domain/settlement/model/economy/inventory.rs), [population.rs](../../../core/src/domain/settlement/model/economy/population.rs). Projects: [projects.rs](../../../core/src/domain/settlement/model/projects/mod.rs).

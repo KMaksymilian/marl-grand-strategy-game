@@ -92,8 +92,8 @@ The example creates a small farm scenario directly in Rust, executes the request
 turn count and drops each report after use. The optional count defaults to 10.
 It initializes neither Macroquad nor a graphical window.
 
-Sources: [coordinator](../../../core/src/simulation/mod.rs),
-[decision dispatch](../../../core/src/simulation/decisions.rs),
-[step](../../../core/src/simulation/turn.rs),
-[report types](../../../core/src/simulation/turn_report.rs),
+Sources: [coordinator](../../../core/src/application/simulation/mod.rs),
+[decision dispatch](../../../core/src/application/simulation/decisions.rs),
+[step](../../../core/src/application/simulation/turn.rs),
+[report types](../../../core/src/application/simulation/turn_report.rs),
 [example](../../../core/examples/headless.rs).

@@ -72,4 +72,4 @@ and settlements already containing buildings/projects.
 State persists in memory across turns; no disk persistence or serialization is
 implemented. For implementation methods see the
 [source map](../implementation/code_map.md) and
-[registry code](../../../core/src/world/settlement_registry.rs).
+[registry code](../../../core/src/domain/world/settlement_registry.rs).

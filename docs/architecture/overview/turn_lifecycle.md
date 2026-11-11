@@ -107,5 +107,5 @@ global turn and does not advance `Simulation::current_turn`.
 
 
 API details: [simulation commands](../implementation/simulation_commands.md).
-Code: [global pipeline](../../../core/src/simulation/turn.rs),
-[shared local phases](../../../core/src/settlement/turn/mod.rs).
+Code: [global pipeline](../../../core/src/application/simulation/turn.rs),
+[shared local phases](../../../core/src/domain/settlement/model/turn/mod.rs).

@@ -3,7 +3,7 @@
 `SettlementDecision` is the typed, serializable representation of what one
 settlement agent wants to do in one turn. Rule-based and learning agents
 (including Python agents through JSON) submit the same values. Source:
-[settlement/decision.rs](../../../core/src/settlement/decision.rs).
+[application/commands/settlement/contract.rs](../../../core/src/application/commands/settlement/contract.rs).
 
 Status: the contract, its JSON format, validation and execution are implemented;
 `Simulation::queue_decision` takes a `SettlementDecision`. Agents read the state
@@ -42,8 +42,20 @@ are referenced by `BuildingTypeId`, the catalog key.
 
 ## Validation
 
+`validate_input(action)` checks submitted fields without a world reference.
+Negative worker counts, units and prices fail JSON parsing because those
+fields are unsigned. The input validator rejects negative coordinates,
+malformed offers and empty caravan orders.
+
+During the Decisions phase, the handler prepares actions against the current
+world. It checks catalog and entity references, tracks conflicts and resources
+committed by earlier actions in the batch, and delegates construction placement
+to the domain. World checks province and terrain. TerritoryManager checks
+vacancy both for the read-only preview and when reserving the tile.
+
+
 `World::validate_decision(&decision) -> Result<ValidatedDecision, WorldError>`
-([world/state/validation.rs](../../../core/src/world/state/validation.rs)) reads
+([application/commands/settlement/preparation.rs](../../../core/src/application/commands/settlement/preparation.rs)) reads
 the world and never changes it. It fails as a whole only for an unknown deciding
 settlement (`WorldError::MissingSettlement`).
 
@@ -109,12 +121,17 @@ Errors serialize as `{"index": 1, "kind": "construct", "error": {"reason":
 
 ## Execution
 
-`World::apply_decision(&decision) -> Result<DecisionOutcome, WorldError>`
-([world/state/execution.rs](../../../core/src/world/state/execution.rs)) validates,
-then executes each accepted action through `World::execute_settlement_command`,
-the same dispatcher used for scenario commands. `Simulation::step` calls it in the
-`Decisions` phase, before any economic phase, so effects such as new staff apply
-to the same turn's allocation.
+The [response contract](../../../core/src/application/commands/settlement/response.rs)
+defines an ordered `ActionResult` for each action. An applied construction
+returns `ProjectQueued { project_id }`. A rejected construction returns a
+reason such as `TileOccupied` and the position.
+
+
+In the Decisions phase, `Simulation::step` calls the application handler. It
+validates the batch against the current world, then sends accepted actions to
+the dispatcher, which calls domain methods. Effects such as new staff apply to
+the same turn's allocation. The existing `World::apply_decision` method
+delegates to the handler. [Handler source](../../../core/src/application/commands/settlement/handler.rs)
 
 | Action | Settlement operation | Effect reported |
 | --- | --- | --- |

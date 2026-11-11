@@ -60,10 +60,10 @@ turn before spending, preserving projects and reservations.
 
 
 
-Implementation: [registry](../../../core/src/world/territory.rs),
-[world commands](../../../core/src/world/state/construction.rs),
-[inspection](../../../core/src/world/state/inspection.rs),
-[settlement commands](../../../core/src/settlement/commands/projects.rs).
+Implementation: [registry](../../../core/src/domain/world/territory.rs),
+[world commands](../../../core/src/domain/world/state/construction.rs),
+[inspection](../../../core/src/domain/world/state/inspection.rs),
+[settlement commands](../../../core/src/domain/settlement/model/commands/projects.rs).
 
 
 ## Construction sequence

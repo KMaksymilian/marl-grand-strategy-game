@@ -3,8 +3,8 @@
 `SettlementObservation` is what one settlement agent may see. It is separate from
 the authoritative state: an owned, serializable copy with no references into the
 world, so an agent holding it cannot reach other settlements. Types:
-[settlement/observation.rs](../../../core/src/settlement/observation.rs);
-generation: [world/state/observation.rs](../../../core/src/world/state/observation.rs).
+[application/queries/observation.rs](../../../core/src/application/queries/observation.rs);
+generation: [application/queries/settlement.rs](../../../core/src/application/queries/settlement.rs).
 
 ## Generation
 
@@ -42,8 +42,8 @@ placement validation.
 
 ## Action mask
 
-`ActionMask` ([settlement/action_mask.rs](../../../core/src/settlement/action_mask.rs),
-built in [world/state/mask.rs](../../../core/src/world/state/mask.rs)) lists legal
+`ActionMask` ([application/queries/action_mask.rs](../../../core/src/application/queries/action_mask.rs),
+built in [application/queries/legal_actions.rs](../../../core/src/application/queries/legal_actions.rs)) lists legal
 actions so agents can avoid invalid decisions.
 
 | Field | Meaning |

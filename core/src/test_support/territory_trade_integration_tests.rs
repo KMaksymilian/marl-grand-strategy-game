@@ -1,9 +1,10 @@
+use super::trade_network::TradeNetwork;
 use simulation_core::buildings::definition::BuildingDefinition;
 use simulation_core::economy::ResourceType::{Grain, Stone, Wood};
 use simulation_core::ids::ProjectId;
 use simulation_core::ids::SettlementId;
 use simulation_core::settlement::{Settlement, projects::ProjectCost};
-use simulation_core::trade::{network::TradeNetwork, offer::TradeOffer};
+use simulation_core::trade::offer::TradeOffer;
 use simulation_core::world::pathfinding::path_finder::PathFinder;
 use simulation_core::world::terrain::area::Area;
 use simulation_core::world::territory::TileOccupancy;

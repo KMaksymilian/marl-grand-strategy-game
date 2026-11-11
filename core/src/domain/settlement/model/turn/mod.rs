@@ -36,9 +36,9 @@ pub(crate) struct ProducedTurn {
 }
 
 impl Settlement {
-    /// Local convenience entry point using the same phases as Simulation.
-    /// Reuse the same spatial registry supplied to construction commands.
-    pub fn process_turn(
+    /// Executes the settlement phases in isolation for tests.
+    #[cfg(test)]
+    pub(crate) fn process_turn_for_test(
         &mut self,
         environment: &mut (impl ConstructionSpace + TravelCostSource),
         visitors: &mut [&mut Caravan],
@@ -272,11 +272,11 @@ mod tests {
         }]);
         add_building(&mut food_first, 1, blueprint.clone(), &mut territory);
         add_building(&mut wood_first, 1, blueprint, &mut territory);
-        let food_report = food_first.process_turn(
+        let food_report = food_first.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
-        let wood_report = wood_first.process_turn(
+        let wood_report = wood_first.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -308,7 +308,7 @@ mod tests {
         );
         assert!(
             settlement
-                .process_turn(
+                .process_turn_for_test(
                     &mut MapSettlementEnvironment::new(
                         &test_map(),
                         &mut test_finder(),
@@ -324,7 +324,7 @@ mod tests {
         settlement
             .set_storage_order([ResourceType::Wood, ResourceType::Stone, ResourceType::Grain])
             .unwrap();
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -340,7 +340,7 @@ mod tests {
         );
         assert!(
             settlement
-                .process_turn(
+                .process_turn_for_test(
                     &mut MapSettlementEnvironment::new(
                         &test_map(),
                         &mut test_finder(),
@@ -372,7 +372,7 @@ mod tests {
             }]),
             &mut territory,
         );
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -435,7 +435,7 @@ mod tests {
         );
 
         // Nobody buys the grain, so it comes back while the warehouse receives new wood.
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut crate::domain::world::settlement_environment::MapSettlementEnvironment::new(
                 &test_map(),
                 &mut test_finder(),
@@ -472,7 +472,7 @@ mod tests {
             }]),
             &mut territory,
         );
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -494,7 +494,7 @@ mod tests {
         }]);
         add_building(&mut settlement, 1, blueprint.clone(), &mut territory);
         add_building(&mut settlement, 2, blueprint, &mut territory);
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -526,7 +526,7 @@ mod tests {
             .inventory_manager
             .pending_production
             .add(ResourceType::Wood, 3);
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -572,7 +572,7 @@ mod tests {
                     &mut territory,
                 );
             }
-            let report = settlement.process_turn(
+            let report = settlement.process_turn_for_test(
                 &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
                 &mut [],
             );
@@ -603,7 +603,7 @@ mod tests {
                 &mut MapConstructionSpace::new(&test_map(), &mut territory),
             )
             .unwrap();
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -618,7 +618,7 @@ mod tests {
         );
         assert!(
             settlement
-                .process_turn(
+                .process_turn_for_test(
                     &mut MapSettlementEnvironment::new(
                         &test_map(),
                         &mut test_finder(),
@@ -650,7 +650,7 @@ mod tests {
         );
         assert_eq!(result, Err(ProjectError::MissingBuilding(BuildingId(99))));
         assert!(settlement.project_manager.active_projects.is_empty());
-        settlement.process_turn(
+        settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -685,7 +685,7 @@ mod tests {
             .unwrap();
         settlement.inventory_manager.main.add(ResourceType::Wood, 2);
 
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -705,7 +705,7 @@ mod tests {
         assert!(settlement.project_manager.active_projects.is_empty());
         assert!(
             settlement
-                .process_turn(
+                .process_turn_for_test(
                     &mut MapSettlementEnvironment::new(
                         &test_map(),
                         &mut test_finder(),
@@ -737,7 +737,7 @@ mod tests {
         settlement.inventory_manager.main.add(ResourceType::Wood, 1);
         assert!(
             settlement
-                .process_turn(
+                .process_turn_for_test(
                     &mut MapSettlementEnvironment::new(
                         &test_map(),
                         &mut test_finder(),
@@ -757,7 +757,7 @@ mod tests {
 
         settlement.building_manager.buildings.clear();
         settlement.inventory_manager.main.add(ResourceType::Wood, 2);
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -773,7 +773,7 @@ mod tests {
         assert!(settlement.project_manager.active_projects.is_empty());
         assert!(
             settlement
-                .process_turn(
+                .process_turn_for_test(
                     &mut MapSettlementEnvironment::new(
                         &test_map(),
                         &mut test_finder(),
@@ -802,7 +802,7 @@ mod tests {
             ))
             .unwrap();
         settlement.inventory_manager.main.add(ResourceType::Wood, 2);
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -839,7 +839,7 @@ mod tests {
         settlement.inventory_manager.main.add(ResourceType::Wood, 1);
         assert!(
             settlement
-                .process_turn(
+                .process_turn_for_test(
                     &mut MapSettlementEnvironment::new(
                         &test_map(),
                         &mut test_finder(),
@@ -858,7 +858,7 @@ mod tests {
         );
         assert!(
             settlement
-                .process_turn(
+                .process_turn_for_test(
                     &mut MapSettlementEnvironment::new(
                         &test_map(),
                         &mut test_finder(),
@@ -878,7 +878,7 @@ mod tests {
         assert!(settlement.building_manager.buildings.is_empty());
 
         settlement.inventory_manager.main.add(ResourceType::Wood, 1);
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -967,7 +967,7 @@ mod tests {
             .unwrap();
         settlement.inventory_manager.main.add(ResourceType::Wood, 1);
 
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -1014,7 +1014,7 @@ mod tests {
             .unwrap();
         settlement.inventory_manager.main.add(ResourceType::Wood, 4);
 
-        let result = settlement.process_turn(
+        let result = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -1052,7 +1052,7 @@ mod tests {
             .main
             .add(ResourceType::Grain, 3);
 
-        let result = settlement.process_turn(
+        let result = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -1076,7 +1076,7 @@ mod tests {
             .add(ResourceType::Grain, 3);
 
         for remaining in [2, 1] {
-            let result = settlement.process_turn(
+            let result = settlement.process_turn_for_test(
                 &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
                 &mut [],
             );
@@ -1088,7 +1088,7 @@ mod tests {
             assert_eq!(stock(&settlement, ResourceType::Grain), remaining);
         }
         settlement.inventory_manager.main.add(ResourceType::Wood, 1);
-        let result = settlement.process_turn(
+        let result = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -1118,7 +1118,7 @@ mod tests {
             .unwrap();
         settlement.inventory_manager.main.add(ResourceType::Wood, 2);
 
-        settlement.process_turn(
+        settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -1150,7 +1150,7 @@ mod tests {
             .main
             .add(ResourceType::Grain, 2);
 
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -1186,7 +1186,7 @@ mod tests {
         );
         settlement.inventory_manager.main.add(ResourceType::Wood, 1);
 
-        settlement.process_turn(
+        settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -1216,7 +1216,7 @@ mod tests {
         }
         settlement.inventory_manager.main.add(ResourceType::Wood, 1);
 
-        settlement.process_turn(
+        settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -1252,7 +1252,7 @@ mod tests {
             .main
             .add(ResourceType::Wood, amount);
 
-        settlement.process_turn(
+        settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -1281,14 +1281,14 @@ mod tests {
             &mut territory,
         );
 
-        settlement.process_turn(
+        settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
         assert_eq!(stock(&settlement, ResourceType::Grain), 1);
         assert_eq!(stock(&settlement, ResourceType::Stone), 0);
 
-        settlement.process_turn(
+        settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );

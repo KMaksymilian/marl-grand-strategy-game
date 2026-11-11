@@ -89,7 +89,7 @@ fn cancellation_after_partial_payment_preserves_spent_materials_and_stops_work()
         .queue_construction(SettlementId(1), ProjectId(7), SITE, definition(1), cost())
         .unwrap();
     world
-        .process_settlement_turn(SettlementId(1), &mut finder)
+        .process_settlement_turn_for_test(SettlementId(1), &mut finder)
         .unwrap();
     assert_eq!(
         world
@@ -101,7 +101,7 @@ fn cancellation_after_partial_payment_preserves_spent_materials_and_stops_work()
     );
     world.cancel_project(SettlementId(1), ProjectId(7)).unwrap();
     let report = world
-        .process_settlement_turn(SettlementId(1), &mut finder)
+        .process_settlement_turn_for_test(SettlementId(1), &mut finder)
         .unwrap();
     assert_eq!(
         world
@@ -149,11 +149,11 @@ fn canceling_an_upgrade_preserves_the_existing_building_and_occupancy() {
         )
         .unwrap();
     world
-        .process_settlement_turn(SettlementId(1), &mut finder)
+        .process_settlement_turn_for_test(SettlementId(1), &mut finder)
         .unwrap();
     world.cancel_project(SettlementId(1), ProjectId(7)).unwrap();
     world
-        .process_settlement_turn(SettlementId(1), &mut finder)
+        .process_settlement_turn_for_test(SettlementId(1), &mut finder)
         .unwrap();
     let settlement = world.settlement(SettlementId(1)).unwrap();
     let building = settlement.buildings().next().unwrap();

@@ -55,14 +55,11 @@ Contains `Simulation` and `SimulationError`; `World` remains the only settlement
 | `into_world` | Recover the world, discarding pending commands. |
 | `SimulationError::fmt` | Format map, counter or preflight failures. |
 
-### [core/src/application/simulation/decisions.rs](../../../core/src/application/simulation/decisions.rs)
+### [core/src/application/simulation/turn_coordinator.rs](../../../core/src/application/simulation/turn_coordinator.rs)
 
-Re-exports the agent decision and result types from `settlement::decision`. Execution belongs to `World::apply_decision`.
-
-### [core/src/application/simulation/turn.rs](../../../core/src/application/simulation/turn.rs)
-
-`Simulation::step` preflights all settlements, consumes decisions once and executes
-each phase globally in ascending settlement ID order before incrementing the counter.
+`run_turn` preflights all settlements, consumes decisions once and executes
+each phase globally in ascending settlement ID order. `Simulation::step` delegates
+to the coordinator and stores the completed turn number and latest reports.
 
 ### [core/src/application/simulation/turn_report.rs](../../../core/src/application/simulation/turn_report.rs)
 
@@ -273,7 +270,7 @@ Internal project validation and effects on the same `Settlement` type.
 
 | Method on `Settlement` | Purpose |
 | --- | --- |
-| `process_turn` | Refresh productivity, reserve trade resources, allocate local demands, execute production/projects, collect stock and return a report. |
+| `process_turn_for_test` | Test-only helper that runs all phases for one settlement. |
 | `prepare_turn` | Refresh productivity/labour, snapshot opening stock, reject invalid projects, fund market/caravan books and match arrived visitors. |
 | `allocate_turn` | Gather demands and allocate from existing stock. |
 | `consume_turn` | Evaluate population allocations and shortages. |
@@ -433,7 +430,7 @@ Contains `Tile`, `TileOccupancy`, settlement-qualified references and `Territory
 | `add_building` | Validate province membership and delegate completed-building registration. |
 | `queue_upgrade` | Validate the target's province and delegate the upgrade. |
 | `cancel_project` | Delegate cancellation using the shared registry, even after map edits. |
-| `process_settlement_turn` | Recheck project membership and advance one settlement with shared spatial state. |
+| `process_settlement_turn_for_test` | Test-only helper that advances one settlement with shared spatial state. |
 | `validate_settlement_turn` | Preflight existing project positions without mutating world state. |
 
 ### [core/src/domain/world/state/inspection.rs](../../../core/src/domain/world/state/inspection.rs)
@@ -579,10 +576,10 @@ The following files only declare/export modules; they contain no explicit method
 | File / location | Purpose |
 | --- | --- |
 | [core/tests/economy_validation_tests.rs](../../../core/tests/economy_validation_tests.rs) | Public-interface tests of definition validation, commands and allocation integrity. |
-| [core/tests/building_productivity_tests.rs](../../../core/tests/building_productivity_tests.rs) | Public-interface tests of travel costs, configuration, output scaling and settlement isolation. |
-| [core/tests/territory_construction_tests.rs](../../../core/tests/territory_construction_tests.rs) | World construction, overlap rejection, placement, upgrades and atomic failures. |
-| [core/tests/project_cancellation_tests.rs](../../../core/tests/project_cancellation_tests.rs) | Cancellation, no refunds, upgrade preservation, reservation matching and identifier reuse. |
-| [core/tests/simulation_tests.rs](../../../core/tests/simulation_tests.rs) | Global progression/order, decisions, local economic equivalence and headless multi-turn execution. |
+| [core/src/test_support/building_productivity_tests.rs](../../../core/src/test_support/building_productivity_tests.rs) | Public-interface tests of travel costs, configuration, output scaling and settlement isolation. |
+| [core/src/test_support/territory_construction_tests.rs](../../../core/src/test_support/territory_construction_tests.rs) | World construction, overlap rejection, placement, upgrades and atomic failures. |
+| [core/src/test_support/project_cancellation_tests.rs](../../../core/src/test_support/project_cancellation_tests.rs) | Cancellation, no refunds, upgrade preservation, reservation matching and identifier reuse. |
+| [core/src/test_support/simulation_tests.rs](../../../core/src/test_support/simulation_tests.rs) | Global progression/order, decisions, local economic equivalence and headless multi-turn execution. |
 | [core/tests/settlement_registry_tests.rs](../../../core/tests/settlement_registry_tests.rs) | Initialization, typed references, duplicates, stable traversal, ID allocation and persistent economic/spatial identity. |
 | [core/examples/headless.rs](../../../core/examples/headless.rs) | `main` creates a farm scenario and runs a requested number of turns without graphics. |
 | Inline `#[cfg(test)]` modules | Unit tests alongside the feature they verify, including turn tests in `settlement/turn/mod.rs`. |
@@ -610,14 +607,12 @@ projects outside their settlement's province after a membership change.
 | [domain/buildings/productivity.rs](../../../core/src/domain/buildings/productivity.rs) | `TravelCostSource::travel_cost` supplies a directed optional cost to the calculator. |
 | [application/commands/settlement/prepared.rs](../../../core/src/application/commands/settlement/prepared.rs) | `SettlementCommand`: resolved commands for construction, upgrade, cancellation, building settings, storage order and trade. |
 | [application/commands/settlement/handler.rs](../../../core/src/application/commands/settlement/handler.rs) | `handle_decision` validates, executes accepted actions and returns `DecisionOutcome`. |
-| [application/queries/settlement.rs](../../../core/src/application/queries/settlement.rs) | `observe_settlement` projects a `SettlementObservation` from the world and latest report. |
+| [application/queries/observe_settlement.rs](../../../core/src/application/queries/observe_settlement.rs) | `observe_settlement` projects a `SettlementObservation` from the world and latest report. |
 | [application/queries/observation.rs](../../../core/src/application/queries/observation.rs) | Serializable observation types. See [settlement observations](settlement_observations.md). |
-| [application/queries/action_mask.rs](../../../core/src/application/queries/action_mask.rs) | `ActionMask` and its option types. |
-| [application/queries/legal_actions.rs](../../../core/src/application/queries/legal_actions.rs) | `legal_actions` lists options confirmed by the command validator. |
 | [application/commands/settlement/contract.rs](../../../core/src/application/commands/settlement/contract.rs) | Agent contract: `SettlementDecision`, `SettlementAction`, `ActionKind`, `OfferSpec`; `to_json`/`from_json`. See [settlement decisions](settlement_decisions.md). |
 | [domain/world/settlement_environment.rs](../../../core/src/domain/world/settlement_environment.rs) | `AStarTravelCosts::new/travel_cost`, `MapConstructionSpace::new` and its construction operations, `MapSettlementEnvironment::new` and delegation of both ports. |
-| [application/commands/settlement/dispatch.rs](../../../core/src/application/commands/settlement/dispatch.rs) | `CommandError`; `World::execute_settlement_command` is the single typed command dispatcher. |
-| [application/commands/settlement/preparation.rs](../../../core/src/application/commands/settlement/preparation.rs) | `World::validate_decision`: read-only check of a `SettlementDecision`, returning `ValidatedDecision` with resolved `AcceptedAction`s and `RejectedAction`s. See [settlement decisions](settlement_decisions.md#validation). |
+| [application/commands/settlement/dispatch.rs](../../../core/src/application/commands/settlement/dispatch.rs) | Internal dispatcher maps prepared commands to domain operations. |
+| [application/commands/settlement/preparation.rs](../../../core/src/application/commands/settlement/preparation.rs) | `DecisionPreparation::validate_decision`: read-only check of a `SettlementDecision`, returning `ValidatedDecision` with resolved `AcceptedAction`s and `RejectedAction`s. See [settlement decisions](settlement_decisions.md#validation). |
 
 `World::settlement_turn_parts` borrows a target and temporary map adapter;
 `World::settlement_mut` is a checked internal lookup for nonspatial phases.
@@ -632,7 +627,7 @@ shares checked mouse-to-tile conversion between pathfinding overlays.
 | [domain/settlement/model/trading/mod.rs](../../../core/src/domain/settlement/model/trading/mod.rs) | `TradeManager` and `CaravanOrder`: templates, orders, funded departures and queued returns. |
 | [domain/settlement/model/trading/lifecycle.rs](../../../core/src/domain/settlement/model/trading/lifecycle.rs) | `reserve_market`, `fund_caravan_orders`, `trade_with_visitors`, `collect_trade_returns`. |
 | [domain/world/state/trade.rs](../../../core/src/domain/world/state/trade.rs) | `begin_trade_turn`, `prepare_settlement_turn`, `default_trade_locations`, `finish_trade_turn`: transport and participant resolution. |
-| [domain/trade/network.rs](../../../core/src/domain/trade/network.rs) | `process_turn`: alternative local-phase runner with explicit endpoints. |
+| [test_support/trade_network.rs](../../../core/src/test_support/trade_network.rs) | Test runner with explicit caravan endpoints. |
 
 `Simulation::step` invokes transport before Preparation and after EconomicUpdates.
 See [trading](trading.md) for report timing, failure semantics and all supporting files.

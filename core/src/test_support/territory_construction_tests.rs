@@ -88,7 +88,7 @@ fn construction_reserves_a_tile_until_materials_and_time_are_paid() {
     );
 
     let first = world
-        .process_settlement_turn(SettlementId(1), &mut finder)
+        .process_settlement_turn_for_test(SettlementId(1), &mut finder)
         .unwrap();
     assert!(first.projects.is_empty());
     assert!(first.inventory.is_balanced());
@@ -106,7 +106,7 @@ fn construction_reserves_a_tile_until_materials_and_time_are_paid() {
     );
 
     let second = world
-        .process_settlement_turn(SettlementId(1), &mut finder)
+        .process_settlement_turn_for_test(SettlementId(1), &mut finder)
         .unwrap();
     assert_eq!(
         second.projects[0].result,
@@ -240,7 +240,7 @@ fn duplicate_project_ids_and_occupied_tiles_do_not_leave_phantom_reservations() 
     );
 
     world
-        .process_settlement_turn(SettlementId(1), &mut PathFinder::new(4, 2))
+        .process_settlement_turn_for_test(SettlementId(1), &mut PathFinder::new(4, 2))
         .unwrap();
     assert_eq!(
         world.queue_construction(
@@ -398,7 +398,7 @@ fn upgrades_keep_the_building_on_its_tile_throughout_the_project() {
             building(SettlementId(1), 9)
         );
         world
-            .process_settlement_turn(SettlementId(1), &mut finder)
+            .process_settlement_turn_for_test(SettlementId(1), &mut finder)
             .unwrap();
     }
     assert_eq!(
@@ -438,7 +438,7 @@ fn different_settlements_can_use_the_same_local_project_and_building_ids() {
             project(SettlementId(id), 7)
         );
         world
-            .process_settlement_turn(SettlementId(id), &mut finder)
+            .process_settlement_turn_for_test(SettlementId(id), &mut finder)
             .unwrap();
         assert_eq!(
             world.tile_at(position).unwrap().occupancy(),
@@ -470,7 +470,7 @@ fn flooded_construction_is_rejected_before_spending_and_releases_its_reservation
         .set_tile_terrain(Position { x: 0, y: 0 }, Area::new(0.1, 0.5))
         .unwrap();
     let report = world
-        .process_settlement_turn(SettlementId(1), &mut PathFinder::new(4, 2))
+        .process_settlement_turn_for_test(SettlementId(1), &mut PathFinder::new(4, 2))
         .unwrap();
     assert_eq!(
         report.projects[0].result,
@@ -517,7 +517,7 @@ fn changed_province_membership_stops_the_turn_before_spending() {
         .set_tile_province(Position { x: 0, y: 0 }, 20)
         .unwrap();
     assert!(matches!(
-        world.process_settlement_turn(SettlementId(1), &mut PathFinder::new(4, 2)),
+        world.process_settlement_turn_for_test(SettlementId(1), &mut PathFinder::new(4, 2)),
         Err(WorldError::SettlementOutsideProvince { .. })
     ));
     assert_eq!(
@@ -577,7 +577,7 @@ fn invalid_project_cannot_release_another_settlements_reservation() {
     };
     territory.reserve_construction(SITE, other).unwrap();
 
-    let report = settlement.process_turn(
+    let report = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&map, &mut PathFinder::new(1, 1), &mut territory),
         &mut [],
     );

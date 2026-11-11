@@ -108,7 +108,7 @@ impl SettlementAction {
     }
 }
 
-/// Action variant without parameters; used for action masks and reports.
+/// Action variant without parameters; used for command reports.
 /// Serialized names match the `type` tag of `SettlementAction`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

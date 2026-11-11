@@ -205,7 +205,7 @@ mod tests {
         assert!(view.building.is_none());
 
         world
-            .process_settlement_turn(SettlementId(1), &mut PathFinder::new(2, 1))
+            .process_settlement_turn_for_test(SettlementId(1), &mut PathFinder::new(2, 1))
             .unwrap();
         let view = world.inspect_tile(position).unwrap();
         assert!(view.project.is_none());

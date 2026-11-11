@@ -35,7 +35,7 @@ stateDiagram-v2
   the project ID and accepts a validated definition, then its `ConstructionSpace` adapter validates coordinates, land and the vacant slot before reservation.
 - `World::add_building` applies the same placement checks and registers a completed
   building. It cannot replace a project or another building.
-- `World::process_settlement_turn` passes the same shared registry to the settlement.
+- The global turn coordinator uses the same shared registry for settlement phases.
   Construction is revalidated before allocation and completion. Completion replaces
   the reservation with the actual building reference.
 - `World::queue_upgrade` delegates an upgrade of an existing local building. Its

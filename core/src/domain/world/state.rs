@@ -270,7 +270,7 @@ impl World {
         }
         Ok(())
     }
-    pub fn caravan_travel(&mut self) {
+    fn caravan_travel(&mut self) {
         for caravan in &mut self.caravans {
             caravan.travel();
         }

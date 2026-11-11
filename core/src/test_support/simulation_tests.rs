@@ -188,7 +188,7 @@ fn global_pipeline_preserves_existing_local_turn_economy() {
             assert_eq!(
                 global.settlements[&SettlementId(id)],
                 local
-                    .process_settlement_turn(SettlementId(id), &mut finder)
+                    .process_settlement_turn_for_test(SettlementId(id), &mut finder)
                     .unwrap()
             );
             assert!(

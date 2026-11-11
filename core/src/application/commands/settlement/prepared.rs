@@ -23,14 +23,6 @@ pub enum SettlementCommand {
         cost: ProjectCost,
     },
     CancelProject(ProjectId),
-    SetBuildingLoad {
-        building_id: BuildingId,
-        load: f32,
-    },
-    SetBuildingActive {
-        building_id: BuildingId,
-        active: bool,
-    },
     /// Activate the building and set its load; used for agent staff decisions.
     SetBuildingStaff {
         building_id: BuildingId,

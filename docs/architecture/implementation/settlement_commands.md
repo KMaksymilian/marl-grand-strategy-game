@@ -99,7 +99,7 @@ If an upgrade target disappears after earlier partial payment, the next turn rep
 
 `World` owns the global `TerritoryManager` and registers each settlement in exactly one province with `add_settlement(province_id, settlement)`. A province may have no settlement. Register settlements before adding buildings or projects; importing existing structures is not supported yet.
 
-For registered settlements, use `World::queue_construction`, `World::add_building`, `World::queue_upgrade`, `World::cancel_project` and `World::process_settlement_turn`. Construction entry points validate the settlement and its province, then delegate lifecycle changes to `Settlement`; cancellation only requires the settlement and its matching reservation. The world's registry and settlements have no public mutable getters. `World::inspect_tile(position)` combines terrain, province membership and occupancy with borrowed building/project data and separate province/occupant settlements; see [territory](../systems/territory.md).
+For registered settlements, use `World::queue_construction`, `World::add_building`, `World::queue_upgrade` and `World::cancel_project`. Construction entry points validate the settlement and its province, then delegate lifecycle changes to `Settlement`; cancellation only requires the settlement and its matching reservation. The world's registry and settlements have no public mutable getters. `World::inspect_tile(position)` combines terrain, province membership and occupancy with borrowed building/project data and separate province/occupant settlements; see [territory](../systems/territory.md).
 
 Standalone construction/cancellation receives `&mut impl ConstructionSpace`; `add_building` and `process_turn` require both `ConstructionSpace` and `TravelCostSource`. `process_turn` also accepts arrived visitors (`&mut [&mut Caravan]`). The caller must retain and reuse the same backing occupancy store. The supplied world adapters preserve land and overlap validation. Project and building references include the settlement ID because their local IDs can overlap across settlements.
 
@@ -114,7 +114,7 @@ Construction sites are checked again before allocation and completion. Invalid c
 ## 8. Limitations and Open Questions
 
 - Recruitment remains unimplemented and is explicitly rejected.
-- There is no cost refund or automatic population change. `Simulation::step` runs global phases; `World::process_settlement_turn` remains a local convenience entry point. See [simulation commands](simulation_commands.md).
+- There is no cost refund or automatic population change. `Simulation::step` runs global phases. See [simulation commands](simulation_commands.md).
 - Overflow uses a configurable ordered material list. There is no automatic policy choosing this order. Resource maps are private; capacity changes use validated commands.
 
 These limitations describe current code rather than approving final game rules. Policies requiring further decisions are collected in [0001-economy.md](../../decisions/0001-economy.md).

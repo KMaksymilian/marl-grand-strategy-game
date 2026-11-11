@@ -6,6 +6,7 @@ use super::{World, WorldError};
 use crate::domain::buildings::{Building, definition::BuildingDefinition};
 use crate::domain::ids::{BuildingId, ProjectId};
 use crate::domain::settlement::projects::{ProjectCost, ProjectError, ProjectResult};
+#[cfg(test)]
 use crate::domain::settlement::turn_report::TurnReport;
 use crate::domain::world::settlement_environment::{
     MapConstructionSpace, MapSettlementEnvironment,
@@ -106,8 +107,9 @@ impl World {
             .map_err(WorldError::Project)
     }
 
-    /// Advances one settlement; this does not implement a global world turn scheduler.
-    pub fn process_settlement_turn(
+    /// Advances one registered settlement in isolation for tests.
+    #[cfg(test)]
+    pub(crate) fn process_settlement_turn_for_test(
         &mut self,
         settlement_id: SettlementId,
         finder: &mut PathFinder,
@@ -126,7 +128,7 @@ impl World {
             .settlements
             .get_mut(settlement_id)
             .expect("settlement was validated")
-            .process_turn(
+            .process_turn_for_test(
                 &mut MapSettlementEnvironment::new(&self.map, finder, &mut self.territory),
                 &mut visitors,
             ))

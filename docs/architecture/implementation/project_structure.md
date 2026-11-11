@@ -16,9 +16,10 @@ file and explicitly implemented runtime method.
 │   ├── src/
 │   │   ├── lib.rs                   Layer exports and compatibility paths
 │   │   ├── configuration.rs         Runtime TOML parsing and validation
+│   │   ├── test_support/            Isolated turn and decision tests (test builds only)
 │   │   ├── application/
 │   │   │   ├── commands/            Agent contract, validation and execution
-│   │   │   ├── queries/             Observations and legal action masks
+│   │   │   ├── queries/             Settlement observations
 │   │   │   └── simulation/          Global turns, decision queue and reports
 │   │   └── domain/
 │   │       ├── buildings/           Blueprints, instances and production
@@ -53,14 +54,13 @@ settlement and the world occupancy registry together.
 ```text
 application/simulation/
 ├── mod.rs                     State, validation, registry access and decision queue
-├── decisions.rs               Command re-export, error alias and outcomes
-├── turn.rs                    Global phase execution and turn progression
+├── turn_coordinator.rs             Executes decisions and global phases
 └── turn_report.rs             Completed turn, settlement reports and execution trace
 
 application/commands/settlement/
 ├── contract.rs                Serializable decisions, actions and outcomes
 ├── response.rs                Applied effects and rejection reasons
-├── validation.rs              Input checks without world access
+├── input_validation.rs        Input checks without world access
 ├── preparation.rs              Batch preparation against current world state
 ├── prepared.rs                Resolved values used for dispatch
 ├── handler.rs                 Executes accepted actions and collects results
@@ -69,9 +69,7 @@ application/commands/settlement/
 
 application/queries/
 ├── observation.rs            Serializable observation model
-├── settlement.rs             Projects an observation from the world
-├── action_mask.rs             Serializable mask model
-└── legal_actions.rs           Builds masks using command validation
+└── observe_settlement.rs     Projects an observation from the world
 
 domain/settlement/
 ├── mod.rs                     Public domain exports
@@ -104,7 +102,6 @@ trade/
 ├── book/matching.rs           Bilateral matching and transactions
 ├── book/market.rs             Sharing a market between visitors
 ├── execution.rs               Trade records and participant perspective
-├── network.rs                 Alternative world runner with explicit endpoints
 ├── offer.rs                   Buy/sell offer state and demand
 ├── allocation.rs              Reserve and return resources
 └── caravan.rs                 Route and transport state

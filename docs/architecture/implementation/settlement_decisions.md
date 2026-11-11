@@ -7,8 +7,8 @@ settlement agent wants to do in one turn. Rule-based and learning agents
 
 Status: the contract, its JSON format, validation and execution are implemented;
 `Simulation::queue_decision` takes a `SettlementDecision`. Agents read the state
-through [observations](settlement_observations.md), which include an
-[action mask](settlement_observations.md#action-mask) of currently legal actions.
+through [observations](settlement_observations.md) and receive per-action outcomes
+in the completed turn report.
 
 ## Types
 
@@ -35,7 +35,7 @@ parameters. The price is the minimum when selling and the maximum when buying.
 It never contains purchase progress, so a submitted offer cannot carry goods.
 
 `ActionKind` is the parameterless variant (`SettlementAction::kind()`), with
-`ActionKind::ALL` in a fixed order for mask vectors.
+`ActionKind::ALL` in a fixed order.
 
 Agents never supply costs, building definitions or project IDs. Building types
 are referenced by `BuildingTypeId`, the catalog key.
@@ -54,7 +54,7 @@ to the domain. World checks province and terrain. TerritoryManager checks
 vacancy both for the read-only preview and when reserving the tile.
 
 
-`World::validate_decision(&decision) -> Result<ValidatedDecision, WorldError>`
+`DecisionPreparation::validate_decision(&decision)`
 ([application/commands/settlement/preparation.rs](../../../core/src/application/commands/settlement/preparation.rs)) reads
 the world and never changes it. It fails as a whole only for an unknown deciding
 settlement (`WorldError::MissingSettlement`).
@@ -130,8 +130,8 @@ reason such as `TileOccupied` and the position.
 In the Decisions phase, `Simulation::step` calls the application handler. It
 validates the batch against the current world, then sends accepted actions to
 the dispatcher, which calls domain methods. Effects such as new staff apply to
-the same turn's allocation. The existing `World::apply_decision` method
-delegates to the handler. [Handler source](../../../core/src/application/commands/settlement/handler.rs)
+the same turn's allocation. The test build also exposes private helpers for
+checking and applying individual decisions in isolation. [Handler source](../../../core/src/application/commands/settlement/handler.rs)
 
 | Action | Settlement operation | Effect reported |
 | --- | --- | --- |

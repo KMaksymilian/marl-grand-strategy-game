@@ -63,7 +63,7 @@ sequenceDiagram
     participant S as Settlement
     participant E as MapConstructionSpace
     participant T as TerritoryManager
-    Sim->>W: execute_settlement_command(id, command)
+    Sim->>W: Dispatch a validated command through the application handler
     W->>W: resolve settlement and validate province
     W->>S: queue_construction(..., space)
     S->>S: accept validated definition and check local project ID

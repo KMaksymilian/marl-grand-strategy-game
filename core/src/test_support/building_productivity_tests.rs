@@ -78,7 +78,7 @@ fn distance_reduces_output_without_discounting_materials_or_workers() {
             Some(calculator(0, 10, 30)),
             &mut AStarTravelCosts::new(&test_map(), &mut test_finder()),
         );
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -125,7 +125,7 @@ fn configured_calculator_applies_to_buildings_added_later() {
         0.5
     );
     settlement.deposit(ResourceType::Wood, 10);
-    let report = settlement.process_turn(
+    let report = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
         &mut [],
     );
@@ -188,7 +188,7 @@ fn moving_capital_changing_policy_and_disabling_calculator_refresh_cached_produc
             .location_productivity(),
         1.0
     );
-    let report = settlement.process_turn(
+    let report = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
         &mut [],
     );
@@ -205,7 +205,7 @@ fn load_and_material_shortage_remain_independent_of_location_productivity() {
         &mut AStarTravelCosts::new(&test_map(), &mut test_finder()),
     );
     settlement.set_building_load(BuildingId(7), 0.5).unwrap();
-    let report = settlement.process_turn(
+    let report = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
         &mut [],
     );
@@ -216,7 +216,7 @@ fn load_and_material_shortage_remain_independent_of_location_productivity() {
 
     settlement.withdraw(ResourceType::Wood, 93);
     settlement.set_building_load(BuildingId(7), 1.0).unwrap();
-    let report = settlement.process_turn(
+    let report = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
         &mut [],
     );
@@ -241,7 +241,7 @@ fn zero_load_and_inactive_buildings_do_not_consume_materials() {
                 .set_building_active(BuildingId(7), false)
                 .unwrap();
         }
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
@@ -269,7 +269,7 @@ fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
             &mut MapConstructionSpace::new(&test_map(), &mut territory),
         )
         .unwrap();
-    let report = settlement.process_turn(
+    let report = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
         &mut [],
     );
@@ -290,7 +290,7 @@ fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
             ProjectCost::default(),
         )
         .unwrap();
-    let report = settlement.process_turn(
+    let report = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
         &mut [],
     );
@@ -308,7 +308,7 @@ fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
             .location_productivity(),
         0.5
     );
-    let report = settlement.process_turn(
+    let report = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
         &mut [],
     );
@@ -333,7 +333,7 @@ fn output_rounds_once_after_combining_staffing_and_distance() {
         )
         .unwrap();
     settlement.deposit(ResourceType::Wood, 2);
-    let report = settlement.process_turn(
+    let report = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
         &mut [],
     );
@@ -355,7 +355,7 @@ fn two_settlements_keep_independent_productivity_configuration() {
     );
     assert!(
         first
-            .process_turn(
+            .process_turn_for_test(
                 &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
                 &mut []
             )
@@ -364,7 +364,7 @@ fn two_settlements_keep_independent_productivity_configuration() {
     );
     assert!(
         second
-            .process_turn(
+            .process_turn_for_test(
                 &mut MapSettlementEnvironment::new(
                     &test_map(),
                     &mut test_finder(),
@@ -407,7 +407,7 @@ fn map_changes_update_output_using_the_current_astar_route_each_turn() {
         .unwrap();
     settlement.deposit(ResourceType::Wood, 30);
 
-    let first = settlement.process_turn(
+    let first = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&map, &mut finder, &mut territory),
         &mut [],
     );
@@ -421,7 +421,7 @@ fn map_changes_update_output_using_the_current_astar_route_each_turn() {
         ),
         Some(28)
     );
-    let detour = settlement.process_turn(
+    let detour = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&map, &mut finder, &mut territory),
         &mut [],
     );
@@ -434,7 +434,7 @@ fn map_changes_update_output_using_the_current_astar_route_each_turn() {
     for y in 0..3 {
         map.terrain[y * 3 + 1].elevation_val = 0.0;
     }
-    let blocked = settlement.process_turn(
+    let blocked = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&map, &mut finder, &mut territory),
         &mut [],
     );
@@ -519,7 +519,7 @@ fn changing_toml_thresholds_changes_production_for_the_same_route() {
             )),
             &mut AStarTravelCosts::new(&map, &mut finder),
         );
-        let report = settlement.process_turn(
+        let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&map, &mut finder, &mut territory),
             &mut [],
         );

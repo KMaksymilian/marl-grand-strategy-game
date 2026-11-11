@@ -57,6 +57,10 @@ fn definition(id: &str, max_workers: u32, wood: u32, turns: u32) -> BuildingDefi
 /// Settlement 1 owns province 10, settlement 2 owns 20, province 30 is empty.
 /// Settlement 1: population 5, Wood 10, Grain 3, gold 20, a farm at (0,0).
 fn world() -> World {
+    world_with_farm_load(0.0)
+}
+
+fn world_with_farm_load(load: f32) -> World {
     let mut terrain = vec![Area::new(0.5, 0.5); 8];
     terrain[5] = Area::new(0.0, 0.5);
     let mut world = World::new(
@@ -79,9 +83,9 @@ fn world() -> World {
 
     let farm = world.building_catalog().get_blueprint("farm").unwrap();
     let mut finder = PathFinder::new(4, 2);
-    world
-        .add_building(ME, Building::new(FARM, at(0, 0), farm.clone()), &mut finder)
-        .unwrap();
+    let mut building = Building::new(FARM, at(0, 0), farm.clone());
+    building.set_target_load(load).unwrap();
+    world.add_building(ME, building, &mut finder).unwrap();
     world
         .add_building(
             NEIGHBOUR,
@@ -155,13 +159,15 @@ fn publish(offers: Vec<OfferSpec>) -> SettlementAction {
 
 /// Adds a second farm of settlement 1 at (0,1) and returns its ID.
 fn second_farm(world: &mut World) -> BuildingId {
+    second_farm_with_load(world, 0.0)
+}
+
+fn second_farm_with_load(world: &mut World, load: f32) -> BuildingId {
     let farm = world.building_catalog().get_blueprint("farm").unwrap();
+    let mut building = Building::new(BuildingId(2), at(0, 1), farm);
+    building.set_target_load(load).unwrap();
     world
-        .add_building(
-            ME,
-            Building::new(BuildingId(2), at(0, 1), farm),
-            &mut PathFinder::new(4, 2),
-        )
+        .add_building(ME, building, &mut PathFinder::new(4, 2))
         .unwrap();
     BuildingId(2)
 }
@@ -377,19 +383,8 @@ fn worker_requests_respect_building_capacity_and_population() {
 
 #[test]
 fn staff_can_be_reduced_when_buildings_already_ask_for_too_many() {
-    let mut world = world();
-    let second = second_farm(&mut world);
-    for building_id in [FARM, second] {
-        world
-            .execute_settlement_command(
-                ME,
-                &SettlementCommand::SetBuildingLoad {
-                    building_id,
-                    load: 1.0,
-                },
-            )
-            .unwrap();
-    }
+    let mut world = world_with_farm_load(1.0);
+    let second = second_farm_with_load(&mut world, 1.0);
     // 8 requested workers for a population of 5.
     let result = validate(&world, vec![workers(FARM, 3), workers(second, 4)]);
     assert!(result.rejected.is_empty(), "{:?}", result.rejected);
@@ -599,17 +594,9 @@ fn caravans_need_a_receiver_and_enough_stock_and_gold_together() {
 /// Settlement 1 publishes market offers before the decision is validated.
 fn world_with_market(offers: Vec<OfferSpec>) -> World {
     let mut world = world();
-    world
-        .execute_settlement_command(
-            ME,
-            &SettlementCommand::PublishMarketOffers(
-                offers
-                    .iter()
-                    .map(|offer| (offer.resource, offer.to_offer()))
-                    .collect(),
-            ),
-        )
-        .unwrap();
+    let decision = SettlementDecision::new(ME, vec![publish(offers)]);
+    let outcome = world.apply_decision(&decision).unwrap();
+    assert!(outcome.results[0].is_applied());
     world
 }
 

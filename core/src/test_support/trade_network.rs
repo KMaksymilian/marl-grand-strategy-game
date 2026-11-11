@@ -1,15 +1,15 @@
-//! World-owned settlements and caravans advance together in deterministic ID order.
+//! Test runner with explicit caravan endpoints for isolated trade scenarios.
 use crate::domain::ids::SettlementId;
 use crate::domain::settlement::turn_report::TurnReport;
 use crate::domain::world::pathfinding::path_finder::PathFinder;
 use crate::domain::world::{Point, World, WorldError};
 use std::collections::HashMap;
 
-pub struct TradeNetwork;
+pub(super) struct TradeNetwork;
 impl TradeNetwork {
     /// Preflight all registered settlements before movement, unloading or spending.
     /// Reports follow ascending settlement ID; locations provide explicit route endpoints.
-    pub fn process_turn(
+    pub(super) fn process_turn(
         world: &mut World,
         locations: &HashMap<SettlementId, Point>,
         finder: &mut PathFinder,
@@ -21,7 +21,7 @@ impl TradeNetwork {
         world.begin_trade_turn();
         let mut reports = Vec::with_capacity(ids.len());
         for id in ids {
-            reports.push(world.process_settlement_turn(id, finder)?);
+            reports.push(world.process_settlement_turn_for_test(id, finder)?);
         }
         world.finish_trade_turn(locations, finder);
         Ok(reports)

@@ -44,7 +44,7 @@ Child modules add methods to their owning types rather than extra service object
 
 `TradeCommandError` contains `LabourIsNotTradable`, `TradeWithSelf`, `EmptyOrder`.
 Agent trade actions (`PublishMarketOffers`, `ClearMarketOffers`, `OrderCaravan`) are
-defined in the [decision contract](settlement_decisions.md); they are validated and executed by `World::apply_decision`.
+defined in the [decision contract](settlement_decisions.md); the application handler validates and executes them during `Simulation::step()`.
 
 ## Routing and global orchestration
 
@@ -53,10 +53,10 @@ defined in the [decision contract](settlement_decisions.md); they are validated 
 | [domain/trade/caravan.rs](../../../core/src/domain/trade/caravan.rs) | `CaravanCargo` owns a funded book before routing; `CaravanReturn` owns its returned book/outcome/log. `Caravan::from_cargo` returns cargo on route failure; `new` returns `Option` without recovering its book. `travel` dispatches outbound/return movement; `finish_trading` mirrors executions and starts return; `abort_trading` marks a missing receiver; `into_return` extracts results. `state`, `position`, `book`, `trades` expose views; public `trade` handles one book outside shared matching. |
 | [domain/world/state.rs](../../../core/src/domain/world/state.rs) | Owns caravans and settlement/province registries. `caravan_travel` advances movement; internal `settlement_ids` supplies registry order and `settlement_mut` resolves persistent instances. |
 | [domain/world/state/trade.rs](../../../core/src/domain/world/state/trade.rs) | `begin_trade_turn` moves/removes caravans, queues returns and turns back missing receivers. `prepare_settlement_turn` supplies sender-sorted arrivals and a map adapter. `default_trade_locations` chooses the first land tile per registered province. `finish_trade_turn` routes departures or queues unchanged cargo on failure. |
-| [domain/world/state/construction.rs](../../../core/src/domain/world/state/construction.rs) | `validate_settlement_turn` checks project membership before mutation; `process_settlement_turn` runs one settlement with visitors/environment, without global transport. |
+| [domain/world/state/construction.rs](../../../core/src/domain/world/state/construction.rs) | `validate_settlement_turn` checks project membership before mutation. |
 | [domain/world/settlement_environment.rs](../../../core/src/domain/world/settlement_environment.rs) | Temporary construction/productivity adapters; Settlement does not receive Map/PathFinder/TerritoryManager directly. |
-| [application/simulation/turn.rs](../../../core/src/application/simulation/turn.rs) | `step` preflights all settlements, applies decisions, starts transport, runs global phases, routes departures and increments time. |
-| [domain/trade/network.rs](../../../core/src/domain/trade/network.rs) | Alternative `process_turn(world, locations, finder)`: preflight all, start transport, run local turns by ID and route departures. Explicit endpoints; no Simulation counter. |
+| [application/simulation/turn_coordinator.rs](../../../core/src/application/simulation/turn_coordinator.rs) | `step` preflights all settlements, applies decisions, starts transport, runs global phases, routes departures and increments time. |
+| [test_support/trade_network.rs](../../../core/src/test_support/trade_network.rs) | Test-only runner for scenarios with explicit caravan endpoints. |
 | [domain/world/pathfinding/a_star.rs](../../../core/src/domain/world/pathfinding/a_star.rs) | `AStar::a_star` returns point paths; terrain costs affect route choice. |
 | [domain/world/pathfinding/path_finder.rs](../../../core/src/domain/world/pathfinding/path_finder.rs) | Reusable search buffers owned/supplied by the coordinator. |
 

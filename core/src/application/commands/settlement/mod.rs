@@ -1,13 +1,16 @@
 //! Settlement command contract, batch validation and execution.
+#[cfg(test)]
 mod compatibility;
 pub mod contract;
 mod dispatch;
+pub(crate) use dispatch::CommandDispatch;
 pub(crate) mod handler;
-pub(in crate::application) mod preparation;
-pub mod prepared;
+pub mod input_validation;
+mod preparation;
+pub(crate) mod prepared;
 pub mod response;
-pub mod validation;
+pub use input_validation as validation;
 
 pub use contract::*;
-pub use dispatch::CommandError;
-pub use preparation::{AcceptedAction, ValidatedDecision};
+#[cfg(test)]
+pub(crate) use preparation::ValidatedDecision;

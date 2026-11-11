@@ -2,7 +2,7 @@
 use std::collections::BTreeMap;
 
 use super::{PhaseExecution, SettlementDecision, SimulationError, SimulationTurnReport, TurnPhase};
-use crate::application::commands::settlement::handler::handle_decision;
+use crate::application::commands::settlement::{CommandDispatch, handler::handle_decision};
 use crate::domain::ids::SettlementId;
 use crate::domain::world::{World, pathfinding::path_finder::PathFinder};
 
@@ -40,7 +40,7 @@ pub(super) fn run_turn(
         });
         for decision in pending.remove(&id).unwrap_or_default() {
             decisions.push(
-                handle_decision(world, &decision)
+                handle_decision(CommandDispatch::new(world), &decision)
                     .expect("queued decisions belong to registered settlements"),
             );
         }

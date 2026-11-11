@@ -5,7 +5,7 @@
 //! catalog definitions and costs, simulation-assigned project IDs and exact building
 //! loads. A later action that targets the same object as an earlier accepted action
 //! is rejected as a conflict. Validation never changes the world.
-use super::validation::validate_input;
+use super::input_validation::validate_input;
 use crate::application::commands::settlement::contract::{
     ActionEffect, ActionError, OfferSpec, RejectedAction, SettlementAction, SettlementDecision,
 };
@@ -91,7 +91,7 @@ impl Checked {
 /// Trade is tracked in funding order: at the start of the turn the market is
 /// funded first, then caravan orders in queue order, both from the stock and gold
 /// the settlement holds now (nothing changes them between decisions and funding).
-pub(in crate::application) struct Batch {
+struct Batch {
     claimed: HashMap<Target, usize>,
     next_project: u64,
     /// Staff requested by each building before this decision.
@@ -106,7 +106,7 @@ pub(in crate::application) struct Batch {
 }
 
 impl Batch {
-    pub(in crate::application) fn new(settlement: &Settlement) -> Self {
+    fn new(settlement: &Settlement) -> Self {
         let staff_before: HashMap<_, _> = settlement
             .buildings()
             .map(|building| (building.instance_id(), building.requested_workers()))
@@ -137,11 +137,7 @@ impl Batch {
 
     /// Units of `resource` a new caravan can still be funded with: current stock
     /// minus what the market reserves first and what earlier caravans take.
-    pub(in crate::application) fn caravan_room(
-        &self,
-        settlement: &Settlement,
-        resource: ResourceType,
-    ) -> u64 {
+    fn caravan_room(&self, settlement: &Settlement, resource: ResourceType) -> u64 {
         let stock = u64::from(settlement.inventory().amount(resource));
         let market = self
             .market_goods
@@ -154,7 +150,7 @@ impl Batch {
 
     /// Gold a new caravan can still commit to purchases, after the market and
     /// earlier caravans.
-    pub(in crate::application) fn caravan_gold_room(&self, settlement: &Settlement) -> u64 {
+    fn caravan_gold_room(&self, settlement: &Settlement) -> u64 {
         let gold = u64::from(settlement.gold());
         (gold - self.market_gold.min(gold)).saturating_sub(self.caravan_gold)
     }
@@ -197,7 +193,7 @@ impl Batch {
 
     /// Highest staff the building may request. Raising staff must keep all
     /// buildings within the population; keeping or lowering staff is always allowed.
-    pub(in crate::application) fn worker_limit(
+    fn worker_limit(
         &self,
         settlement: &Settlement,
         building_id: BuildingId,
@@ -264,12 +260,12 @@ fn room_u32(amount: u64) -> u32 {
     u32::try_from(amount).unwrap_or(u32::MAX)
 }
 
-pub(in crate::application) struct DecisionPreparation<'a> {
+pub(super) struct DecisionPreparation<'a> {
     world: &'a World,
 }
 
 impl<'a> DecisionPreparation<'a> {
-    pub(in crate::application) fn new(world: &'a World) -> Self {
+    pub(super) fn new(world: &'a World) -> Self {
         Self { world }
     }
 
@@ -308,16 +304,6 @@ impl<'a> DecisionPreparation<'a> {
             accepted,
             rejected,
         })
-    }
-
-    /// The validator's verdict on `action` as the first action of a decision.
-    pub(in crate::application) fn check_single_action(
-        &self,
-        settlement: &Settlement,
-        action: &SettlementAction,
-        batch: &Batch,
-    ) -> Result<(), ActionError> {
-        self.prepare_action(settlement, action, batch).map(|_| ())
     }
 
     fn prepare_action(
@@ -511,7 +497,7 @@ impl<'a> DecisionPreparation<'a> {
     }
 
     /// The same placement rules as construction: own province, land, empty tile.
-    pub(crate) fn check_construction_site(
+    fn check_construction_site(
         &self,
         settlement_id: SettlementId,
         position: Position,
@@ -534,7 +520,7 @@ impl<'a> DecisionPreparation<'a> {
     }
 
     /// Receiver rules for caravans: another registered settlement.
-    pub(in crate::application) fn check_caravan_receiver(
+    fn check_caravan_receiver(
         &self,
         settlement: &Settlement,
         receiver_id: SettlementId,

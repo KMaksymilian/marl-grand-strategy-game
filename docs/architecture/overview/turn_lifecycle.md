@@ -29,31 +29,39 @@ move next turn. See [trading](../systems/trading.md).
 sequenceDiagram
     actor Caller
     participant Sim as Simulation
+    participant C as Turn coordinator
+    participant H as Command handler
     participant W as World
     participant S as Settlement
     Caller->>Sim: queue_decision(decision)
     Sim-->>Caller: queued or MissingSettlement
     Caller->>Sim: step()
-    Sim->>Sim: check counter overflow
+    Sim->>C: run_turn
+    C->>C: check counter overflow
     loop Every registered SettlementId
-        Sim->>W: validate_settlement_turn(id)
+        C->>W: validate_settlement_turn(id)
     end
     alt Preflight fails
-        Sim-->>Caller: SimulationError, world and queue unchanged
+        C-->>Sim: SimulationError
+        Sim-->>Caller: SimulationError
     else Preflight succeeds
-        Sim->>W: apply_decision(decision): validate, execute accepted actions
-        Sim->>W: begin_trade_turn()
+        loop Queued decisions in execution order
+            C->>H: handle_decision
+            H->>W: check state and apply accepted actions
+            H-->>C: decision outcome
+        end
+        C->>W: begin_trade_turn()
         loop Each remaining global phase, in table order
             loop Every SettlementId in ascending order
-                Sim->>W: borrow target and temporary environment for phases
-                Sim->>S: execute shared phase through capabilities
-                S-->>Sim: outcome or transient phase state
+                C->>W: borrow target and temporary environment when needed
+                C->>S: execute phase
+                S-->>C: outcome or transient phase state
             end
         end
-        Sim->>W: finish_trade_turn(default locations, finder)
-        Sim->>Sim: increment current_turn once
+        C->>W: finish_trade_turn()
+        C-->>Sim: SimulationTurnReport
+        Sim->>Sim: store turn number and latest reports
         Sim-->>Caller: SimulationTurnReport
-    end
 ```
 
 Allocation occurs before consumption, construction and production. New products
@@ -101,11 +109,10 @@ classDiagram
     SimulationTurnReport *-- PhaseExecution
 ```
 
-`Settlement::process_turn` invokes the same phases for one local turn; `World`
-also exposes a local convenience entry point. Calling those directly is not a
-global turn and does not advance `Simulation::current_turn`.
+Tests use private helpers to execute settlement phases in isolation.
+`Simulation::step()` is the public entry point for advancing a turn.
 
 
 API details: [simulation commands](../implementation/simulation_commands.md).
-Code: [global pipeline](../../../core/src/application/simulation/turn.rs),
+Code: [global pipeline](../../../core/src/application/simulation/turn_coordinator.rs),
 [shared local phases](../../../core/src/domain/settlement/model/turn/mod.rs).

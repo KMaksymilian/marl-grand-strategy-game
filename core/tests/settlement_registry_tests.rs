@@ -3,13 +3,20 @@ use std::sync::Arc;
 
 use simulation_core::buildings::catalog::BuildingCatalog;
 use simulation_core::buildings::definition::BuildingDefinition;
+use simulation_core::buildings::{
+    Building,
+    productivity::{BuildingProductivityCalculator, TravelCostEfficiencyPolicy},
+};
 use simulation_core::economy::ResourceType::Wood;
 use simulation_core::ids::BuildingTypeId;
-use simulation_core::ids::{ProjectId, SettlementId};
+use simulation_core::ids::{BuildingId, ProjectId, SettlementId};
 use simulation_core::settlement::{NeedRegistry, NeedTier, Settlement, projects::ProjectCost};
 use simulation_core::simulation::{SettlementAction, SettlementDecision, Simulation, TurnPhase};
 use simulation_core::world::territory::{ProjectReference, TileOccupancy};
 use simulation_core::world::{Map, Position, Province, World, WorldError, terrain::area::Area};
+use simulation_core::world::{
+    pathfinding::path_finder::PathFinder, settlement_environment::AStarTravelCosts,
+};
 
 fn world() -> World {
     World::new(
@@ -21,6 +28,126 @@ fn world() -> World {
         ),
         (100..105).rev().map(Province::new).collect(),
     )
+}
+
+#[test]
+fn capitals_are_validated_before_registration_and_stay_in_their_provinces() {
+    let land = Area::new(0.5, 0.5);
+    let ocean = Area::new(0.1, 0.5);
+    let mut world = World::new(
+        Map::new(
+            4,
+            1,
+            vec![land, land, ocean, ocean],
+            vec![100, 101, 100, 102],
+        ),
+        (100..=102).map(Province::new).collect(),
+    );
+    let capital = Position { x: 0, y: 0 };
+    let foreign = Position { x: 1, y: 0 };
+    let sea = Position { x: 2, y: 0 };
+    let outside = Position { x: 4, y: 0 };
+    for (position, error) in [
+        (outside, WorldError::InvalidMapPosition(outside)),
+        (sea, WorldError::CapitalOnOcean(sea)),
+        (
+            foreign,
+            WorldError::CapitalOutsideProvince {
+                position: foreign,
+                expected_province: 100,
+                actual_province: 101,
+            },
+        ),
+    ] {
+        assert_eq!(
+            world.initialize_settlement_at(100, position, 10, 0, Arc::default()),
+            Err(error)
+        );
+    }
+    assert_eq!(
+        world.initialize_settlement(102, 10, 0, Arc::default()),
+        Err(WorldError::NoCapitalSite(102))
+    );
+    assert!(world.settlement_registry().is_empty());
+    let first = world
+        .initialize_settlement_at(100, capital, 10, 0, Arc::default())
+        .unwrap();
+    assert_eq!(first, SettlementId(0));
+    assert_eq!(
+        world.initialize_settlement_at(100, capital, 10, 0, Arc::default()),
+        Err(WorldError::ProvinceOccupied {
+            province_id: 100,
+            settlement_id: first
+        })
+    );
+    assert_eq!(
+        world.set_tile_terrain(capital, ocean),
+        Err(WorldError::CapitalSiteProtected(capital))
+    );
+    assert_eq!(
+        world.set_tile_province(capital, 101),
+        Err(WorldError::CapitalSiteProtected(capital))
+    );
+
+    let mut simulation = Simulation::new(world).unwrap();
+    let second = simulation
+        .initialize_settlement_at(101, foreign, 10, 0, Arc::default())
+        .unwrap();
+    assert_eq!(second, SettlementId(1));
+    simulation.step().unwrap();
+    assert_eq!(
+        simulation.settlement(first).unwrap().capital(),
+        Some(capital)
+    );
+    assert_eq!(
+        simulation.settlement(second).unwrap().capital(),
+        Some(foreign)
+    );
+    assert_eq!(simulation.world().province_at(capital), Ok(100));
+    assert_eq!(
+        simulation.world().map().terrain[0].elevation_val,
+        land.elevation_val
+    );
+}
+
+#[test]
+fn registered_capital_is_the_origin_of_building_productivity() {
+    let mut world = World::new(
+        Map::new(3, 1, vec![Area::new(0.5, 0.5); 3], vec![100; 3]),
+        vec![Province::new(100)],
+    );
+    let first_land = Position { x: 0, y: 0 };
+    let capital = Position { x: 2, y: 0 };
+    let id = SettlementId(1);
+    let mut settlement = Settlement::new(id, 100, 1, Arc::default());
+    let mut finder = PathFinder::new(3, 1);
+    let policy = TravelCostEfficiencyPolicy::new(0, 10).unwrap();
+    settlement.set_building_productivity_calculator(
+        Some(BuildingProductivityCalculator::new(first_land, policy)),
+        &mut AStarTravelCosts::new(world.map(), &mut finder),
+    );
+    world.add_settlement_at(100, capital, settlement).unwrap();
+    let definition = Arc::new(
+        BuildingDefinition::new("farm", "Farm", 1, 1, vec![], ProjectCost::default()).unwrap(),
+    );
+    for (building_id, position) in [(BuildingId(1), capital), (BuildingId(2), first_land)] {
+        world
+            .add_building(
+                id,
+                Building::new(building_id, position, definition.clone()),
+                &mut finder,
+            )
+            .unwrap();
+    }
+    let mut simulation = Simulation::new(world).unwrap();
+    simulation.step().unwrap();
+    let multipliers: Vec<_> = simulation
+        .settlement(id)
+        .unwrap()
+        .buildings()
+        .map(Building::location_productivity)
+        .collect();
+    assert_eq!(multipliers, [1.0, 0.0]);
 }
 
 #[test]

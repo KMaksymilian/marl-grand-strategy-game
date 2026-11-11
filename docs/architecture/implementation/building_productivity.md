@@ -39,7 +39,7 @@ productivity = numerator / denominator
 | Recipe work fraction | Actual execution limited by granted workers and remaining inputs |
 | `location_productivity()` | Cached output multiplier computed from the current A* travel cost |
 
-`target_efficiency` is renamed to `target_load`. A new building starts active at load zero. Without a configured calculator (`None`), location productivity is 1. The settlement identity is a typed `SettlementId`; configuring a capital explicitly enables the policy.
+`target_efficiency` is renamed to `target_load`. A new building starts active at load zero. Without a configured calculator (`None`), location productivity is 1. When a policy is configured, the registered settlement capital supplies its A* origin. Registration and later policy changes keep the calculator aligned with that capital.
 
 ```text
 work = min(granted_workers / max_workers, remaining_input / base_input, ...)

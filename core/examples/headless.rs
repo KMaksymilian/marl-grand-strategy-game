@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut settlement = Settlement::new(SettlementId(1), 100, 1, needs);
     settlement.deposit(Grain, 1);
     world
-        .add_settlement(0, settlement)
+        .add_settlement_at(0, Position { x: 0, y: 0 }, settlement)
         .expect("valid example settlement");
     let definition = Arc::new(
         BuildingDefinition::new(

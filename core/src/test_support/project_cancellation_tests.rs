@@ -32,13 +32,15 @@ fn cost() -> ProjectCost {
 
 fn world() -> World {
     let mut world = World::new(
-        Map::new(2, 1, vec![Area::new(0.5, 0.5); 2], vec![10, 20]),
+        Map::new(3, 1, vec![Area::new(0.5, 0.5); 3], vec![10, 20, 10]),
         vec![Province::new(10), Province::new(20)],
     );
-    for (province, id) in [(10, 1), (20, 2)] {
+    for (province, id, x) in [(10, 1, 2), (20, 2, 1)] {
         let mut settlement = Settlement::new(SettlementId(id), 100, 0, Arc::default());
         settlement.deposit(Wood, 10);
-        world.add_settlement(province, settlement).unwrap();
+        world
+            .add_settlement_at(province, Position { x, y: 0 }, settlement)
+            .unwrap();
     }
     world
 }
@@ -84,7 +86,7 @@ fn canceling_new_construction_releases_the_tile_and_allows_id_reuse() {
 #[test]
 fn cancellation_after_partial_payment_preserves_spent_materials_and_stops_work() {
     let mut world = world();
-    let mut finder = PathFinder::new(2, 1);
+    let mut finder = PathFinder::new(3, 1);
     world
         .queue_construction(SettlementId(1), ProjectId(7), SITE, definition(1), cost())
         .unwrap();
@@ -130,7 +132,7 @@ fn cancellation_after_partial_payment_preserves_spent_materials_and_stops_work()
 #[test]
 fn canceling_an_upgrade_preserves_the_existing_building_and_occupancy() {
     let mut world = world();
-    let mut finder = PathFinder::new(2, 1);
+    let mut finder = PathFinder::new(3, 1);
     let original = definition(1);
     world
         .add_building(

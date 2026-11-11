@@ -80,6 +80,11 @@ impl Settlement {
         calculator: Option<BuildingProductivityCalculator>,
         source: &mut impl TravelCostSource,
     ) {
+        let calculator = calculator.map(|calculator| {
+            self.capital().map_or(calculator, |capital| {
+                BuildingProductivityCalculator::new(capital, calculator.policy())
+            })
+        });
         self.building_manager
             .set_productivity_calculator(calculator, source);
     }

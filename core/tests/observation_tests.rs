@@ -82,7 +82,7 @@ fn world(secret: u32) -> World {
             .publish_trade_offers(HashMap::from([(Stone, TradeOffer::sell(secret, 1))]))
             .unwrap();
     }
-    world.add_settlement(20, neighbour).unwrap();
+    world.add_settlement_at(20, at(3, 0), neighbour).unwrap();
 
     let blueprint = world.building_catalog().get_blueprint("farm").unwrap();
     let mut finder = PathFinder::new(5, 2);

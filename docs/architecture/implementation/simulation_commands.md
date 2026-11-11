@@ -51,6 +51,7 @@ decisions for several settlements before calling `step()` once for all of them.
 | `settlement(SettlementId)` | Return a shared instance or `WorldError::MissingSettlement`. |
 | `add_settlement(province_id, settlement)` | Register an explicitly initialized empty-structure settlement. |
 | `initialize_settlement(province_id, capacity, population, needs)` | Allocate an unused ID, create a settlement and register it; return the ID. |
+| `add_settlement_at(province_id, capital, settlement)`, `initialize_settlement_at(province_id, capital, capacity, population, needs)` | Place an explicit capital in the settlement's province during registration. |
 | `queue_decision(decision)` | Queue a `SettlementDecision` of a known settlement; no immediate world mutation. |
 | `step()` | Delegate to the turn coordinator, store the new turn and reports, and return `SimulationTurnReport`. |
 | `observe(id)`, `observe_all()` | Build agent [observations](settlement_observations.md) from the current state and the latest turn reports. |

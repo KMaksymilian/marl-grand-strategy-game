@@ -112,9 +112,8 @@ stateDiagram-v2
 `Caravan::from_cargo` returns the original cargo on route failure; the coordinator
 uses it to preserve committed goods/funds.
 
-Simulation uses the first land tile of each registered province in row-major
-order as its endpoint. This temporary convention is not a capital or market
-position. Missing endpoints produce `NoRoute`.
+Simulation routes caravans between the recorded capitals of the sender and
+receiver. An unreachable capital produces `NoRoute` and the cargo is returned.
 
 Movement advances up to 10 stored path indices per turn. A* terrain costs influence
 route selection, not a movement budget.

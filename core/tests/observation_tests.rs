@@ -199,6 +199,7 @@ fn observation_describes_the_local_economy() {
     assert_eq!(
         observation.building_types,
         vec![BuildingTypeObservation {
+            required_deposit: None,
             building_type: BuildingTypeId::new("farm"),
             name: "Farm".into(),
             tier: 1,

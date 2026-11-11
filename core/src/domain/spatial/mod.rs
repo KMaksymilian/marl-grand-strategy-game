@@ -60,6 +60,15 @@ pub enum TerritoryError {
 /// are qualified by settlement identity. Returning `Err` must leave occupancy
 /// unchanged; successful operations must be visible to subsequent validation.
 pub trait ConstructionSpace {
+    /// Whether this settlement can work a deposit on the specified tile.
+    fn can_extract(
+        &self,
+        _position: Position,
+        _resource: crate::domain::economy::ResourceType,
+    ) -> bool {
+        false
+    }
+
     /// Validate placement and atomically reserve an empty structural slot.
     fn reserve_construction(
         &mut self,

@@ -35,6 +35,10 @@ pub enum ActionError {
     OceanTile {
         position: Position,
     },
+    RequiredDepositMissing {
+        position: Position,
+        resource: ResourceType,
+    },
     /// A building or construction site already occupies the tile.
     TileOccupied {
         position: Position,

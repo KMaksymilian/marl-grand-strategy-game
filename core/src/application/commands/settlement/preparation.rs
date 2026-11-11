@@ -328,7 +328,9 @@ impl<'a> DecisionPreparation<'a> {
                 position,
             } => {
                 let definition = self.catalog_definition(building_type)?;
-                self.check_construction_site(settlement.id(), *position)?;
+                self.world
+                    .validate_blueprint_site(settlement.id(), *position, &definition)
+                    .map_err(|error| Self::site_error(*position, error))?;
                 batch.ensure_free(Target::Tile(*position))?;
                 let project_id = batch.project_id()?;
                 let mut checked = Checked::new(
@@ -365,10 +367,8 @@ impl<'a> DecisionPreparation<'a> {
                     });
                 }
                 self.world
-                    .validate_settlement_position(settlement.id(), building.position())
-                    .map_err(|_| ActionError::OutsideOwnProvince {
-                        position: building.position(),
-                    })?;
+                    .validate_upgrade_site(settlement.id(), building.position(), &definition)
+                    .map_err(|error| Self::site_error(building.position(), error))?;
                 batch.ensure_free(Target::Upgrade(*building_id))?;
                 let project_id = batch.project_id()?;
                 let mut checked = Checked::new(
@@ -496,27 +496,23 @@ impl<'a> DecisionPreparation<'a> {
             })
     }
 
-    /// The same placement rules as construction: own province, land, empty tile.
-    fn check_construction_site(
-        &self,
-        settlement_id: SettlementId,
-        position: Position,
-    ) -> Result<(), ActionError> {
-        self.world
-            .validate_construction_site(settlement_id, position)
-            .map_err(|error| match error {
-                WorldError::InvalidMapPosition(_)
-                | WorldError::Project(ProjectError::Territory(
-                    TerritoryError::InvalidMapPosition(_),
-                )) => ActionError::InvalidPosition { position },
-                WorldError::Project(ProjectError::Territory(TerritoryError::OceanTile(_))) => {
-                    ActionError::OceanTile { position }
-                }
-                WorldError::Project(ProjectError::Territory(TerritoryError::Occupied {
-                    ..
-                })) => ActionError::TileOccupied { position },
-                _ => ActionError::OutsideOwnProvince { position },
-            })
+    fn site_error(position: Position, error: WorldError) -> ActionError {
+        match error {
+            WorldError::RequiredDepositMissing { position, resource } => {
+                ActionError::RequiredDepositMissing { position, resource }
+            }
+            WorldError::InvalidMapPosition(_)
+            | WorldError::Project(ProjectError::Territory(TerritoryError::InvalidMapPosition(_))) => {
+                ActionError::InvalidPosition { position }
+            }
+            WorldError::Project(ProjectError::Territory(TerritoryError::OceanTile(_))) => {
+                ActionError::OceanTile { position }
+            }
+            WorldError::Project(ProjectError::Territory(TerritoryError::Occupied { .. })) => {
+                ActionError::TileOccupied { position }
+            }
+            _ => ActionError::OutsideOwnProvince { position },
+        }
     }
 
     /// Receiver rules for caravans: another registered settlement.

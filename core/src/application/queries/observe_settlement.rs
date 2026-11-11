@@ -89,15 +89,16 @@ impl ObservationQuery<'_> {
                 caravans_returning: settlement.returning_caravans().len(),
             },
             last_turn: last_turn.map(last_turn_observation),
-            territory: self.own_tiles(settlement_id, province_id),
+            territory: self.own_tiles(settlement_id)?,
             trade_partners: self.trade_partners(settlement_id),
             building_types: self.building_types(),
         })
     }
 
-    fn own_tiles(&self, settlement_id: SettlementId, province_id: usize) -> Vec<TileObservation> {
-        self.world
-            .province_positions(province_id)
+    fn own_tiles(&self, settlement_id: SettlementId) -> Result<Vec<TileObservation>, WorldError> {
+        Ok(self
+            .world
+            .controlled_positions(settlement_id)?
             .into_iter()
             .filter_map(|position| {
                 let area = &self.world.map().terrain[self.world.map().tile_index(position)?];
@@ -125,6 +126,7 @@ impl ObservationQuery<'_> {
                     position,
                     elevation: area.determine_elevation(),
                     moisture: area.determine_moisture(),
+                    deposit: self.world.map().deposit_at(position),
                     occupancy,
                     buildable: self
                         .world
@@ -132,7 +134,7 @@ impl ObservationQuery<'_> {
                         .is_ok(),
                 })
             })
-            .collect()
+            .collect())
     }
 
     fn trade_partners(&self, settlement_id: SettlementId) -> Vec<TradePartner> {
@@ -164,6 +166,7 @@ impl ObservationQuery<'_> {
                     definition.construction_cost().needed_resources.iter(),
                 ),
                 construction_turns: definition.construction_cost().turn_cost,
+                required_deposit: definition.required_deposit(),
                 recipes: definition
                     .behaviors()
                     .iter()

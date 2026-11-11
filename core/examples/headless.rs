@@ -1,6 +1,7 @@
 //! Run with: cargo run -p simulation_core --example headless -- 100
 use simulation_core::ids::SettlementId;
 use std::collections::HashMap;
+use std::io::{self, Write};
 use std::sync::Arc;
 
 use simulation_core::buildings::{
@@ -16,11 +17,17 @@ use simulation_core::world::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let turns = std::env::args()
-        .nth(1)
+    let mut args = std::env::args().skip(1);
+    let turns = args
+        .next()
         .map(|value| value.parse::<u64>())
         .transpose()?
         .unwrap_or(10);
+    let json_lines = match args.next().as_deref() {
+        None => false,
+        Some("--jsonl") if args.next().is_none() => true,
+        _ => return Err("usage: headless [turns [--jsonl]]".into()),
+    };
     let mut world = World::new(
         Map::new(1, 1, vec![Area::new(0.5, 0.5)], vec![0]),
         vec![Province::new(0)],
@@ -54,6 +61,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_building(SettlementId(1), building, &mut PathFinder::new(1, 1))
         .expect("valid example placement");
     let mut simulation = Simulation::new(world)?;
+    if json_lines {
+        let mut output = io::stdout().lock();
+        for _ in 0..turns {
+            let report = simulation.step()?;
+            serde_json::to_writer(&mut output, &report)?;
+            writeln!(output)?;
+        }
+        return Ok(());
+    }
     for _ in 0..turns {
         simulation.step()?;
     }

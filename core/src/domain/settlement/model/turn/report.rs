@@ -5,25 +5,27 @@ pub use crate::domain::settlement::model::economy::ConsumptionResult;
 use crate::domain::settlement::projects::ProjectOutcome;
 use crate::domain::trade::caravan::CaravanOutcome;
 use crate::domain::trade::execution::TradeExecution;
+use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 pub type MaterialTotals = BTreeMap<ResourceType, u64>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum InventoryLossStage {
     Returns,
     ProductionBuffer,
     Warehouse,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct InventoryLoss {
     pub resource: ResourceType,
     pub amount: u64,
     pub stage: InventoryLossStage,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct InventoryTurnReport {
     /// Main inventory and pending buffer together; excludes Labour.
     pub opening_stock: MaterialTotals,
@@ -138,7 +140,7 @@ impl InventoryTurnReport {
 }
 
 /// Results of one settlement turn. Pending projects produce no outcome entry.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TurnReport {
     pub consumption: ConsumptionResult,
     pub projects: Vec<ProjectOutcome>,
@@ -147,7 +149,7 @@ pub struct TurnReport {
 }
 
 /// A trade made at this settlement's market with a visiting caravan.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct MarketTrade {
     pub caravan_sender_id: SettlementId,
     /// Seen from this settlement.
@@ -155,7 +157,7 @@ pub struct MarketTrade {
 }
 
 /// A caravan funded and sent out this turn.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DispatchedCaravan {
     pub receiver_id: SettlementId,
     pub cargo: MaterialTotals,
@@ -163,7 +165,7 @@ pub struct DispatchedCaravan {
 }
 
 /// A caravan unloaded this turn.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ReturnedCaravan {
     pub receiver_id: SettlementId,
     pub outcome: CaravanOutcome,
@@ -180,7 +182,7 @@ pub struct ReturnedCaravan {
 /// `trade_received`), so `is_balanced()` covers trade. Returned goods are stored
 /// together with production, so their losses appear there with the same stages.
 /// Gold is reported only here.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct TradeTurnReport {
     /// Stock and gold reserved by the local market book.
     pub market_reserved: MaterialTotals,

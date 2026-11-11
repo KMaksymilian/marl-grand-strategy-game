@@ -3,6 +3,7 @@ use crate::domain::trade::book::TradeBook;
 use crate::domain::trade::execution::TradeExecution;
 use crate::domain::world::pathfinding::{a_star::AStar, path_finder::PathFinder};
 use crate::domain::world::{Map, Point};
+use serde::Serialize;
 const MOVE_SPEED: usize = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -14,7 +15,8 @@ pub enum CaravanState {
 }
 
 /// How a caravan's journey ended.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CaravanOutcome {
     /// Reached the receiver and traded (possibly zero executions).
     Traded,

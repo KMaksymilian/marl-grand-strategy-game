@@ -1,10 +1,12 @@
 use crate::domain::ids::SettlementId;
+use serde::Serialize;
 use std::collections::BTreeMap;
 
 use super::DecisionOutcome;
 use crate::domain::settlement::turn_report::TurnReport;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TurnPhase {
     Decisions,
     Preparation,
@@ -16,13 +18,14 @@ pub enum TurnPhase {
 }
 
 /// Recorded at each actual phase invocation, in execution order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct PhaseExecution {
     pub phase: TurnPhase,
     pub settlement_id: SettlementId,
 }
 
-#[derive(Debug, Clone)]
+/// Complete turn result, serializable for experiment logging.
+#[derive(Debug, Clone, Serialize)]
 pub struct SimulationTurnReport {
     /// Number of the global turn just completed; the first report has turn 1.
     pub turn: u64,

@@ -1,141 +1,126 @@
+//! Executes the phases of one global turn.
 use std::collections::BTreeMap;
 
-use super::{PhaseExecution, Simulation, SimulationError, SimulationTurnReport, TurnPhase};
+use super::{PhaseExecution, SettlementDecision, SimulationError, SimulationTurnReport, TurnPhase};
+use crate::application::commands::settlement::handler::handle_decision;
+use crate::domain::ids::SettlementId;
+use crate::domain::world::{World, pathfinding::path_finder::PathFinder};
 
-impl Simulation {
-    /// Advances exactly one global turn. All settlements finish a phase before
-    /// any settlement starts the next. Within a phase, IDs are ascending.
-    /// Preflight failures retain queued decisions and do not advance the counter.
-    /// Individual invalid decisions are reported and do not abort the turn.
-    pub fn step(&mut self) -> Result<SimulationTurnReport, SimulationError> {
-        let turn = self
-            .current_turn
-            .checked_add(1)
-            .ok_or(SimulationError::TurnOverflow)?;
-        let ids: Vec<_> = self
-            .world
-            .settlements()
-            .map(|settlement| settlement.id())
-            .collect();
-        for &id in &ids {
-            self.world
-                .validate_settlement_turn(id)
-                .map_err(|error| SimulationError::World {
-                    settlement_id: id,
-                    error,
-                })?;
-        }
-
-        let mut execution = Vec::new();
-        let mut decisions = Vec::new();
-        let mut pending = std::mem::take(&mut self.pending_decisions);
-        for &id in &ids {
-            execution.push(PhaseExecution {
-                phase: TurnPhase::Decisions,
+/// Completes each phase for every settlement in ascending ID order.
+/// Preflight errors preserve the world and the decision queue.
+pub(super) fn run_turn(
+    world: &mut World,
+    finder: &mut PathFinder,
+    pending_decisions: &mut BTreeMap<SettlementId, Vec<SettlementDecision>>,
+    current_turn: u64,
+) -> Result<SimulationTurnReport, SimulationError> {
+    let turn = current_turn
+        .checked_add(1)
+        .ok_or(SimulationError::TurnOverflow)?;
+    let ids: Vec<_> = world
+        .settlements()
+        .map(|settlement| settlement.id())
+        .collect();
+    for &id in &ids {
+        world
+            .validate_settlement_turn(id)
+            .map_err(|error| SimulationError::World {
                 settlement_id: id,
-            });
-            for decision in pending.remove(&id).unwrap_or_default() {
-                decisions.push(
-                    crate::application::commands::settlement::handler::handle_decision(
-                        &mut self.world,
-                        &decision,
-                    )
-                    .expect("queued decisions belong to registered settlements"),
-                );
-            }
-        }
-
-        self.world.begin_trade_turn();
-        let mut prepared = Vec::with_capacity(ids.len());
-        for &id in &ids {
-            execution.push(PhaseExecution {
-                phase: TurnPhase::Preparation,
-                settlement_id: id,
-            });
-            prepared.push((id, self.world.prepare_settlement_turn(id, &mut self.finder)));
-        }
-
-        let mut allocated = Vec::with_capacity(prepared.len());
-        for (id, state) in prepared {
-            execution.push(PhaseExecution {
-                phase: TurnPhase::Allocation,
-                settlement_id: id,
-            });
-            let settlement = self
-                .world
-                .settlement_mut(id)
-                .expect("registered settlement");
-            allocated.push((id, settlement.allocate_turn(state)));
-        }
-
-        let mut consumed = Vec::with_capacity(allocated.len());
-        for (id, state) in allocated {
-            execution.push(PhaseExecution {
-                phase: TurnPhase::Consumption,
-                settlement_id: id,
-            });
-            let settlement = self
-                .world
-                .settlement_mut(id)
-                .expect("registered settlement");
-            consumed.push((id, settlement.consume_turn(state)));
-        }
-
-        for (id, state) in &consumed {
-            let id = *id;
-            execution.push(PhaseExecution {
-                phase: TurnPhase::Construction,
-                settlement_id: id,
-            });
-            let settlement = self
-                .world
-                .settlement_mut(id)
-                .expect("registered settlement");
-            settlement.progress_construction(state);
-        }
-
-        let mut produced = Vec::with_capacity(consumed.len());
-        for (id, state) in consumed {
-            execution.push(PhaseExecution {
-                phase: TurnPhase::Production,
-                settlement_id: id,
-            });
-            let settlement = self
-                .world
-                .settlement_mut(id)
-                .expect("registered settlement");
-            produced.push((id, settlement.produce_turn(state)));
-        }
-
-        let mut settlements = BTreeMap::new();
-        for (id, state) in produced {
-            execution.push(PhaseExecution {
-                phase: TurnPhase::EconomicUpdates,
-                settlement_id: id,
-            });
-            let (settlement, mut environment) = self
-                .world
-                .settlement_turn_parts(id, &mut self.finder)
-                .expect("registered settlement");
-            settlements.insert(id, settlement.finish_turn(state, &mut environment));
-        }
-        let locations = self.world.default_trade_locations();
-        self.world.finish_trade_turn(&locations, &mut self.finder);
-        self.current_turn = turn;
-        self.last_reports = settlements.clone();
-        Ok(SimulationTurnReport {
-            turn,
-            decisions,
-            settlements,
-            execution,
-        })
+                error,
+            })?;
     }
+
+    let mut execution = Vec::new();
+    let mut decisions = Vec::new();
+    let mut pending = std::mem::take(pending_decisions);
+    for &id in &ids {
+        execution.push(PhaseExecution {
+            phase: TurnPhase::Decisions,
+            settlement_id: id,
+        });
+        for decision in pending.remove(&id).unwrap_or_default() {
+            decisions.push(
+                handle_decision(world, &decision)
+                    .expect("queued decisions belong to registered settlements"),
+            );
+        }
+    }
+
+    world.begin_trade_turn();
+    let mut prepared = Vec::with_capacity(ids.len());
+    for &id in &ids {
+        execution.push(PhaseExecution {
+            phase: TurnPhase::Preparation,
+            settlement_id: id,
+        });
+        prepared.push((id, world.prepare_settlement_turn(id, finder)));
+    }
+
+    let mut allocated = Vec::with_capacity(prepared.len());
+    for (id, state) in prepared {
+        execution.push(PhaseExecution {
+            phase: TurnPhase::Allocation,
+            settlement_id: id,
+        });
+        let settlement = world.settlement_mut(id).expect("registered settlement");
+        allocated.push((id, settlement.allocate_turn(state)));
+    }
+
+    let mut consumed = Vec::with_capacity(allocated.len());
+    for (id, state) in allocated {
+        execution.push(PhaseExecution {
+            phase: TurnPhase::Consumption,
+            settlement_id: id,
+        });
+        let settlement = world.settlement_mut(id).expect("registered settlement");
+        consumed.push((id, settlement.consume_turn(state)));
+    }
+
+    for (id, state) in &consumed {
+        let id = *id;
+        execution.push(PhaseExecution {
+            phase: TurnPhase::Construction,
+            settlement_id: id,
+        });
+        let settlement = world.settlement_mut(id).expect("registered settlement");
+        settlement.progress_construction(state);
+    }
+
+    let mut produced = Vec::with_capacity(consumed.len());
+    for (id, state) in consumed {
+        execution.push(PhaseExecution {
+            phase: TurnPhase::Production,
+            settlement_id: id,
+        });
+        let settlement = world.settlement_mut(id).expect("registered settlement");
+        produced.push((id, settlement.produce_turn(state)));
+    }
+
+    let mut settlements = BTreeMap::new();
+    for (id, state) in produced {
+        execution.push(PhaseExecution {
+            phase: TurnPhase::EconomicUpdates,
+            settlement_id: id,
+        });
+        let (settlement, mut environment) = world
+            .settlement_turn_parts(id, finder)
+            .expect("registered settlement");
+        settlements.insert(id, settlement.finish_turn(state, &mut environment));
+    }
+    let locations = world.default_trade_locations();
+    world.finish_trade_turn(&locations, finder);
+    Ok(SimulationTurnReport {
+        turn,
+        decisions,
+        settlements,
+        execution,
+    })
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::Simulation;
     use super::*;
-    use crate::domain::ids::SettlementId;
     use crate::domain::world::{Map, Province, World, terrain::area::Area};
 
     #[test]

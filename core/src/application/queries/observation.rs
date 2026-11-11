@@ -7,7 +7,6 @@
 //! partners. Not visible: other settlements' stock, gold, buildings, projects,
 //! offers, caravans and any tile outside the own province.
 use crate::application::commands::settlement::contract::OfferSpec;
-use crate::application::queries::action_mask::ActionMask;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
 use crate::domain::spatial::Position;
@@ -47,8 +46,6 @@ pub struct SettlementObservation {
     pub trade_partners: Vec<TradePartner>,
     /// Building types available for construction and upgrades, ascending ID.
     pub building_types: Vec<BuildingTypeObservation>,
-    /// Actions the settlement may submit now; checked by the action validator.
-    pub action_mask: ActionMask,
 }
 
 impl SettlementObservation {

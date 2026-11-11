@@ -8,7 +8,7 @@ pub use domain::{buildings, economy, ids, spatial, trade};
 
 pub mod settlement {
     pub use crate::application::commands::settlement::{contract as decision, prepared as command};
-    pub use crate::application::queries::{action_mask, observation};
+    pub use crate::application::queries::observation;
     pub use crate::domain::settlement::*;
 }
 

@@ -392,14 +392,15 @@ fn caravans_are_checked_against_what_the_market_leaves() {
             offers: vec![sell_wood(1)],
         }],
     );
-    assert!(!report.decisions[0].results[0].is_applied());
     assert_eq!(
-        simulation
-            .observe(ME)
-            .unwrap()
-            .action_mask
-            .caravan_sell_limits[&Wood],
-        0
+        report.decisions[0].results[0].outcome,
+        ActionOutcome::Rejected {
+            error: ActionError::InsufficientStock {
+                resource: Wood,
+                requested: 1,
+                available: 0,
+            },
+        },
     );
 
     // Caravan first: a later market action may not take what it was promised.

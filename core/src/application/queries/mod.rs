@@ -1,5 +1,3 @@
-//! Read models projected from the same world state.
-pub mod action_mask;
-mod legal_actions;
+//! Read models projected from the world.
 pub mod observation;
-pub(crate) mod settlement;
+pub(crate) mod observe_settlement;

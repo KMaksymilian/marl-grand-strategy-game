@@ -1,10 +1,9 @@
 //! Headless global turn coordination. World remains the only settlement registry.
 use crate::domain::ids::SettlementId;
-mod decisions;
-mod turn;
+mod turn_coordinator;
 pub mod turn_report;
 
-pub use decisions::{
+pub use crate::application::commands::settlement::contract::{
     ActionEffect, ActionError, ActionOutcome, ActionResult, DecisionOutcome, SettlementAction,
     SettlementDecision,
 };
@@ -13,7 +12,7 @@ pub use turn_report::{PhaseExecution, SimulationTurnReport, TurnPhase};
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
-use crate::application::queries::observation::SettlementObservation;
+use crate::application::queries::{observation::SettlementObservation, observe_settlement};
 use crate::domain::settlement::turn_report::TurnReport;
 use crate::domain::settlement::{NeedRegistry, Settlement};
 use crate::domain::world::settlement_registry::SettlementRegistry;
@@ -120,6 +119,19 @@ impl Simulation {
         })
     }
 
+    /// Advances one global turn and returns the outcomes of submitted decisions.
+    pub fn step(&mut self) -> Result<SimulationTurnReport, SimulationError> {
+        let report = turn_coordinator::run_turn(
+            &mut self.world,
+            &mut self.finder,
+            &mut self.pending_decisions,
+            self.current_turn,
+        )?;
+        self.current_turn = report.turn;
+        self.last_reports = report.settlements.clone();
+        Ok(report)
+    }
+
     pub fn current_turn(&self) -> u64 {
         self.current_turn
     }
@@ -162,7 +174,7 @@ impl Simulation {
         &self,
         settlement_id: SettlementId,
     ) -> Result<SettlementObservation, WorldError> {
-        crate::application::queries::settlement::observe_settlement(
+        observe_settlement::observe_settlement(
             &self.world,
             settlement_id,
             self.current_turn,

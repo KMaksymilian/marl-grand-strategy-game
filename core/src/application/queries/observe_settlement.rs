@@ -1,7 +1,6 @@
 //! Builds a settlement's observation from the authoritative world.
 //! Only the observed settlement, its own province tiles, the public catalog and
 //! the IDs of other settlements are read.
-use super::legal_actions::legal_actions;
 use crate::application::commands::settlement::contract::{OfferSide, OfferSpec};
 use crate::application::queries::observation::{
     BuildingObservation, BuildingTypeObservation, InventoryObservation, LastTurnObservation,
@@ -93,7 +92,6 @@ impl ObservationQuery<'_> {
             territory: self.own_tiles(settlement_id, province_id),
             trade_partners: self.trade_partners(settlement_id),
             building_types: self.building_types(),
-            action_mask: legal_actions(self.world, settlement_id)?,
         })
     }
 

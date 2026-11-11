@@ -125,7 +125,7 @@ mod tests {
         world
             .add_settlement(20, Settlement::new(SettlementId(2), 100, 0, Arc::default()))
             .unwrap();
-        world.map.territory[0] = 20;
+        world.set_tile_province(position, 20).unwrap();
         let view = world.inspect_tile(position).unwrap();
         assert_eq!(view.province_settlement.unwrap().id(), SettlementId(2));
         assert_eq!(view.occupant_settlement.unwrap().id(), SettlementId(1));
@@ -140,15 +140,24 @@ mod tests {
     fn world() -> World {
         let mut world = World::new(
             Map::new(
-                2,
+                4,
                 1,
-                vec![Area::new(0.5, 0.6), Area::new(0.1, 0.2)],
-                vec![10, 20],
+                vec![
+                    Area::new(0.5, 0.6),
+                    Area::new(0.1, 0.2),
+                    Area::new(0.5, 0.6),
+                    Area::new(0.5, 0.6),
+                ],
+                vec![10, 20, 10, 20],
             ),
             vec![Province::new(10), Province::new(20)],
         );
         world
-            .add_settlement(10, Settlement::new(SettlementId(1), 100, 0, Arc::default()))
+            .add_settlement_at(
+                10,
+                Position { x: 2, y: 0 },
+                Settlement::new(SettlementId(1), 100, 0, Arc::default()),
+            )
             .unwrap();
         world
     }
@@ -205,7 +214,7 @@ mod tests {
         assert!(view.building.is_none());
 
         world
-            .process_settlement_turn_for_test(SettlementId(1), &mut PathFinder::new(2, 1))
+            .process_settlement_turn_for_test(SettlementId(1), &mut PathFinder::new(4, 1))
             .unwrap();
         let view = world.inspect_tile(position).unwrap();
         assert!(view.project.is_none());
@@ -244,7 +253,7 @@ mod tests {
     #[test]
     fn invalid_positions_and_unknown_provinces_are_rejected() {
         let mut world = world();
-        for position in [Position { x: -1, y: 0 }, Position { x: 2, y: 0 }] {
+        for position in [Position { x: -1, y: 0 }, Position { x: 4, y: 0 }] {
             assert!(
                 matches!(world.inspect_tile(position), Err(WorldError::InvalidMapPosition(p)) if p == position)
             );

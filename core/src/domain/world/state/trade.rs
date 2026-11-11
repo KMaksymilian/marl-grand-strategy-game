@@ -30,24 +30,18 @@ impl World {
             )
     }
 
-    /// First land tile of each registered province, in row-major order.
-    /// No implicit province-ID-to-coordinate conversion; no endpoint means NoRoute.
-    pub(crate) fn default_trade_locations(&self) -> HashMap<SettlementId, Point> {
-        let mut locations = HashMap::new();
-        for (index, &province) in self.map.territory.iter().enumerate() {
-            let Some(&id) = self.province_settlements.get(&province) else {
-                continue;
-            };
-            if self.map.terrain.get(index).is_some_and(|tile| {
-                tile.determine_elevation()
-                    != crate::domain::world::terrain::elevation::Elevation::Ocean
-            }) {
-                locations
-                    .entry(id)
-                    .or_insert(Point(index % self.map.width, index / self.map.width));
-            }
-        }
-        locations
+    pub(crate) fn capital_trade_locations(&self) -> HashMap<SettlementId, Point> {
+        self.settlements()
+            .map(|settlement| {
+                let capital = settlement
+                    .capital()
+                    .expect("registered settlement has a capital");
+                (
+                    settlement.id(),
+                    Point(capital.x as usize, capital.y as usize),
+                )
+            })
+            .collect()
     }
     pub(crate) fn begin_trade_turn(&mut self) {
         self.caravan_travel();

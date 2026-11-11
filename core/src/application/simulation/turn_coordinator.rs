@@ -107,7 +107,7 @@ pub(super) fn run_turn(
             .expect("registered settlement");
         settlements.insert(id, settlement.finish_turn(state, &mut environment));
     }
-    let locations = world.default_trade_locations();
+    let locations = world.capital_trade_locations();
     world.finish_trade_turn(&locations, finder);
     Ok(SimulationTurnReport {
         turn,
@@ -135,17 +135,19 @@ mod tests {
         use std::sync::Arc;
 
         let mut world = World::new(
-            Map::new(2, 1, vec![Area::new(0.5, 0.5); 2], vec![10, 20]),
+            Map::new(3, 1, vec![Area::new(0.5, 0.5); 3], vec![10, 20, 20]),
             vec![Province::new(10), Province::new(20)],
         );
         let definition = Arc::new(
             BuildingDefinition::new("house", "House", 1, 0, vec![], ProjectCost::default())
                 .unwrap(),
         );
-        for (province, id, x) in [(10, 1, 0), (20, 2, 1)] {
+        for (province, id, x, capital_x) in [(10, 1, 0, 0), (20, 2, 1, 2)] {
             let mut settlement = Settlement::new(SettlementId(id), 100, 0, Arc::default());
             settlement.deposit(Wood, 5);
-            world.add_settlement(province, settlement).unwrap();
+            world
+                .add_settlement_at(province, Position { x: capital_x, y: 0 }, settlement)
+                .unwrap();
             world
                 .queue_construction(
                     SettlementId(id),

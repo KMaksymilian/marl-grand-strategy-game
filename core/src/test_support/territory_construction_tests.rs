@@ -36,10 +36,12 @@ fn world() -> World {
         ),
         vec![Province::new(10), Province::new(20), Province::new(30)],
     );
-    for (province, id) in [(10, 1), (20, 2)] {
+    for (province, id, capital) in [(10, 1, NEXT_SITE), (20, 2, Position { x: 2, y: 0 })] {
         let mut settlement = Settlement::new(SettlementId(id), 100, 0, Arc::default());
         settlement.deposit(ResourceType::Wood, 5);
-        world.add_settlement(province, settlement).unwrap();
+        world
+            .add_settlement_at(province, capital, settlement)
+            .unwrap();
     }
     world
 }

@@ -30,6 +30,14 @@ pub enum WorldError {
     },
     InvalidMapPosition(Position),
     InvalidTerrain(Position),
+    NoCapitalSite(usize),
+    CapitalOutsideProvince {
+        position: Position,
+        expected_province: usize,
+        actual_province: usize,
+    },
+    CapitalOnOcean(Position),
+    CapitalSiteProtected(Position),
     InconsistentOccupancy {
         position: Position,
         occupancy: super::territory::TileOccupancy,
@@ -118,12 +126,47 @@ impl World {
         initial_population: u32,
         need_registry: Arc<NeedRegistry>,
     ) -> Result<SettlementId, WorldError> {
+        self.initialize_settlement_with_site(
+            province_id,
+            None,
+            initial_capacity,
+            initial_population,
+            need_registry,
+        )
+    }
+
+    pub fn initialize_settlement_at(
+        &mut self,
+        province_id: usize,
+        capital: Position,
+        initial_capacity: u32,
+        initial_population: u32,
+        need_registry: Arc<NeedRegistry>,
+    ) -> Result<SettlementId, WorldError> {
+        self.initialize_settlement_with_site(
+            province_id,
+            Some(capital),
+            initial_capacity,
+            initial_population,
+            need_registry,
+        )
+    }
+
+    fn initialize_settlement_with_site(
+        &mut self,
+        province_id: usize,
+        capital: Option<Position>,
+        initial_capacity: u32,
+        initial_population: u32,
+        need_registry: Arc<NeedRegistry>,
+    ) -> Result<SettlementId, WorldError> {
         let id = self
             .settlements
             .next_id()
             .ok_or(WorldError::SettlementIdExhausted)?;
-        self.add_settlement(
+        self.register_settlement(
             province_id,
+            capital,
             Settlement::new(id, initial_capacity, initial_population, need_registry),
         )?;
         Ok(id)
@@ -164,12 +207,30 @@ impl World {
         }
     }
 
-    /// Registers an empty settlement in exactly one existing province.
-    /// Neither registry changes when validation fails.
+    /// Registers an empty settlement on the first valid land tile in its province.
     pub fn add_settlement(
         &mut self,
         province_id: usize,
         settlement: Settlement,
+    ) -> Result<(), WorldError> {
+        self.register_settlement(province_id, None, settlement)
+    }
+
+    /// Registers an empty settlement at an explicit capital position.
+    pub fn add_settlement_at(
+        &mut self,
+        province_id: usize,
+        capital: Position,
+        settlement: Settlement,
+    ) -> Result<(), WorldError> {
+        self.register_settlement(province_id, Some(capital), settlement)
+    }
+
+    fn register_settlement(
+        &mut self,
+        province_id: usize,
+        capital: Option<Position>,
+        mut settlement: Settlement,
     ) -> Result<(), WorldError> {
         let id = settlement.id();
         if self.settlements.get(id).is_some() {
@@ -184,11 +245,58 @@ impl World {
         if settlement.buildings().next().is_some() || !settlement.active_projects().is_empty() {
             return Err(WorldError::SettlementNotEmpty(id));
         }
+        let capital = match capital {
+            Some(position) => {
+                self.validate_capital_site(province_id, position)?;
+                position
+            }
+            None => self
+                .province_positions(province_id)
+                .into_iter()
+                .find(|&position| self.validate_capital_site(province_id, position).is_ok())
+                .ok_or(WorldError::NoCapitalSite(province_id))?,
+        };
+        settlement.assign_capital(capital);
         self.settlements
             .register(settlement)
             .map_err(WorldError::DuplicateSettlement)?;
         self.province_settlements.insert(province_id, id);
         Ok(())
+    }
+
+    fn validate_capital_site(
+        &self,
+        province_id: usize,
+        position: Position,
+    ) -> Result<(), WorldError> {
+        let index = self
+            .map
+            .tile_index(position)
+            .ok_or(WorldError::InvalidMapPosition(position))?;
+        let actual_province = self.map.territory[index];
+        if actual_province != province_id {
+            return Err(WorldError::CapitalOutsideProvince {
+                position,
+                expected_province: province_id,
+                actual_province,
+            });
+        }
+        let terrain = &self.map.terrain[index];
+        if !terrain.elevation_val.is_finite() || !terrain.moisture_val.is_finite() {
+            return Err(WorldError::InvalidTerrain(position));
+        }
+        if terrain.determine_elevation() == super::terrain::elevation::Elevation::Ocean {
+            return Err(WorldError::CapitalOnOcean(position));
+        }
+        Ok(())
+    }
+
+    fn is_capital_site(&self, index: usize, position: Position) -> bool {
+        self.province_settlements
+            .get(&self.map.territory[index])
+            .and_then(|&id| self.settlement(id))
+            .and_then(Settlement::capital)
+            == Some(position)
     }
 
     pub fn settlement(&self, id: SettlementId) -> Option<&Settlement> {

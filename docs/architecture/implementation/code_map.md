@@ -626,7 +626,7 @@ shares checked mouse-to-tile conversion between pathfinding overlays.
 | [domain/settlement/model/commands/trade.rs](../../../core/src/domain/settlement/model/commands/trade.rs) | `publish_trade_offers`, `clear_trade_offers`, `order_caravan`, `cancel_caravan_orders`, treasury/views and cargo handoff. |
 | [domain/settlement/model/trading/mod.rs](../../../core/src/domain/settlement/model/trading/mod.rs) | `TradeManager` and `CaravanOrder`: templates, orders, funded departures and queued returns. |
 | [domain/settlement/model/trading/lifecycle.rs](../../../core/src/domain/settlement/model/trading/lifecycle.rs) | `reserve_market`, `fund_caravan_orders`, `trade_with_visitors`, `collect_trade_returns`. |
-| [domain/world/state/trade.rs](../../../core/src/domain/world/state/trade.rs) | `begin_trade_turn`, `prepare_settlement_turn`, `default_trade_locations`, `finish_trade_turn`: transport and participant resolution. |
+| [domain/world/state/trade.rs](../../../core/src/domain/world/state/trade.rs) | `begin_trade_turn`, `prepare_settlement_turn`, `capital_trade_locations`, `finish_trade_turn`: transport and participant resolution. |
 | [test_support/trade_network.rs](../../../core/src/test_support/trade_network.rs) | Test runner with explicit caravan endpoints. |
 
 `Simulation::step` invokes transport before Preparation and after EconomicUpdates.

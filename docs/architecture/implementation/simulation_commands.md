@@ -4,6 +4,42 @@ The [global lifecycle](../overview/turn_lifecycle.md) defines phase order and th
 [registry system](../systems/settlement_registry.md) defines identity/registration.
 This reference describes the implemented coordinator API.
 
+## Agent API
+
+The agent reads a snapshot, submits a batch of actions and receives the outcomes
+when the caller advances the global turn.
+
+| Step | Method | Return value |
+| --- | --- | --- |
+| Read | `observe(settlement_id)` | `Result<SettlementObservation, WorldError>` with the settlement's economy, territory and latest local report. The snapshot supports `to_json()`. |
+| Submit | `queue_decision(decision)` | `Result<(), WorldError>`. Success means the decision is queued. An unknown settlement is rejected immediately. |
+| Advance | `step()` | `Result<SimulationTurnReport, SimulationError>`. The report contains each action's effect or rejection reason. |
+
+For example, with a configured simulation and a registered settlement:
+
+```rust
+use simulation_core::ids::BuildingTypeId;
+use simulation_core::simulation::{SettlementAction, SettlementDecision};
+use simulation_core::spatial::Position;
+
+let observation = simulation.observe(settlement_id)?;
+let decision = SettlementDecision::new(
+    observation.settlement_id,
+    vec![SettlementAction::Construct {
+        building_type: BuildingTypeId::new("farm"),
+        position: Position { x: 3, y: 4 },
+    }],
+);
+simulation.queue_decision(decision)?;
+let report = simulation.step()?;
+```
+
+An applied `Construct` returns `ProjectQueued` with the new project ID. An
+occupied tile yields `Rejected` with `TileOccupied`. The caller can submit
+decisions for several settlements before calling `step()` once for all of them.
+`SettlementDecision` and `DecisionOutcome` support JSON. The complete
+`SimulationTurnReport` is currently a Rust type without JSON serialization.
+
 ## Public API
 
 | Method | Contract |
@@ -16,7 +52,7 @@ This reference describes the implemented coordinator API.
 | `add_settlement(province_id, settlement)` | Register an explicitly initialized empty-structure settlement. |
 | `initialize_settlement(province_id, capacity, population, needs)` | Allocate an unused ID, create a settlement and register it; return the ID. |
 | `queue_decision(decision)` | Queue a `SettlementDecision` of a known settlement; no immediate world mutation. |
-| `step()` | Execute one global turn and return `SimulationTurnReport`. |
+| `step()` | Delegate to the turn coordinator, store the new turn and reports, and return `SimulationTurnReport`. |
 | `observe(id)`, `observe_all()` | Build agent [observations](settlement_observations.md) from the current state and the latest turn reports. |
 | `into_world()` | Consume the coordinator and recover its world; pending decisions are discarded. |
 
@@ -29,13 +65,13 @@ No public mutable world getter allows callers to bypass coordinated mutation.
 Agents submit a serializable [`SettlementDecision`](settlement_decisions.md):
 a settlement ID and a list of `SettlementAction`s (construct, upgrade, cancel,
 set workers, storage order, publish/clear market offers, order caravan). Agents
-never supply costs, definitions or project IDs; the simulation takes them from
-`World::building_catalog()` and `Settlement::next_project_id()`.
+refer to catalog types by ID. The simulation resolves definitions and costs
+from `World::building_catalog()` and assigns IDs to new projects through
+`Settlement::next_project_id()`. Cancellation refers to an existing project ID.
 
-`SettlementCommand` is the resolved, internal form produced by validation and
-executed by `World::execute_settlement_command`. It is also used directly on a
-`World` for scenario setup (for example `SetBuildingActive` or an explicit load),
-but `Simulation` accepts only decisions. Productivity configuration, initial
+`SettlementCommand` is the resolved form produced during preparation and
+executed by the internal command dispatcher after validation. Scenario setup
+uses explicit domain operations on `World`, `Settlement` and `Building`. Productivity configuration, initial
 inventory seeding, direct building insertion and the building catalog are
 scenario setup operations, not actions.
 
@@ -46,8 +82,8 @@ decisions, `step` checks counter overflow and all existing project memberships.
 A preflight error preserves world state, pending decisions and the counter.
 
 In the `Decisions` phase, settlements run in ascending ID order and each
-settlement's decisions in submission order. `World::apply_decision` validates a
-decision against the current state, then executes its accepted actions in order.
+settlement's decisions in submission order. The handler checks the input fields,
+prepares the decision against the current state and executes accepted actions.
 A later decision of the same settlement therefore sees the effects of the earlier
 one (for example, it can cancel a project the earlier one created).
 
@@ -57,9 +93,8 @@ Each decision produces a `DecisionOutcome { settlement_id, results }` with one
 `StorageOrderSet`, `MarketOffersPublished`, `MarketOffersCleared`,
 `CaravanOrdered`) or `Rejected { error }` with an `ActionError`. Rejected actions
 change nothing and do not stop later actions, decisions or phases. Decisions are
-consumed once. `ExecutionFailed` would mean that the engine refused a validated
-action; it is a debug assertion and not expected in practice. All result types
-serialize to JSON. Checked-arithmetic panics are not recoverable turn errors.
+consumed once. `ExecutionFailed` reports an operation that the engine refused
+after preparation. Per-action results serialize to JSON.
 
 ## Reports and transient values
 
@@ -78,9 +113,9 @@ phases; see [trading](../systems/trading.md).
 
 `PreparedTurn`, `AllocatedTurn`, `ConsumedTurn` and `ProducedTurn` are private
 transient phase values moved between calls. They carry allocations and reports,
-not another persistent copy of settlement state. A local `Settlement::process_turn`
-uses these same methods with an environment and visitor slice, without incrementing
-the global counter or moving/dispatching global caravans.
+not another persistent copy of settlement state. Tests under `core/src/test_support`
+exercise these phases in isolation. Their local turn and decision helpers are
+compiled only for tests.
 
 ## Headless execution
 
@@ -92,8 +127,8 @@ The example creates a small farm scenario directly in Rust, executes the request
 turn count and drops each report after use. The optional count defaults to 10.
 It initializes neither Macroquad nor a graphical window.
 
-Sources: [coordinator](../../../core/src/simulation/mod.rs),
-[decision dispatch](../../../core/src/simulation/decisions.rs),
-[step](../../../core/src/simulation/turn.rs),
-[report types](../../../core/src/simulation/turn_report.rs),
+Sources: [coordinator](../../../core/src/application/simulation/mod.rs),
+[command handler](../../../core/src/application/commands/settlement/handler.rs),
+[step](../../../core/src/application/simulation/turn_coordinator.rs),
+[report types](../../../core/src/application/simulation/turn_report.rs),
 [example](../../../core/examples/headless.rs).

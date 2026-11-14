@@ -37,7 +37,7 @@ package and dependencies. `Cargo.lock` records their resolved versions.
 
 ## Simulation coordinator
 
-### [core/src/simulation/mod.rs](../../../core/src/simulation/mod.rs)
+### [core/src/application/simulation/mod.rs](../../../core/src/application/simulation/mod.rs)
 
 Contains `Simulation` and `SimulationError`; `World` remains the only settlement registry.
 
@@ -55,22 +55,19 @@ Contains `Simulation` and `SimulationError`; `World` remains the only settlement
 | `into_world` | Recover the world, discarding pending commands. |
 | `SimulationError::fmt` | Format map, counter or preflight failures. |
 
-### [core/src/simulation/decisions.rs](../../../core/src/simulation/decisions.rs)
+### [core/src/application/simulation/turn_coordinator.rs](../../../core/src/application/simulation/turn_coordinator.rs)
 
-Re-exports the agent decision and result types from `settlement::decision`. Execution belongs to `World::apply_decision`.
+`run_turn` preflights all settlements, consumes decisions once and executes
+each phase globally in ascending settlement ID order. `Simulation::step` delegates
+to the coordinator and stores the completed turn number and latest reports.
 
-### [core/src/simulation/turn.rs](../../../core/src/simulation/turn.rs)
-
-`Simulation::step` preflights all settlements, consumes decisions once and executes
-each phase globally in ascending settlement ID order before incrementing the counter.
-
-### [core/src/simulation/turn_report.rs](../../../core/src/simulation/turn_report.rs)
+### [core/src/application/simulation/turn_report.rs](../../../core/src/application/simulation/turn_report.rs)
 
 Defines `TurnPhase`, `PhaseExecution` and `SimulationTurnReport`; no explicit methods.
 
 ## Buildings
 
-### [core/src/buildings/building.rs](../../../core/src/buildings/building.rs)
+### [core/src/domain/buildings/building.rs](../../../core/src/domain/buildings/building.rs)
 
 Runtime `Building`, `LoadError` and
 `ProductionResult`. Types are re-exported from `simulation_core::buildings`. This file owns
@@ -87,7 +84,7 @@ state, lifecycle, settings and read-only views; recipe processing is a child mod
 | `set_location_productivity` | Internally replace the exact cached multiplier. |
 | `upgrade` | Replace the validated shared definition while retaining instance state and clamping workers; returns (). |
 
-### [core/src/buildings/building/production.rs](../../../core/src/buildings/building/production.rs)
+### [core/src/domain/buildings/building/production.rs](../../../core/src/domain/buildings/building/production.rs)
 
 Additional methods on the same `Building` type, grouped around the production cycle.
 
@@ -97,7 +94,7 @@ Additional methods on the same `Building` type, grouped around the production cy
 | `resolve_allocation` | Set staffing and return ProductionResult with products and unused grants. |
 | `execute_production` | Apply worker/material bottlenecks and exact output scaling. |
 
-### [core/src/buildings/definition.rs](../../../core/src/buildings/definition.rs)
+### [core/src/domain/buildings/definition.rs](../../../core/src/domain/buildings/definition.rs)
 
 Contains `BuildingDefinition`, composed `BuildingBehavior` variants and
 `DefinitionError`. `BuildingDefinition::new()` calls private `validate()` to check
@@ -106,13 +103,13 @@ recipe sums, forbid labour in material recipes, validate stat arithmetic and lim
 `id`, `name`, `tier`, `max_workers`, `behaviors` and `construction_cost` expose
 read-only views; fields are private. Construction returns Result.
 
-### [core/src/buildings/catalog.rs](../../../core/src/buildings/catalog.rs)
+### [core/src/domain/buildings/catalog.rs](../../../core/src/domain/buildings/catalog.rs)
 
 `BuildingCatalog` stores blueprints as shared `Arc<BuildingDefinition>` values.
 `register()` inserts/replaces an already validated definition by string ID and returns ();
 `get_blueprint()` clones its shared reference or returns `None`.
 
-### [core/src/buildings/productivity.rs](../../../core/src/buildings/productivity.rs)
+### [core/src/domain/buildings/productivity.rs](../../../core/src/domain/buildings/productivity.rs)
 
 | Type / method | Purpose |
 | --- | --- |
@@ -133,7 +130,7 @@ read-only views; fields are private. Construction returns Result.
 ## Settlement
 
 
-### [core/src/settlement/mod.rs](../../../core/src/settlement/mod.rs)
+### [core/src/domain/settlement/model.rs](../../../core/src/domain/settlement/model.rs)
 
 Owns `Settlement`, `BuildingCommandError`, module visibility and re-exports of
 `NeedRegistry` and `NeedTier`. It holds private managers, gold and the trade book.
@@ -148,7 +145,7 @@ Owns `Settlement`, `BuildingCommandError`, module visibility and re-exports of
 | `storage_order` | Borrow the ordered material storage policy. |
 
 
-### [core/src/settlement/commands/mod.rs](../../../core/src/settlement/commands/mod.rs)
+### [core/src/domain/settlement/model/commands/mod.rs](../../../core/src/domain/settlement/model/commands/mod.rs)
 
 Declares the three private command groups below; it contains no methods.
 Every public command remains a method on the same `Settlement` type.
@@ -158,7 +155,7 @@ is exposed through `settlement::command`; `turn/report.rs` through
 `settlement::turn_report`. `settlement/stat.rs` is removed; stat targets live in
 `buildings::effects`.
 
-### [core/src/settlement/commands/inventory.rs](../../../core/src/settlement/commands/inventory.rs)
+### [core/src/domain/settlement/model/commands/inventory.rs](../../../core/src/domain/settlement/model/commands/inventory.rs)
 
 Warehouse mutations and storage admission policy.
 
@@ -169,7 +166,7 @@ Warehouse mutations and storage admission policy.
 | `set_inventory_capacity` | Change capacity, rejecting a limit below stored materials. |
 | `set_storage_order` | Validate and replace the complete ordered material list. |
 
-### [core/src/settlement/commands/buildings.rs](../../../core/src/settlement/commands/buildings.rs)
+### [core/src/domain/settlement/model/commands/buildings.rs](../../../core/src/domain/settlement/model/commands/buildings.rs)
 
 Building registration and operational settings.
 
@@ -180,7 +177,7 @@ Building registration and operational settings.
 | `set_building_load` | Find a building and validate its requested utilization. |
 | `set_building_active` | Find a building and toggle activity. |
 
-### [core/src/settlement/commands/projects.rs](../../../core/src/settlement/commands/projects.rs)
+### [core/src/domain/settlement/model/commands/projects.rs](../../../core/src/domain/settlement/model/commands/projects.rs)
 
 Requests that create construction/upgrade projects.
 
@@ -190,7 +187,7 @@ Requests that create construction/upgrade projects.
 | `queue_upgrade` | Check the upgrade target and project ID, then register an upgrade using a validated replacement blueprint. |
 | `cancel_project` | Release the exact construction reservation and remove the project; preserve upgrades' buildings and already paid costs. |
 
-### [core/src/settlement/economy/buildings.rs](../../../core/src/settlement/economy/buildings.rs)
+### [core/src/domain/settlement/model/economy/buildings.rs](../../../core/src/domain/settlement/model/economy/buildings.rs)
 
 Private `BuildingManager` owns instances and the optional productivity calculator.
 
@@ -208,7 +205,7 @@ Private `BuildingManager` owns instances and the optional productivity calculato
 | `generate_requests` | Create nonempty building demands with typed recipients. |
 | `process_allocations` | Execute each building and aggregate production/returns into `u64` totals. |
 
-### [core/src/settlement/economy/inventory.rs](../../../core/src/settlement/economy/inventory.rs)
+### [core/src/domain/settlement/model/economy/inventory.rs](../../../core/src/domain/settlement/model/economy/inventory.rs)
 
 Private `SettlementInventoryManager` owns main/pending inventories and storage order.
 
@@ -221,7 +218,7 @@ Private `SettlementInventoryManager` owns main/pending inventories and storage o
 | `commit_pending_production` | Drain the buffer into the warehouse and report transfer losses. |
 | `add_in_order` | Insert a batch according to the settlement's material priority. |
 
-### [core/src/settlement/economy/population.rs](../../../core/src/settlement/economy/population.rs)
+### [core/src/domain/settlement/model/economy/population.rs](../../../core/src/domain/settlement/model/economy/population.rs)
 
 `NeedTier` defines a population threshold and per-capita needs; `ConsumptionResult`
 records satisfaction. `PopulationManager` is private; needs types are public via
@@ -236,7 +233,7 @@ the settlement root and the consumption result via `turn_report`.
 | `calculate_demand` | Sum active per-capita needs and multiply by population using checked integers. |
 | `process_allocation` | Evaluate satisfaction from each resource's delivered fraction. |
 
-### [core/src/settlement/projects/mod.rs](../../../core/src/settlement/projects/mod.rs)
+### [core/src/domain/settlement/model/projects/mod.rs](../../../core/src/domain/settlement/model/projects/mod.rs)
 
 Re-exports `economy::cost::ProjectCost`. Contains `Project`, `ProjectResult`, `ProjectError`,
 `ProjectCompletion` and `ProjectOutcome`.
@@ -249,14 +246,14 @@ Re-exports `economy::cost::ProjectCost`. Contains `Project`, `ProjectResult`, `P
 | `resolve_allocation` | Reduce material costs and advance elapsed turn time. |
 | `is_completed` | Report whether both material and time costs are paid. |
 
-### [core/src/settlement/projects/manager.rs](../../../core/src/settlement/projects/manager.rs)
+### [core/src/domain/settlement/model/projects/manager.rs](../../../core/src/domain/settlement/model/projects/manager.rs)
 
 Private `ProjectManager` owns active projects. `new()` initializes the list;
 `add_project()` normalizes costs and rejects duplicate IDs; `generate_requests()`
 creates nonempty demands; `process_allocation()` advances every project;
 `extract_completed()` removes and returns completed projects in collection order.
 
-### [core/src/settlement/projects/lifecycle.rs](../../../core/src/settlement/projects/lifecycle.rs)
+### [core/src/domain/settlement/model/projects/lifecycle.rs](../../../core/src/domain/settlement/model/projects/lifecycle.rs)
 
 Internal project validation and effects on the same `Settlement` type.
 
@@ -269,11 +266,11 @@ Internal project validation and effects on the same `Settlement` type.
 | `validate_project_site` | Delegate placement and matching reservation validation to ConstructionSpace. |
 | `release_project_site` | Release only a rejected project's own construction reservation. |
 
-### [core/src/settlement/turn/mod.rs](../../../core/src/settlement/turn/mod.rs)
+### [core/src/domain/settlement/model/turn/mod.rs](../../../core/src/domain/settlement/model/turn/mod.rs)
 
 | Method on `Settlement` | Purpose |
 | --- | --- |
-| `process_turn` | Refresh productivity, reserve trade resources, allocate local demands, execute production/projects, collect stock and return a report. |
+| `process_turn_for_test` | Test-only helper that runs all phases for one settlement. |
 | `prepare_turn` | Refresh productivity/labour, snapshot opening stock, reject invalid projects, fund market/caravan books and match arrived visitors. |
 | `allocate_turn` | Gather demands and allocate from existing stock. |
 | `consume_turn` | Evaluate population allocations and shortages. |
@@ -283,7 +280,7 @@ Internal project validation and effects on the same `Settlement` type.
 
 Contains inline unit tests of turn behavior and private aggregate invariants.
 
-### [core/src/settlement/turn/report.rs](../../../core/src/settlement/turn/report.rs)
+### [core/src/domain/settlement/model/turn/report.rs](../../../core/src/domain/settlement/model/turn/report.rs)
 
 Contains `TurnReport`, `InventoryTurnReport`, `MaterialTotals`, `InventoryLoss`,
 `InventoryLossStage`, and the `ConsumptionResult` re-export.
@@ -297,7 +294,7 @@ in transit remain separate; see [trading](../systems/trading.md).
 
 ## Economy
 
-### [core/src/economy/inventory.rs](../../../core/src/economy/inventory.rs)
+### [core/src/domain/economy/inventory.rs](../../../core/src/domain/economy/inventory.rs)
 
 Contains capacity-aware `ResourceInventory`, `InventoryAddResult` and
 `CapacityError`. The types are also re-exported from `simulation_core::economy`.
@@ -314,32 +311,32 @@ Contains capacity-aware `ResourceInventory`, `InventoryAddResult` and
 | `reset_labour` | Internally reset labour without warehouse capacity constraints. |
 | `take_all` | Internally drain all stock for a transfer. |
 
-### [core/src/economy/resources.rs](../../../core/src/economy/resources.rs)
+### [core/src/domain/economy/resources.rs](../../../core/src/domain/economy/resources.rs)
 
 Contains `ResourceType` and `ResourceType::MATERIALS`, the complete material
 catalogue used to validate storage orders. No explicit methods.
 
-### [core/src/economy/allocation.rs](../../../core/src/economy/allocation.rs)
+### [core/src/domain/economy/allocation.rs](../../../core/src/domain/economy/allocation.rs)
 
 `AllocationRecipient` distinguishes population, buildings and projects;
 `DemandRequest` and `AllocationResult` carry typed demand/grant maps.
 `AllocationEngine::execute()` combines demands, allocates scarce resources
 proportionally with deterministic remainder handling, and withdraws material grants.
 
-### [core/src/economy/storage_order.rs](../../../core/src/economy/storage_order.rs)
+### [core/src/domain/economy/storage_order.rs](../../../core/src/domain/economy/storage_order.rs)
 
 `StorageOrder` stores a validated ordered material list; `StorageOrderError`
 identifies invalid lists. `default()` follows the material catalogue; `set()`
 rejects missing/duplicate/unsupported entries; `get()` returns the order;
 `compare()` orders two materials by their positions in the list.
 
-### [core/src/economy/gold_inventory.rs](../../../core/src/economy/gold_inventory.rs)
+### [core/src/domain/economy/gold_inventory.rs](../../../core/src/domain/economy/gold_inventory.rs)
 
 `GoldInventory::new()` sets initial currency; `add()` increments it; `consume()`
 spends only when sufficient; `consume_available()` drains it; `default()` starts
 at zero. Currency is separate from warehouse materials.
 
-### [core/src/ids.rs](../../../core/src/ids.rs)
+### [core/src/domain/ids.rs](../../../core/src/domain/ids.rs)
 
 `SettlementId`, `BuildingId` and `ProjectId` are distinct `u32` tuple types.
 `SettlementId::fmt` formats the numeric ID without conflating it with other ID types.
@@ -351,17 +348,17 @@ reports, failures and related test files in detail.
 
 | File | Types, methods and responsibility |
 | --- | --- |
-| [trade/mod.rs](../../../core/src/trade/mod.rs) | Exports allocation, book, caravan, execution, network and offer modules. |
-| [trade/offer.rs](../../../core/src/trade/offer.rs) | `TradeOffer`, `BuyTradeOffer`, `SellTradeOffer`, `TradeDemand`. `buy`/`sell` construct offers; `remaining_units` reads open quantity; `calculate_demand` requests stock or gold. `without_progress` strips earlier purchases from templates; `take_share`/`absorb` split/merge offers. Buy/sell accessors track stock and purchases. Buy gold demand uses saturating multiplication. |
-| [trade/book.rs](../../../core/src/trade/book.rs) | `TradeBook` owns reserved funds and offers. `new`/`with_offers`/`default` construct it; `replace_offers` installs templates; `calculate_demand` sums reservations; `update_sell_resource_amount` and `add_gold_amount` apply funding. `gold`, `offers`, `goods_for_sale`, `bought_goods` expose state; `return_resources` drains materials and funds. |
-| [trade/book/matching.rs](../../../core/src/trade/book/matching.rs) | `TradeBook::trade` returns executions from self's perspective. Private `transaction` scales purchases to gold, orders price/resource ties and spends remainders. `execute_single_trade` updates buyer/seller quantities and funds. |
-| [trade/book/market.rs](../../../core/src/trade/book/market.rs) | `TradeBook::trade_with_visitors` shares a market and returns execution vectors in visitor order. `visitor_interest`, `price`, `equal_shares`, `split`, `take_share`, `absorb` implement repeated sharing. |
-| [trade/execution.rs](../../../core/src/trade/execution.rs) | `TradeExecution`: resource, units, unit price, `TradeSide`. `total_price` multiplies in `u64`; `mirrored` and `TradeSide::opposite` switch perspective. |
-| [trade/allocation.rs](../../../core/src/trade/allocation.rs) | `TradeAllocationEngine::execute` withdraws available stock/gold, reducing unfunded sell quantities; `execute_gold_allocation` handles funds. Legacy `execute_remained_resources` ignores material admission rejection and is not used by the coordinated lifecycle. |
+| [domain/trade/mod.rs](../../../core/src/domain/trade/mod.rs) | Exports allocation, book, caravan, execution, network and offer modules. |
+| [domain/trade/offer.rs](../../../core/src/domain/trade/offer.rs) | `TradeOffer`, `BuyTradeOffer`, `SellTradeOffer`, `TradeDemand`. `buy`/`sell` construct offers; `remaining_units` reads open quantity; `calculate_demand` requests stock or gold. `without_progress` strips earlier purchases from templates; `take_share`/`absorb` split/merge offers. Buy/sell accessors track stock and purchases. Buy gold demand uses saturating multiplication. |
+| [domain/trade/book.rs](../../../core/src/domain/trade/book.rs) | `TradeBook` owns reserved funds and offers. `new`/`with_offers`/`default` construct it; `replace_offers` installs templates; `calculate_demand` sums reservations; `update_sell_resource_amount` and `add_gold_amount` apply funding. `gold`, `offers`, `goods_for_sale`, `bought_goods` expose state; `return_resources` drains materials and funds. |
+| [domain/trade/book/matching.rs](../../../core/src/domain/trade/book/matching.rs) | `TradeBook::trade` returns executions from self's perspective. Private `transaction` scales purchases to gold, orders price/resource ties and spends remainders. `execute_single_trade` updates buyer/seller quantities and funds. |
+| [domain/trade/book/market.rs](../../../core/src/domain/trade/book/market.rs) | `TradeBook::trade_with_visitors` shares a market and returns execution vectors in visitor order. `visitor_interest`, `price`, `equal_shares`, `split`, `take_share`, `absorb` implement repeated sharing. |
+| [domain/trade/execution.rs](../../../core/src/domain/trade/execution.rs) | `TradeExecution`: resource, units, unit price, `TradeSide`. `total_price` multiplies in `u64`; `mirrored` and `TradeSide::opposite` switch perspective. |
+| [domain/trade/allocation.rs](../../../core/src/domain/trade/allocation.rs) | `TradeAllocationEngine::execute` withdraws available stock/gold, reducing unfunded sell quantities; `execute_gold_allocation` handles funds. Legacy `execute_remained_resources` ignores material admission rejection and is not used by the coordinated lifecycle. |
 
 ## Geography and world state
 
-### [core/src/world/settlement_registry.rs](../../../core/src/world/settlement_registry.rs)
+### [core/src/domain/world/settlement_registry.rs](../../../core/src/domain/world/settlement_registry.rs)
 
 `SettlementRegistry` stores persistent instances in `BTreeMap<SettlementId, Settlement>`.
 Only crate-internal world registration/commands can mutate the store.
@@ -380,16 +377,16 @@ Only crate-internal world registration/commands can mutate the store.
 
 | File | Types and explicit methods |
 | --- | --- |
-| [world/terrain/area.rs](../../../core/src/world/terrain/area.rs) | `Area::new` stores elevation/moisture; `default` sets both to zero; `determine_biome`, `determine_elevation`, `determine_moisture` classify its values. |
-| [world/terrain/biome.rs](../../../core/src/world/terrain/biome.rs) | `Biome::determine` maps elevation/moisture categories to a biome. |
-| [world/terrain/elevation.rs](../../../core/src/world/terrain/elevation.rs) | `Elevation` and threshold constants; `determine` classifies elevation. |
-| [world/terrain/moisture.rs](../../../core/src/world/terrain/moisture.rs) | `Moisture` and threshold constants; `determine` classifies moisture. |
-| [world/map.rs](../../../core/src/world/map.rs) | `Map::new` stores buffers; `tile_index` checks coordinates/layer bounds; `province_at` resolves a province ID; `validate_building_position` enforces valid land. |
-| [world/coordinates.rs](../../../core/src/world/coordinates.rs) | Compatibility re-export of `spatial::Point` and `spatial::Position`. |
-| [world/province.rs](../../../core/src/world/province.rs) | `Province::new` creates an empty territory; `centroid` averages tile coordinates, returning `(0, 0)` for an empty territory. |
-| [world/state.rs](../../../core/src/world/state.rs) | `World`, registries, province membership and checked tile reads; methods detailed below. |
+| [domain/world/terrain/area.rs](../../../core/src/domain/world/terrain/area.rs) | `Area::new` stores elevation/moisture; `default` sets both to zero; `determine_biome`, `determine_elevation`, `determine_moisture` classify its values. |
+| [domain/world/terrain/biome.rs](../../../core/src/domain/world/terrain/biome.rs) | `Biome::determine` maps elevation/moisture categories to a biome. |
+| [domain/world/terrain/elevation.rs](../../../core/src/domain/world/terrain/elevation.rs) | `Elevation` and threshold constants; `determine` classifies elevation. |
+| [domain/world/terrain/moisture.rs](../../../core/src/domain/world/terrain/moisture.rs) | `Moisture` and threshold constants; `determine` classifies moisture. |
+| [domain/world/map.rs](../../../core/src/domain/world/map.rs) | `Map::new` stores buffers; `tile_index` checks coordinates/layer bounds; `province_at` resolves a province ID; `validate_building_position` enforces valid land. |
+| [domain/world/coordinates.rs](../../../core/src/domain/world/coordinates.rs) | Compatibility re-export of `spatial::Point` and `spatial::Position`. |
+| [domain/world/province.rs](../../../core/src/domain/world/province.rs) | `Province::new` creates an empty territory; `centroid` averages tile coordinates, returning `(0, 0)` for an empty territory. |
+| [domain/world/state.rs](../../../core/src/domain/world/state.rs) | `World`, registries, province membership and checked tile reads; methods detailed below. |
 
-### [core/src/world/state.rs](../../../core/src/world/state.rs)
+### [core/src/domain/world/state.rs](../../../core/src/domain/world/state.rs)
 
 | Method on `World` | Purpose |
 | --- | --- |
@@ -410,7 +407,7 @@ Only crate-internal world registration/commands can mutate the store.
 | `caravan_travel` | Advance every caravan's travel state. |
 | `centroid` | Resolve a province by ID and return its centroid or MissingProvince. |
 
-### [core/src/world/territory.rs](../../../core/src/world/territory.rs)
+### [core/src/domain/world/territory.rs](../../../core/src/domain/world/territory.rs)
 
 Contains `Tile`, `TileOccupancy`, settlement-qualified references and `TerritoryError`.
 
@@ -425,7 +422,7 @@ Contains `Tile`, `TileOccupancy`, settlement-qualified references and `Territory
 | `finish_construction` | Replace a matching reservation with its settlement's completed building. |
 | `validate_reservation` | Check project and settlement identity without mutation. |
 
-### [core/src/world/state/construction.rs](../../../core/src/world/state/construction.rs)
+### [core/src/domain/world/state/construction.rs](../../../core/src/domain/world/state/construction.rs)
 
 | Method on `World` | Purpose |
 | --- | --- |
@@ -433,10 +430,10 @@ Contains `Tile`, `TileOccupancy`, settlement-qualified references and `Territory
 | `add_building` | Validate province membership and delegate completed-building registration. |
 | `queue_upgrade` | Validate the target's province and delegate the upgrade. |
 | `cancel_project` | Delegate cancellation using the shared registry, even after map edits. |
-| `process_settlement_turn` | Recheck project membership and advance one settlement with shared spatial state. |
+| `process_settlement_turn_for_test` | Test-only helper that advances one settlement with shared spatial state. |
 | `validate_settlement_turn` | Preflight existing project positions without mutating world state. |
 
-### [core/src/world/state/inspection.rs](../../../core/src/world/state/inspection.rs)
+### [core/src/domain/world/state/inspection.rs](../../../core/src/domain/world/state/inspection.rs)
 
 `World::inspect_tile` returns `TileView`: terrain, province, separate
 `province_settlement`/`occupant_settlement` references, occupancy and borrowed
@@ -445,18 +442,18 @@ and structural references, returning `InconsistentOccupancy` for dangling or mis
 
 ## Pathfinding services
 
-### [core/src/world/pathfinding/a_star.rs](../../../core/src/world/pathfinding/a_star.rs)
+### [core/src/domain/world/pathfinding/a_star.rs](../../../core/src/domain/world/pathfinding/a_star.rs)
 
 `AStar::a_star()` returns the reconstructed `Vec<Point>` route;
 `travel_cost()` runs the shared search and returns its minimum directed cost
 without path allocation; private `heuristic()` computes the octile lower bound.
 
-### [core/src/world/pathfinding/dijkstra_flood.rs](../../../core/src/world/pathfinding/dijkstra_flood.rs)
+### [core/src/domain/world/pathfinding/dijkstra_flood.rs](../../../core/src/domain/world/pathfinding/dijkstra_flood.rs)
 
 `DijkstraFlood::dijkstra_flood()` returns the land points reachable within a
 movement-cost budget using the shared buffer and movement rules.
 
-### [core/src/world/pathfinding/path_finder.rs](../../../core/src/world/pathfinding/path_finder.rs)
+### [core/src/domain/world/pathfinding/path_finder.rs](../../../core/src/domain/world/pathfinding/path_finder.rs)
 
 `PathFinder` owns reusable private `Node` state. Movement constants define straight,
 diagonal and slope costs.
@@ -481,7 +478,7 @@ diagonal and slope costs.
 ## World generation services
 
 
-### [core/src/world/generation/config.rs](../../../core/src/world/generation/config.rs)
+### [core/src/domain/world/generation/config.rs](../../../core/src/domain/world/generation/config.rs)
 
 Parameter data and six explicit `Default::default` implementations:
 `WorldDimensions` sets map size, `VoronoiConfig` province count/relaxation passes,
@@ -489,7 +486,7 @@ Parameter data and six explicit `Default::default` implementations:
 `SeedConfig` point/noise seeds, and `ElevationTuningFineConfig` island falloff.
 These defaults are independent of runtime economy TOML.
 
-### [core/src/world/generation/world_builder.rs](../../../core/src/world/generation/world_builder.rs)
+### [core/src/domain/world/generation/world_builder.rs](../../../core/src/domain/world/generation/world_builder.rs)
 
 | Method on `WorldBuilder` | Purpose |
 | --- | --- |
@@ -497,7 +494,7 @@ These defaults are independent of runtime economy TOML.
 | `new` | Allocate terrain/territory and initialize noise managers. |
 | `generate` | Coordinate terrain, province relaxation and ocean cleanup. |
 
-### [core/src/world/generation/world_builder/terrain.rs](../../../core/src/world/generation/world_builder/terrain.rs)
+### [core/src/domain/world/generation/world_builder/terrain.rs](../../../core/src/domain/world/generation/world_builder/terrain.rs)
 
 Terrain generation methods on the same `WorldBuilder` type.
 
@@ -506,7 +503,7 @@ Terrain generation methods on the same `WorldBuilder` type.
 | `build_elevation`, `build_moisture` | Fill terrain channels using warped noise. |
 | `ocean_set` | Normalize ocean tiles to zero elevation and full moisture. |
 
-### [core/src/world/generation/world_builder/provinces.rs](../../../core/src/world/generation/world_builder/provinces.rs)
+### [core/src/domain/world/generation/world_builder/provinces.rs](../../../core/src/domain/world/generation/world_builder/provinces.rs)
 
 Province generation methods on the same `WorldBuilder` type.
 
@@ -516,13 +513,13 @@ Province generation methods on the same `WorldBuilder` type.
 | `build_voronoi` | Repeat territory assignment and centroid relaxation. |
 | `edge_alignment` | Turn a whole province into ocean if any of its tiles is ocean. |
 
-### [core/src/world/generation/voronoi.rs](../../../core/src/world/generation/voronoi.rs)
+### [core/src/domain/world/generation/voronoi.rs](../../../core/src/domain/world/generation/voronoi.rs)
 
 `Voronoi::generate_random_points()` generates unique seeded grid
 points; `apply_voronoi()` assigns tiles to the nearest warped seed and rebuilds
 province territories; `calculate_centroids()` maps provinces to their centroids.
 
-### [core/src/world/generation/noise_manager.rs](../../../core/src/world/generation/noise_manager.rs)
+### [core/src/domain/world/generation/noise_manager.rs](../../../core/src/domain/world/generation/noise_manager.rs)
 
 `NoiseManager::new()` initializes four-octave Perlin FBM using a supplied/random
 seed; `get_noise_value()` samples/clamps noise;
@@ -565,13 +562,13 @@ the default camera; `update()` handles WASD movement and wheel zoom;
 The following files only declare/export modules; they contain no explicit methods:
 
 - [core/src/lib.rs](../../../core/src/lib.rs)
-- [core/src/buildings/mod.rs](../../../core/src/buildings/mod.rs)
-- [core/src/economy/mod.rs](../../../core/src/economy/mod.rs)
-- [core/src/world/terrain/mod.rs](../../../core/src/world/terrain/mod.rs)
-- [core/src/trade/mod.rs](../../../core/src/trade/mod.rs)
-- [core/src/world/mod.rs](../../../core/src/world/mod.rs)
-- [core/src/world/pathfinding/mod.rs](../../../core/src/world/pathfinding/mod.rs)
-- [core/src/world/generation/mod.rs](../../../core/src/world/generation/mod.rs)
+- [core/src/domain/buildings/mod.rs](../../../core/src/domain/buildings/mod.rs)
+- [core/src/domain/economy/mod.rs](../../../core/src/domain/economy/mod.rs)
+- [core/src/domain/world/terrain/mod.rs](../../../core/src/domain/world/terrain/mod.rs)
+- [core/src/domain/trade/mod.rs](../../../core/src/domain/trade/mod.rs)
+- [core/src/domain/world/mod.rs](../../../core/src/domain/world/mod.rs)
+- [core/src/domain/world/pathfinding/mod.rs](../../../core/src/domain/world/pathfinding/mod.rs)
+- [core/src/domain/world/generation/mod.rs](../../../core/src/domain/world/generation/mod.rs)
 - [adapters/src/lib.rs](../../../adapters/src/lib.rs)
 - [adapters/src/view/mod.rs](../../../adapters/src/view/mod.rs)
 - [adapters/src/view/map/mod.rs](../../../adapters/src/view/map/mod.rs)
@@ -579,10 +576,10 @@ The following files only declare/export modules; they contain no explicit method
 | File / location | Purpose |
 | --- | --- |
 | [core/tests/economy_validation_tests.rs](../../../core/tests/economy_validation_tests.rs) | Public-interface tests of definition validation, commands and allocation integrity. |
-| [core/tests/building_productivity_tests.rs](../../../core/tests/building_productivity_tests.rs) | Public-interface tests of travel costs, configuration, output scaling and settlement isolation. |
-| [core/tests/territory_construction_tests.rs](../../../core/tests/territory_construction_tests.rs) | World construction, overlap rejection, placement, upgrades and atomic failures. |
-| [core/tests/project_cancellation_tests.rs](../../../core/tests/project_cancellation_tests.rs) | Cancellation, no refunds, upgrade preservation, reservation matching and identifier reuse. |
-| [core/tests/simulation_tests.rs](../../../core/tests/simulation_tests.rs) | Global progression/order, decisions, local economic equivalence and headless multi-turn execution. |
+| [core/src/test_support/building_productivity_tests.rs](../../../core/src/test_support/building_productivity_tests.rs) | Public-interface tests of travel costs, configuration, output scaling and settlement isolation. |
+| [core/src/test_support/territory_construction_tests.rs](../../../core/src/test_support/territory_construction_tests.rs) | World construction, overlap rejection, placement, upgrades and atomic failures. |
+| [core/src/test_support/project_cancellation_tests.rs](../../../core/src/test_support/project_cancellation_tests.rs) | Cancellation, no refunds, upgrade preservation, reservation matching and identifier reuse. |
+| [core/src/test_support/simulation_tests.rs](../../../core/src/test_support/simulation_tests.rs) | Global progression/order, decisions, local economic equivalence and headless multi-turn execution. |
 | [core/tests/settlement_registry_tests.rs](../../../core/tests/settlement_registry_tests.rs) | Initialization, typed references, duplicates, stable traversal, ID allocation and persistent economic/spatial identity. |
 | [core/examples/headless.rs](../../../core/examples/headless.rs) | `main` creates a farm scenario and runs a requested number of turns without graphics. |
 | Inline `#[cfg(test)]` modules | Unit tests alongside the feature they verify, including turn tests in `settlement/turn/mod.rs`. |
@@ -592,7 +589,7 @@ The following files only declare/export modules; they contain no explicit method
 Documentation is indexed in [docs/README.md](../../README.md). Update this map when
 adding, moving or renaming an implementation file or method.
 
-### [world/state/map_commands.rs](../../../core/src/world/state/map_commands.rs)
+### [domain/world/state/map_commands.rs](../../../core/src/domain/world/state/map_commands.rs)
 
 `World::set_tile_terrain` checks bounds and finite terrain values before replacing
 one tile. `set_tile_province` checks bounds and target province, then updates the
@@ -604,20 +601,18 @@ projects outside their settlement's province after a membership change.
 
 | Source | Types and methods |
 | --- | --- |
-| [spatial/mod.rs](../../../core/src/spatial/mod.rs) | Coordinate/occupancy values, qualified references, `TerritoryError`, and the `ConstructionSpace` contract: reserve, validate, cancel, finish, register, release rejected. |
-| [economy/cost.rs](../../../core/src/economy/cost.rs) | `ProjectCost::normalize` removes zero entries; `is_fully_paid` checks materials and elapsed time. |
-| [buildings/effects.rs](../../../core/src/buildings/effects.rs) | `StatType`: shared housing, inventory and trade modifier targets. |
-| [buildings/productivity.rs](../../../core/src/buildings/productivity.rs) | `TravelCostSource::travel_cost` supplies a directed optional cost to the calculator. |
-| [settlement/commands/command.rs](../../../core/src/settlement/commands/command.rs) | `SettlementCommand`: resolved commands for construction, upgrade, cancellation, building settings, storage order and trade. |
-| [world/state/execution.rs](../../../core/src/world/state/execution.rs) | `World::apply_decision`: validate, execute accepted actions, return `DecisionOutcome`. |
-| [world/state/observation.rs](../../../core/src/world/state/observation.rs) | `World::observe_settlement` (crate-internal) builds a `SettlementObservation`; `settlement_province` finds a settlement's province. |
-| [settlement/observation.rs](../../../core/src/settlement/observation.rs) | Serializable observation types. See [settlement observations](settlement_observations.md). |
-| [settlement/action_mask.rs](../../../core/src/settlement/action_mask.rs) | `ActionMask` and its option types. |
-| [world/state/mask.rs](../../../core/src/world/state/mask.rs) | `World::action_mask` (crate-internal): options confirmed by the action validator. |
-| [settlement/decision.rs](../../../core/src/settlement/decision.rs) | Agent contract: `SettlementDecision`, `SettlementAction`, `ActionKind`, `OfferSpec`; `to_json`/`from_json`. See [settlement decisions](settlement_decisions.md). |
-| [world/settlement_environment.rs](../../../core/src/world/settlement_environment.rs) | `AStarTravelCosts::new/travel_cost`, `MapConstructionSpace::new` and its construction operations, `MapSettlementEnvironment::new` and delegation of both ports. |
-| [world/state/commands.rs](../../../core/src/world/state/commands.rs) | `CommandError`; `World::execute_settlement_command` is the single typed command dispatcher. |
-| [world/state/validation.rs](../../../core/src/world/state/validation.rs) | `World::validate_decision`: read-only check of a `SettlementDecision`, returning `ValidatedDecision` with resolved `AcceptedAction`s and `RejectedAction`s. See [settlement decisions](settlement_decisions.md#validation). |
+| [domain/spatial/mod.rs](../../../core/src/domain/spatial/mod.rs) | Coordinate/occupancy values, qualified references, `TerritoryError`, and the `ConstructionSpace` contract: reserve, validate, cancel, finish, register, release rejected. |
+| [domain/economy/cost.rs](../../../core/src/domain/economy/cost.rs) | `ProjectCost::normalize` removes zero entries; `is_fully_paid` checks materials and elapsed time. |
+| [domain/buildings/effects.rs](../../../core/src/domain/buildings/effects.rs) | `StatType`: shared housing, inventory and trade modifier targets. |
+| [domain/buildings/productivity.rs](../../../core/src/domain/buildings/productivity.rs) | `TravelCostSource::travel_cost` supplies a directed optional cost to the calculator. |
+| [application/commands/settlement/prepared.rs](../../../core/src/application/commands/settlement/prepared.rs) | `SettlementCommand`: resolved commands for construction, upgrade, cancellation, building settings, storage order and trade. |
+| [application/commands/settlement/handler.rs](../../../core/src/application/commands/settlement/handler.rs) | `handle_decision` validates, executes accepted actions and returns `DecisionOutcome`. |
+| [application/queries/observe_settlement.rs](../../../core/src/application/queries/observe_settlement.rs) | `observe_settlement` projects a `SettlementObservation` from the world and latest report. |
+| [application/queries/observation.rs](../../../core/src/application/queries/observation.rs) | Serializable observation types. See [settlement observations](settlement_observations.md). |
+| [application/commands/settlement/contract.rs](../../../core/src/application/commands/settlement/contract.rs) | Agent contract: `SettlementDecision`, `SettlementAction`, `ActionKind`, `OfferSpec`; `to_json`/`from_json`. See [settlement decisions](settlement_decisions.md). |
+| [domain/world/settlement_environment.rs](../../../core/src/domain/world/settlement_environment.rs) | `AStarTravelCosts::new/travel_cost`, `MapConstructionSpace::new` and its construction operations, `MapSettlementEnvironment::new` and delegation of both ports. |
+| [application/commands/settlement/dispatch.rs](../../../core/src/application/commands/settlement/dispatch.rs) | Internal dispatcher maps prepared commands to domain operations. |
+| [application/commands/settlement/preparation.rs](../../../core/src/application/commands/settlement/preparation.rs) | `DecisionPreparation::validate_decision`: read-only check of a `SettlementDecision`, returning `ValidatedDecision` with resolved `AcceptedAction`s and `RejectedAction`s. See [settlement decisions](settlement_decisions.md#validation). |
 
 `World::settlement_turn_parts` borrows a target and temporary map adapter;
 `World::settlement_mut` is a checked internal lookup for nonspatial phases.
@@ -628,11 +623,11 @@ shares checked mouse-to-tile conversion between pathfinding overlays.
 
 | File | Methods and responsibilities |
 | --- | --- |
-| [settlement/commands/trade.rs](../../../core/src/settlement/commands/trade.rs) | `publish_trade_offers`, `clear_trade_offers`, `order_caravan`, `cancel_caravan_orders`, treasury/views and cargo handoff. |
-| [settlement/trading/mod.rs](../../../core/src/settlement/trading/mod.rs) | `TradeManager` and `CaravanOrder`: templates, orders, funded departures and queued returns. |
-| [settlement/trading/lifecycle.rs](../../../core/src/settlement/trading/lifecycle.rs) | `reserve_market`, `fund_caravan_orders`, `trade_with_visitors`, `collect_trade_returns`. |
-| [world/state/trade.rs](../../../core/src/world/state/trade.rs) | `begin_trade_turn`, `prepare_settlement_turn`, `default_trade_locations`, `finish_trade_turn`: transport and participant resolution. |
-| [trade/network.rs](../../../core/src/trade/network.rs) | `process_turn`: alternative local-phase runner with explicit endpoints. |
+| [domain/settlement/model/commands/trade.rs](../../../core/src/domain/settlement/model/commands/trade.rs) | `publish_trade_offers`, `clear_trade_offers`, `order_caravan`, `cancel_caravan_orders`, treasury/views and cargo handoff. |
+| [domain/settlement/model/trading/mod.rs](../../../core/src/domain/settlement/model/trading/mod.rs) | `TradeManager` and `CaravanOrder`: templates, orders, funded departures and queued returns. |
+| [domain/settlement/model/trading/lifecycle.rs](../../../core/src/domain/settlement/model/trading/lifecycle.rs) | `reserve_market`, `fund_caravan_orders`, `trade_with_visitors`, `collect_trade_returns`. |
+| [domain/world/state/trade.rs](../../../core/src/domain/world/state/trade.rs) | `begin_trade_turn`, `prepare_settlement_turn`, `default_trade_locations`, `finish_trade_turn`: transport and participant resolution. |
+| [test_support/trade_network.rs](../../../core/src/test_support/trade_network.rs) | Test runner with explicit caravan endpoints. |
 
 `Simulation::step` invokes transport before Preparation and after EconomicUpdates.
 See [trading](trading.md) for report timing, failure semantics and all supporting files.

@@ -155,10 +155,10 @@ satisfaction_percent = sum(min(granted_resource, required_resource))
 
 | Area | Code |
 | --- | --- |
-| Resources and capacity | [inventory.rs](../../../core/src/economy/inventory.rs) |
-| Recipients and remainders | [allocation.rs](../../../core/src/economy/allocation.rs) |
-| Production | [buildings/building.rs](../../../core/src/buildings/building.rs) |
-| Definitions and validation | [definition.rs](../../../core/src/buildings/definition.rs) |
-| Shared blueprint registry | [catalog.rs](../../../core/src/buildings/catalog.rs) |
-| Population needs | [population.rs](../../../core/src/settlement/economy/population.rs) |
-| Warehouse and buffer | [inventory_manager.rs](../../../core/src/settlement/economy/inventory.rs) |
+| Resources and capacity | [inventory.rs](../../../core/src/domain/economy/inventory.rs) |
+| Recipients and remainders | [allocation.rs](../../../core/src/domain/economy/allocation.rs) |
+| Production | [domain/buildings/building.rs](../../../core/src/domain/buildings/building.rs) |
+| Definitions and validation | [definition.rs](../../../core/src/domain/buildings/definition.rs) |
+| Shared blueprint registry | [catalog.rs](../../../core/src/domain/buildings/catalog.rs) |
+| Population needs | [population.rs](../../../core/src/domain/settlement/model/economy/population.rs) |
+| Warehouse and buffer | [inventory_manager.rs](../../../core/src/domain/settlement/model/economy/inventory.rs) |

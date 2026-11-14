@@ -439,7 +439,9 @@ fn observations_round_trip_through_json() {
     let mut simulation = Simulation::new(world(50)).unwrap();
     simulation.step().unwrap();
     for observation in simulation.observe_all().into_values() {
-        let back: SettlementObservation = serde_json::from_str(&observation.to_json()).unwrap();
+        let json = observation.to_json();
+        assert!(!json.contains("\"action_mask\":"));
+        let back: SettlementObservation = serde_json::from_str(&json).unwrap();
         assert_eq!(back, observation);
     }
 }

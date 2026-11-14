@@ -1,5 +1,0 @@
-//! Agent decision types used by the coordinator; defined in the settlement contract.
-pub use crate::settlement::decision::{
-    ActionEffect, ActionError, ActionOutcome, ActionResult, DecisionOutcome, SettlementAction,
-    SettlementDecision,
-};

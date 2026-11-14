@@ -136,11 +136,8 @@ Stock snapshots include warehouse and buffer, not cargo in transit. This is loca
 
 ## Entry points and current limits
 
-Use `Simulation::step()` for global turns. `TradeNetwork::process_turn()` is an
-alternative runner using local turns and explicit endpoints; do not call both
-for the same intended turn. `World::process_settlement_turn()` handles arrived
-visitors but does not move or dispatch global caravans. Standalone
-`Settlement::process_turn(environment, visitors)` accepts an empty visitor slice.
+`Simulation::step()` advances trading as part of the global turn. Isolated
+trade tests use a private runner with explicit endpoints.
 
 Other limits: fixed routes/speed, no capacity, multi-stop trade, discovery, world
 observations, diplomacy or settlement removal API. Some price/quantity and gold

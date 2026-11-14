@@ -33,4 +33,4 @@ No routing cache, event bus or automatic economic policy is introduced.
 
 - [Dependency contracts and diagrams](../architecture/overview/settlement_boundaries.md)
 - [Source file and method map](../architecture/implementation/code_map.md)
-- [Map-free domain tests](../../core/tests/settlement_environment_tests.rs)
+- [Map-free domain tests](../../core/src/test_support/settlement_environment_tests.rs)

@@ -32,5 +32,5 @@ province membership changes.
 ## Details
 
 - [Buildings](../architecture/systems/buildings.md)
-- [World tile commands](../../core/src/world/state/map_commands.rs)
+- [World tile commands](../../core/src/domain/world/state/map_commands.rs)
 - [Blueprint validation tests](../../core/tests/economy_validation_tests.rs)

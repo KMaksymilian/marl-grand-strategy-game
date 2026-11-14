@@ -48,4 +48,4 @@ Read [components](components.md), [ownership](state_ownership.md) and
 
 Sources: [main_app](../../../main_app/src/main.rs),
 [headless example](../../../core/examples/headless.rs),
-[Simulation](../../../core/src/simulation/mod.rs).
+[Simulation](../../../core/src/application/simulation/mod.rs).

@@ -6,7 +6,6 @@ use simulation_core::buildings::definition::{BuildingBehavior, BuildingDefinitio
 use simulation_core::economy::ResourceType::{self, Grain, Labour, Stone, Wood};
 use simulation_core::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
 use simulation_core::settlement::Settlement;
-use simulation_core::settlement::command::SettlementCommand;
 use simulation_core::settlement::decision::{OfferSide, OfferSpec};
 use simulation_core::settlement::projects::{ProjectCost, ProjectResult};
 use simulation_core::simulation::{
@@ -50,6 +49,10 @@ fn farm_definition(id: &str, max_workers: u32, wood: u32, turns: u32) -> Buildin
 /// (population 5, Wood 10, Grain 3, gold 20, an unstaffed farm at (0,0)),
 /// settlement 2 owns 20, province 30 is empty.
 fn world() -> World {
+    world_with_farm_activity(true)
+}
+
+fn world_with_farm_activity(active: bool) -> World {
     let mut terrain = vec![Area::new(0.5, 0.5); 8];
     terrain[5] = Area::new(0.0, 0.5);
     let mut world = World::new(
@@ -69,12 +72,10 @@ fn world() -> World {
         .add_settlement(20, Settlement::new(NEIGHBOUR, 100, 3, Arc::default()))
         .unwrap();
     let farm = world.building_catalog().get_blueprint("farm").unwrap();
+    let mut building = Building::new(FARM, at(0, 0), farm);
+    building.set_active(active);
     world
-        .add_building(
-            ME,
-            Building::new(FARM, at(0, 0), farm),
-            &mut PathFinder::new(4, 2),
-        )
+        .add_building(ME, building, &mut PathFinder::new(4, 2))
         .unwrap();
     world
 }
@@ -240,6 +241,13 @@ fn cancel_and_clear_undo_earlier_decisions() {
         ],
     );
     assert_eq!(me(&simulation).active_projects().len(), 1);
+    assert_eq!(
+        simulation.world().tile_at(at(1, 0)).unwrap().occupancy(),
+        TileOccupancy::Construction(ProjectReference {
+            settlement_id: ME,
+            project_id: ProjectId(1),
+        }),
+    );
     let report = step_with(
         &mut simulation,
         vec![
@@ -277,17 +285,7 @@ fn cancel_and_clear_undo_earlier_decisions() {
 
 #[test]
 fn staffing_switches_production_on_and_off() {
-    let mut world = world();
-    world
-        .execute_settlement_command(
-            ME,
-            &SettlementCommand::SetBuildingActive {
-                building_id: FARM,
-                active: false,
-            },
-        )
-        .unwrap();
-    let mut simulation = Simulation::new(world).unwrap();
+    let mut simulation = Simulation::new(world_with_farm_activity(false)).unwrap();
     // Staffing a switched-off building also switches it on.
     let report = step_with(&mut simulation, vec![workers(4)]);
     assert!(farm(&simulation).is_active());
@@ -392,14 +390,15 @@ fn caravans_are_checked_against_what_the_market_leaves() {
             offers: vec![sell_wood(1)],
         }],
     );
-    assert!(!report.decisions[0].results[0].is_applied());
     assert_eq!(
-        simulation
-            .observe(ME)
-            .unwrap()
-            .action_mask
-            .caravan_sell_limits[&Wood],
-        0
+        report.decisions[0].results[0].outcome,
+        ActionOutcome::Rejected {
+            error: ActionError::InsufficientStock {
+                resource: Wood,
+                requested: 1,
+                available: 0,
+            },
+        },
     );
 
     // Caravan first: a later market action may not take what it was promised.

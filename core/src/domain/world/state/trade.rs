@@ -11,6 +11,7 @@ impl World {
         id: SettlementId,
         finder: &mut PathFinder,
     ) -> crate::domain::settlement::PreparedTurn {
+        let province = self.settlement_province(id).expect("registered settlement");
         let mut visitors: Vec<_> = self
             .caravans
             .iter_mut()
@@ -25,7 +26,8 @@ impl World {
                     &self.map,
                     finder,
                     &mut self.territory,
-                ),
+                )
+                .with_province(province),
                 &mut visitors,
             )
     }

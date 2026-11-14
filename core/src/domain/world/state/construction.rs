@@ -27,6 +27,26 @@ impl World {
             .map_err(|error| WorldError::Project(ProjectError::Territory(error)))
     }
 
+    pub(crate) fn validate_blueprint_site(
+        &self,
+        settlement_id: SettlementId,
+        position: Position,
+        definition: &BuildingDefinition,
+    ) -> Result<(), WorldError> {
+        self.validate_construction_site(settlement_id, position)?;
+        self.validate_building_deposit(position, definition.required_deposit())
+    }
+
+    pub(crate) fn validate_upgrade_site(
+        &self,
+        settlement_id: SettlementId,
+        position: Position,
+        definition: &BuildingDefinition,
+    ) -> Result<(), WorldError> {
+        self.validate_settlement_position(settlement_id, position)?;
+        self.validate_building_deposit(position, definition.required_deposit())
+    }
+
     /// Cancellation belongs to the settlement and also works after map edits.
     pub fn cancel_project(
         &mut self,
@@ -51,7 +71,7 @@ impl World {
         definition: Arc<BuildingDefinition>,
         cost: ProjectCost,
     ) -> Result<(), WorldError> {
-        self.validate_settlement_position(settlement_id, position)?;
+        self.validate_blueprint_site(settlement_id, position, &definition)?;
         self.settlements
             .get_mut(settlement_id)
             .expect("settlement was validated")
@@ -72,6 +92,10 @@ impl World {
         finder: &mut PathFinder,
     ) -> Result<(), WorldError> {
         self.validate_settlement_position(settlement_id, building.position())?;
+        self.validate_building_deposit(
+            building.position(),
+            building.definition().required_deposit(),
+        )?;
         self.settlements
             .get_mut(settlement_id)
             .expect("settlement was validated")
@@ -99,7 +123,7 @@ impl World {
             .ok_or(WorldError::Project(ProjectError::MissingBuilding(
                 building_id,
             )))?;
-        self.validate_settlement_position(settlement_id, building.position())?;
+        self.validate_upgrade_site(settlement_id, building.position(), &definition)?;
         self.settlements
             .get_mut(settlement_id)
             .expect("settlement was validated")
@@ -115,6 +139,9 @@ impl World {
         finder: &mut PathFinder,
     ) -> Result<TurnReport, WorldError> {
         self.validate_settlement_turn(settlement_id)?;
+        let province = self
+            .settlement_province(settlement_id)
+            .expect("registered settlement");
         let mut visitors: Vec<_> = self
             .caravans
             .iter_mut()
@@ -129,7 +156,8 @@ impl World {
             .get_mut(settlement_id)
             .expect("settlement was validated")
             .process_turn_for_test(
-                &mut MapSettlementEnvironment::new(&self.map, finder, &mut self.territory),
+                &mut MapSettlementEnvironment::new(&self.map, finder, &mut self.territory)
+                    .with_province(province),
                 &mut visitors,
             ))
     }
@@ -149,13 +177,18 @@ impl World {
                     self.validate_settlement_position(settlement_id, *position)?
                 }
                 ProjectResult::UpgradeBuilding {
-                    target_instance_id, ..
+                    target_instance_id,
+                    new_definition,
                 } => {
                     if let Some(building) = settlement
                         .buildings()
                         .find(|building| building.instance_id() == *target_instance_id)
                     {
-                        self.validate_settlement_position(settlement_id, building.position())?;
+                        self.validate_upgrade_site(
+                            settlement_id,
+                            building.position(),
+                            new_definition,
+                        )?;
                     }
                 }
                 ProjectResult::RecruitUnit { .. } => {}

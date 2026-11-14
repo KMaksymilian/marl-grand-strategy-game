@@ -1,16 +1,18 @@
 //! Combined read-only tile data for world inspection, not an agent's knowledge.
 use super::{World, WorldError};
 use crate::domain::buildings::Building;
+use crate::domain::economy::ResourceType;
 use crate::domain::settlement::{Settlement, projects::Project};
 use crate::domain::world::Position;
 use crate::domain::world::terrain::area::Area;
 use crate::domain::world::territory::{Tile, TileOccupancy};
 
 /// Borrows authoritative world data; callers cannot mutate its referenced objects.
-/// Deposits, units and visibility filtering are not implemented yet.
+/// Units and visibility filtering are not implemented yet.
 pub struct TileView<'a> {
     pub position: Position,
     pub terrain: &'a Area,
+    pub deposit: Option<ResourceType>,
     pub province_id: usize,
     /// Settlement registered in this province, if any.
     pub province_settlement: Option<&'a Settlement>,
@@ -76,6 +78,7 @@ impl World {
         Ok(TileView {
             position,
             terrain: &self.map.terrain[index],
+            deposit: self.map.deposit_at(position),
             province_id,
             province_settlement: settlement,
             occupant_settlement,

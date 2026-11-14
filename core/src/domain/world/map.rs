@@ -1,12 +1,30 @@
+use crate::domain::economy::ResourceType;
 use crate::domain::world::{Position, terrain::area::Area};
+use std::collections::HashMap;
+
 pub struct Map {
     pub width: usize,
     pub height: usize,
     pub terrain: Vec<Area>,
     pub territory: Vec<usize>,
+    pub(super) deposits: HashMap<Position, ResourceType>,
 }
 
 impl Map {
+    pub fn deposit_at(&self, position: Position) -> Option<ResourceType> {
+        self.deposits.get(&position).copied()
+    }
+
+    pub(super) fn has_accessible_deposit(
+        &self,
+        province_id: usize,
+        position: Position,
+        resource: ResourceType,
+    ) -> bool {
+        self.deposit_at(position) == Some(resource)
+            && self.province_at(position) == Some(province_id)
+            && self.validate_building_position(position).is_ok()
+    }
     /// Current building types require land; use the terrain model's ocean boundary.
     pub fn validate_building_position(
         &self,
@@ -44,6 +62,7 @@ impl Map {
             height,
             terrain,
             territory,
+            deposits: HashMap::new(),
         }
     }
 }

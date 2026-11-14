@@ -3,6 +3,7 @@ use std::collections::HashMap;
 mod construction;
 mod inspection;
 mod map_commands;
+mod resource_sites;
 mod trade;
 pub use inspection::TileView;
 
@@ -38,6 +39,13 @@ pub enum WorldError {
     },
     CapitalOnOcean(Position),
     CapitalSiteProtected(Position),
+    InvalidDepositResource(crate::domain::economy::ResourceType),
+    DepositOnOcean(Position),
+    DepositAlreadyExists(Position),
+    RequiredDepositMissing {
+        position: Position,
+        resource: crate::domain::economy::ResourceType,
+    },
     InconsistentOccupancy {
         position: Position,
         occupancy: super::territory::TileOccupancy,

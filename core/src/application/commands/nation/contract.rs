@@ -11,7 +11,10 @@
 //!   "nation_id": 0,
 //!   "actions": [
 //!     { "type": "set_tax_rate", "rate": 0.15 },
-//!     { "type": "subsidize", "settlement_id": 2, "gold": 50, "resources": { "Wood": 20 } }
+//!     { "type": "subsidize", "settlement_id": 2, "gold": 50, "resources": { "Wood": 20 } },
+//!     { "type": "enact_decree", "decree": "agricultural_decree" },
+//!     { "type": "revoke_decree", "decree": "games" },
+//!     { "type": "relocate_capital", "settlement_id": 3 }
 //!   ]
 //! }
 //! ```
@@ -22,6 +25,7 @@ pub use super::response::{
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::TaxRate;
+use crate::domain::nation::decree::Decree;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -65,6 +69,16 @@ pub enum NationAction {
         #[serde(default)]
         resources: BTreeMap<ResourceType, u32>,
     },
+    /// Start a decree: it takes a slot now, works from the next turn and costs
+    /// its upkeep every turn it works (§7).
+    EnactDecree { decree: Decree },
+    /// End a decree that has been active for at least five turns; it can be
+    /// enacted again after a five-turn cooldown.
+    RevokeDecree { decree: Decree },
+    /// One-shot decree: pay now, and the capital moves to this own settlement
+    /// at the start of the next turn if it is still owned and not under attack;
+    /// otherwise the cost is refunded. Uses no slot.
+    RelocateCapital { settlement_id: SettlementId },
 }
 
 impl NationAction {
@@ -72,6 +86,9 @@ impl NationAction {
         match self {
             Self::SetTaxRate { .. } => NationActionKind::SetTaxRate,
             Self::Subsidize { .. } => NationActionKind::Subsidize,
+            Self::EnactDecree { .. } => NationActionKind::EnactDecree,
+            Self::RevokeDecree { .. } => NationActionKind::RevokeDecree,
+            Self::RelocateCapital { .. } => NationActionKind::RelocateCapital,
         }
     }
 }
@@ -82,11 +99,20 @@ impl NationAction {
 pub enum NationActionKind {
     SetTaxRate,
     Subsidize,
+    EnactDecree,
+    RevokeDecree,
+    RelocateCapital,
 }
 
 impl NationActionKind {
     /// Every kind in a fixed order, e.g. for a fixed-size mask vector.
-    pub const ALL: [Self; 2] = [Self::SetTaxRate, Self::Subsidize];
+    pub const ALL: [Self; 5] = [
+        Self::SetTaxRate,
+        Self::Subsidize,
+        Self::EnactDecree,
+        Self::RevokeDecree,
+        Self::RelocateCapital,
+    ];
 }
 
 /// The JSON text is malformed or does not match the nation decision contract.
@@ -120,6 +146,15 @@ mod tests {
                 gold: 50,
                 resources: BTreeMap::from([(Wood, 20), (Stone, 5)]),
             },
+            NationAction::EnactDecree {
+                decree: Decree::AgriculturalDecree,
+            },
+            NationAction::RevokeDecree {
+                decree: Decree::Games,
+            },
+            NationAction::RelocateCapital {
+                settlement_id: SettlementId(3),
+            },
         ]
     }
 
@@ -143,7 +178,10 @@ mod tests {
             "actions": [
                 {"type": "set_tax_rate", "rate": 0.15},
                 {"type": "subsidize", "settlement_id": 2, "gold": 50,
-                 "resources": {"Stone": 5, "Wood": 20}}
+                 "resources": {"Stone": 5, "Wood": 20}},
+                {"type": "enact_decree", "decree": "agricultural_decree"},
+                {"type": "revoke_decree", "decree": "games"},
+                {"type": "relocate_capital", "settlement_id": 3}
             ]
         });
         assert_eq!(serde_json::to_value(&decision).unwrap(), expected);
@@ -185,6 +223,9 @@ mod tests {
             wrap(r#"{"type": "subsidize", "settlement_id": 1, "resources": {"Gold": 1}}"#),
             wrap(r#"{"type": "subsidize", "settlement_id": 1, "army": 3}"#),
             wrap(r#"{"type": "declare_war", "target": 2}"#),
+            wrap(r#"{"type": "enact_decree", "decree": "free_beer"}"#),
+            wrap(r#"{"type": "enact_decree"}"#),
+            wrap(r#"{"type": "relocate_capital", "settlement_id": -1}"#),
             r#"{"nation_id": -1}"#.to_owned(),
             r#"{"nation_id": 1, "turn": 2}"#.to_owned(),
             r#"{"actions": []}"#.to_owned(),

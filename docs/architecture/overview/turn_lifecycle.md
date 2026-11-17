@@ -15,6 +15,11 @@ next phase begins. The order comes from the registry, not hash-map iteration.
 | Construction | Pay project grants and decrement remaining time once. |
 | Production | Execute existing buildings using their allocated inputs and labour. |
 | Taxation | The owning nation takes its rate from each settlement's gross production (see [Nations](../implementation/nations.md)). |
+
+Before settlement decisions, nations resolve last turn's capital relocations,
+apply their decisions and pay decree upkeep. Production applies the owner's
+decree production changes; national timers and decree states advance after the
+turn.
 | EconomicUpdates | Collect output and trade/internal returns, admit materials, record losses and closing stock, and finalize projects. |
 
 After Decisions, `World::begin_trade_turn` moves existing caravans and queues returns.

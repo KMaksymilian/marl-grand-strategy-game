@@ -87,8 +87,11 @@ impl World {
                 let returned = if let Some(outcome) = outcome {
                     Some(CaravanReturn::undelivered(cargo, outcome))
                 } else if let Some((&start, &end)) = route {
+                    // Decrees of the sender's owner set the speed (e.g. free trade).
+                    let speed_change = self.decree_effects(cargo.sender_id).caravan_speed;
                     match Caravan::from_cargo(&self.map, finder, cargo, start, end) {
-                        Ok(caravan) => {
+                        Ok(mut caravan) => {
+                            caravan.change_speed(speed_change);
                             self.caravans.push(caravan);
                             None
                         }

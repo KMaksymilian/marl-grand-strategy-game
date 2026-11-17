@@ -7,4 +7,4 @@ pub mod resources;
 pub mod storage_order;
 
 pub use inventory::{CapacityError, InventoryAddResult, ResourceInventory};
-pub use resources::ResourceType;
+pub use resources::{ResourceCategory, ResourceType};

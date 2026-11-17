@@ -72,7 +72,7 @@ impl Settlement {
         let allocated = self.allocate_turn(prepared);
         let consumed = self.consume_turn(allocated);
         self.progress_construction(&consumed);
-        let produced = self.produce_turn(consumed);
+        let produced = self.produce_turn(consumed, |_| 0.0);
         self.finish_turn(produced, environment)
     }
 
@@ -137,10 +137,27 @@ impl Settlement {
             .process_allocation(&consumed.allocated.allocations);
     }
 
-    pub(crate) fn produce_turn(&mut self, mut consumed: ConsumedTurn) -> ProducedTurn {
-        let (produced, returned) = self
+    /// `production_change` gives the change of each produced resource from
+    /// outside the settlement (the owner's decrees), as a fraction: +0.2 makes
+    /// 100 units 120, −1 or less makes them 0. Results are rounded down.
+    /// It scales the output of every building; extraction has no inputs, so this
+    /// equals more production cycles there.
+    pub(crate) fn produce_turn(
+        &mut self,
+        mut consumed: ConsumedTurn,
+        production_change: impl Fn(ResourceType) -> f64,
+    ) -> ProducedTurn {
+        let (mut produced, returned) = self
             .building_manager
             .process_allocations(&consumed.allocated.allocations);
+        for (&resource, amount) in &mut produced {
+            let change = production_change(resource);
+            if change != 0.0 {
+                let factor = (1.0 + change).max(0.0);
+                // Relative tolerance against float artifacts (100 × 1.2 → 120).
+                *amount = (*amount as f64 * factor * (1.0 + 1e-9)).floor() as u64;
+            }
+        }
         consumed
             .allocated
             .inventory

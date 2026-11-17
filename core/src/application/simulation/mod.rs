@@ -12,7 +12,7 @@ pub use crate::application::commands::settlement::contract::{
     SettlementDecision,
 };
 pub use crate::application::queries::nation_observation::{
-    NationObservation, OwnedSettlementObservation,
+    DecreesObservation, NationObservation, OwnedSettlementObservation,
 };
 pub use crate::domain::world::OwnershipChange;
 pub use turn_report::{PhaseExecution, SimulationTurnReport, TurnPhase};

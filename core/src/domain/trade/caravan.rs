@@ -67,6 +67,8 @@ pub struct Caravan {
     book: TradeBook,
     trades: Vec<TradeExecution>,
     receiver_missing: bool,
+    /// Path steps per turn; `MOVE_SPEED` unless the sender's decrees change it.
+    speed: usize,
 }
 
 impl Caravan {
@@ -120,6 +122,7 @@ impl Caravan {
             book,
             trades: Vec::new(),
             receiver_missing: false,
+            speed: MOVE_SPEED,
         }
     }
 
@@ -138,6 +141,17 @@ impl Caravan {
     /// Trades made so far, seen from the caravan side.
     pub fn trades(&self) -> &[TradeExecution] {
         &self.trades
+    }
+
+    pub fn speed(&self) -> usize {
+        self.speed
+    }
+
+    /// Changes the base speed by a fraction (+0.25 = 25% faster), rounded
+    /// down and at least one step per turn.
+    pub(crate) fn change_speed(&mut self, change: f64) {
+        let speed = (MOVE_SPEED as f64 * (1.0 + change).max(0.0) * (1.0 + 1e-9)).floor();
+        self.speed = (speed as usize).max(1);
     }
 
     pub fn travel(&mut self) {
@@ -190,8 +204,8 @@ impl Caravan {
     }
 
     fn travel_to(&mut self) {
-        if self.current_position_idx + MOVE_SPEED < self.path.len() - 1 {
-            self.current_position_idx += MOVE_SPEED;
+        if self.current_position_idx + self.speed < self.path.len() - 1 {
+            self.current_position_idx += self.speed;
             self.current_position = self.path[self.current_position_idx];
         } else {
             self.current_position_idx = self.path.len() - 1;
@@ -200,8 +214,8 @@ impl Caravan {
         }
     }
     fn travel_back(&mut self) {
-        if self.current_position_idx > MOVE_SPEED {
-            self.current_position_idx -= MOVE_SPEED;
+        if self.current_position_idx > self.speed {
+            self.current_position_idx -= self.speed;
             self.current_position = self.path[self.current_position_idx];
         } else {
             self.current_position_idx = 0;

@@ -1,13 +1,16 @@
 //! Read-only validation of nation decisions against the authoritative world.
 //!
 //! Policy (the same as for settlements): actions are checked in submission order
-//! and each one is accepted or rejected on its own. Subsidies of one decision
-//! share the treasury and stock they draw from, so each one is checked against
-//! what earlier accepted subsidies left. Validation never changes the world.
+//! and each one is accepted or rejected on its own. Subsidies and a relocation
+//! of one decision share the treasury, and decrees share the slots, so each
+//! action is checked against what earlier accepted actions left. One decision
+//! sets the rate once, touches each decree once and orders at most one
+//! relocation. Validation never changes the world.
 use super::contract::{NationAction, NationActionError, NationActionKind, NationDecision};
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::TaxRate;
+use crate::domain::nation::decree::{Decree, DecreeState};
 use crate::domain::world::{World, WorldError};
 use std::collections::BTreeMap;
 
@@ -21,6 +24,17 @@ pub(crate) enum NationCommand {
         /// Only non-zero amounts.
         resources: BTreeMap<ResourceType, u32>,
     },
+    EnactDecree(Decree),
+    RevokeDecree(Decree),
+    RelocateCapital(SettlementId),
+}
+
+/// Policies and objects that at most one action of a decision may change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Target {
+    TaxRate,
+    Decree(Decree),
+    Relocation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,9 +56,14 @@ pub(crate) struct ValidatedNationDecision {
 /// instead of the world, so it stays read-only and later actions see what
 /// earlier accepted ones will use.
 struct Batch {
-    /// Index of the accepted `SetTaxRate`, to reject a second one as a conflict.
-    tax_rate_index: Option<usize>,
-    /// Treasury not yet promised to earlier subsidies.
+    /// Index of the accepted action for each target, to reject a second one
+    /// as a conflict.
+    claimed: BTreeMap<Target, usize>,
+    /// Decree slots and how many pending and active decrees use them, after
+    /// the enactments and revocations accepted so far.
+    slots: usize,
+    used_slots: usize,
+    /// Treasury not yet promised to earlier subsidies and relocations.
     gold_left: u32,
     /// National stock not yet promised to earlier subsidies.
     stock_left: BTreeMap<ResourceType, u32>,
@@ -62,7 +81,9 @@ pub(crate) fn validate_nation_decision(
         .nation(nation_id)
         .ok_or(WorldError::MissingNation(nation_id))?;
     let mut batch = Batch {
-        tax_rate_index: None,
+        claimed: BTreeMap::new(),
+        slots: world.decree_slots(nation_id)?,
+        used_slots: nation.decrees().used_slots(),
         gold_left: nation.treasury(),
         stock_left: nation.stock().resources().collect(),
         gold_sent: BTreeMap::new(),
@@ -85,6 +106,22 @@ pub(crate) fn validate_nation_decision(
     Ok(validated)
 }
 
+impl Batch {
+    fn ensure_free(&self, target: Target) -> Result<(), NationActionError> {
+        match self.claimed.get(&target) {
+            Some(&with_index) => Err(NationActionError::Conflict { with_index }),
+            None => Ok(()),
+        }
+    }
+
+    /// Records an accepted action's target; call only when it is accepted.
+    fn claim(&mut self, target: Target, index: usize) -> Result<(), NationActionError> {
+        self.ensure_free(target)?;
+        self.claimed.insert(target, index);
+        Ok(())
+    }
+}
+
 /// Checks one action and, when it is accepted, records what it claims.
 fn check_action(
     world: &World,
@@ -93,13 +130,83 @@ fn check_action(
     index: usize,
     action: &NationAction,
 ) -> Result<NationCommand, NationActionError> {
+    let nation = world.nation(nation_id).expect("checked by the caller");
     match action {
         NationAction::SetTaxRate { rate } => {
-            if let Some(with_index) = batch.tax_rate_index {
-                return Err(NationActionError::Conflict { with_index });
-            }
-            batch.tax_rate_index = Some(index);
+            batch.claim(Target::TaxRate, index)?;
             Ok(NationCommand::SetTaxRate(*rate))
+        }
+        NationAction::EnactDecree { decree } => {
+            let decree = *decree;
+            batch.ensure_free(Target::Decree(decree))?;
+            match nation.decrees().state(decree) {
+                Some(DecreeState::Pending | DecreeState::Active { .. }) => {
+                    return Err(NationActionError::DecreeAlreadyEnacted { decree });
+                }
+                Some(DecreeState::Cooldown { turns_left }) => {
+                    return Err(NationActionError::DecreeOnCooldown { decree, turns_left });
+                }
+                None => {}
+            }
+            if batch.used_slots >= batch.slots {
+                return Err(NationActionError::NoFreeDecreeSlot { slots: batch.slots });
+            }
+            batch.claim(Target::Decree(decree), index)?;
+            batch.used_slots += 1;
+            Ok(NationCommand::EnactDecree(decree))
+        }
+        NationAction::RevokeDecree { decree } => {
+            let decree = *decree;
+            batch.ensure_free(Target::Decree(decree))?;
+            match nation.decrees().state(decree) {
+                Some(DecreeState::Active { turns_active }) => {
+                    if turns_active < Decree::MINIMUM_ACTIVE_TURNS {
+                        return Err(NationActionError::DecreeMinimumDuration {
+                            decree,
+                            turns_left: Decree::MINIMUM_ACTIVE_TURNS - turns_active,
+                        });
+                    }
+                }
+                _ => return Err(NationActionError::DecreeNotActive { decree }),
+            }
+            batch.claim(Target::Decree(decree), index)?;
+            // The slot is free for later enactments of the same decision.
+            batch.used_slots -= 1;
+            Ok(NationCommand::RevokeDecree(decree))
+        }
+        NationAction::RelocateCapital { settlement_id } => {
+            let settlement_id = *settlement_id;
+            batch.ensure_free(Target::Relocation)?;
+            let ownership = world
+                .nations()
+                .ownership(settlement_id)
+                .ok_or(NationActionError::UnknownSettlement { settlement_id })?;
+            if ownership.nation() != nation_id {
+                return Err(NationActionError::SettlementNotOwned { settlement_id });
+            }
+            if nation.capital() == settlement_id {
+                return Err(NationActionError::AlreadyCapital { settlement_id });
+            }
+            if ownership.is_under_attack() {
+                return Err(NationActionError::SettlementUnderAttack { settlement_id });
+            }
+            if let Some(pending) = nation.decrees().relocation() {
+                return Err(NationActionError::RelocationPending {
+                    target: pending.target,
+                });
+            }
+            let cost = world
+                .capital_relocation_cost(nation_id)
+                .expect("the nation exists");
+            if cost > u64::from(batch.gold_left) {
+                return Err(NationActionError::InsufficientTreasury {
+                    requested: cost,
+                    available: batch.gold_left,
+                });
+            }
+            batch.claim(Target::Relocation, index)?;
+            batch.gold_left -= u32::try_from(cost).expect("at most gold_left");
+            Ok(NationCommand::RelocateCapital(settlement_id))
         }
         NationAction::Subsidize {
             settlement_id,

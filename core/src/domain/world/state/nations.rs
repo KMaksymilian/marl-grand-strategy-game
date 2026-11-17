@@ -302,7 +302,7 @@ impl World {
         self.nations.advance_turn();
     }
 
-    fn nation_mut(&mut self, nation_id: NationId) -> Result<&mut Nation, WorldError> {
+    pub(super) fn nation_mut(&mut self, nation_id: NationId) -> Result<&mut Nation, WorldError> {
         self.nations
             .get_mut(nation_id)
             .ok_or(WorldError::MissingNation(nation_id))

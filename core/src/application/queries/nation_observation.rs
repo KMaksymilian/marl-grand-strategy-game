@@ -4,10 +4,12 @@
 use super::observation::ResourceAmounts;
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::TaxRate;
+use crate::domain::nation::decree::{CapitalRelocation, Decree, DecreeEffects, DecreeState};
 use crate::domain::nation::taxation::NationTurnReport;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NationObservation {
     /// Completed global turns when the observation was generated.
@@ -26,6 +28,8 @@ pub struct NationObservation {
     pub settlements: Vec<OwnedSettlementObservation>,
     /// Other nations still in the game, ascending ID.
     pub other_nations: Vec<NationId>,
+    /// Decrees, their slots and costs, and a pending capital relocation.
+    pub decrees: DecreesObservation,
     /// Taxes collected in the latest completed turn: per settlement status,
     /// rate and production tax, what reached the stock and what was lost.
     /// None before the first turn.
@@ -45,6 +49,25 @@ pub struct OwnedSettlementObservation {
     pub under_attack: bool,
     /// Free warehouse space, the limit for material subsidies.
     pub free_capacity: u64,
+}
+
+/// What a nation agent needs to choose decrees (§7).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecreesObservation {
+    pub slots: usize,
+    /// Slots used by pending and active decrees.
+    pub used_slots: usize,
+    /// Every decree that is pending, active or cooling down; others are free.
+    pub states: BTreeMap<Decree, DecreeState>,
+    /// Current upkeep per turn of every decree, for the current number of settlements.
+    pub upkeep: BTreeMap<Decree, u64>,
+    /// Current cost of a capital relocation.
+    pub relocation_cost: u64,
+    /// A paid relocation that resolves at the start of the next turn.
+    pub pending_relocation: Option<CapitalRelocation>,
+    /// Combined effects of the active decrees.
+    pub effects: DecreeEffects,
 }
 
 impl NationObservation {

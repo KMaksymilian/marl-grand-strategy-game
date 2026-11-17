@@ -5,6 +5,7 @@
 //! gold income (§4.4), which depends on settlement happiness (§4.2); neither
 //! exists in the settlement economy yet, so no gold is taxed until they do.
 use super::TaxRate;
+use super::decree::{DecreeTurnReport, RelocationOutcome};
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
 use serde::{Deserialize, Serialize};
@@ -40,11 +41,16 @@ pub struct SettlementTaxReport {
     pub production_tax: MaterialTotals,
 }
 
-/// What one nation collected in one turn, written for the nation agent.
+/// One nation's turn, written for the nation agent: taxes, decrees and the
+/// capital relocation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NationTurnReport {
     pub tax_rate: TaxRate,
+    /// A relocation ordered last turn, resolved at the start of this one.
+    pub capital_relocation: Option<RelocationOutcome>,
+    /// Active decrees, upkeep paid and decrees that lapsed this turn.
+    pub decrees: DecreeTurnReport,
     /// Production taxes of all own settlements stored in the national stock.
     pub stock_received: MaterialTotals,
     /// Production taxes above the per-material capacity; they are lost.
@@ -59,6 +65,8 @@ impl NationTurnReport {
     pub(crate) fn new(tax_rate: TaxRate) -> Self {
         Self {
             tax_rate,
+            capital_relocation: None,
+            decrees: DecreeTurnReport::default(),
             stock_received: MaterialTotals::new(),
             stock_lost: MaterialTotals::new(),
             settlements: BTreeMap::new(),

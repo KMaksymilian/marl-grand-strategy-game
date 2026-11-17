@@ -36,6 +36,10 @@ pub(super) fn run_turn(
             })?;
     }
 
+    // Capital relocations ordered last turn take effect (or are refunded)
+    // before anyone decides, so this turn's decisions see the new capital.
+    let mut relocations = world.resolve_capital_relocations();
+
     // Nations decide first, so settlements decide under the new policy and
     // with this turn's subsidies. The queue is a BTreeMap, so nations run in
     // ascending ID order. The `expect` cannot fire: `queue_nation_decision`
@@ -50,6 +54,21 @@ pub(super) fn run_turn(
             );
         }
     }
+
+    // Upkeep of active decrees; unpaid decrees lapse and have no effect this
+    // turn. Decrees enacted above are pending and cost nothing yet.
+    let mut upkeep = world.pay_decree_upkeep();
+    let mut nations: BTreeMap<_, _> = world
+        .nations()
+        .iter()
+        .map(|nation| {
+            let id = nation.id();
+            let mut report = NationTurnReport::new(nation.tax_rate());
+            report.capital_relocation = relocations.remove(&id);
+            report.decrees = upkeep.remove(&id).unwrap_or_default();
+            (id, report)
+        })
+        .collect();
 
     let mut execution = Vec::new();
     let mut decisions = Vec::new();
@@ -113,18 +132,18 @@ pub(super) fn run_turn(
             phase: TurnPhase::Production,
             settlement_id: id,
         });
+        // Decrees of the owner change this turn's output (§7).
+        let effects = world.decree_effects(id);
         let settlement = world.settlement_mut(id).expect("registered settlement");
-        produced.push((id, settlement.produce_turn(state)));
+        produced.push((
+            id,
+            settlement.produce_turn(state, |resource| effects.production_change(resource)),
+        ));
     }
 
     // Taxation: the production tax of every settlement, between production and
     // storage, so the tax is taken from gross output. Settlements of one nation
     // fill its stock in ascending ID order, which decides who hits the capacity.
-    let mut nations: BTreeMap<_, _> = world
-        .nations()
-        .iter()
-        .map(|nation| (nation.id(), NationTurnReport::new(nation.tax_rate())))
-        .collect();
     let mut taxes = BTreeMap::new();
     let mut taxed = Vec::with_capacity(produced.len());
     for (id, mut state) in produced {

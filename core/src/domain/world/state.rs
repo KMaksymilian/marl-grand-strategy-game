@@ -1,6 +1,7 @@
 use crate::domain::ids::SettlementId;
 use std::collections::HashMap;
 mod construction;
+mod decrees;
 mod inspection;
 mod map_commands;
 mod nations;
@@ -74,6 +75,17 @@ pub enum WorldError {
     },
     /// The national treasury or stock holds less than requested.
     InsufficientNationalFunds(crate::domain::ids::NationId),
+    /// The decree cannot be enacted or revoked now (slot, state or duration).
+    DecreeUnavailable {
+        nation_id: crate::domain::ids::NationId,
+        decree: crate::domain::nation::decree::Decree,
+    },
+    /// The settlement cannot become the capital now (owner, capital, siege or
+    /// a relocation already pending).
+    CapitalRelocationUnavailable {
+        nation_id: crate::domain::ids::NationId,
+        settlement_id: SettlementId,
+    },
 }
 
 /// World layers are read-only outside the aggregate.

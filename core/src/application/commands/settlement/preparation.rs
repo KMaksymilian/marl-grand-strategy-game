@@ -337,7 +337,8 @@ impl<'a> DecisionPreparation<'a> {
                     SettlementCommand::Construct {
                         project_id,
                         position: *position,
-                        cost: definition.construction_cost().clone(),
+                        // Catalog cost with the owner's decrees applied.
+                        cost: self.world.construction_cost(settlement.id(), &definition),
                         definition,
                     },
                     ActionEffect::ProjectQueued { project_id },
@@ -375,7 +376,7 @@ impl<'a> DecisionPreparation<'a> {
                     SettlementCommand::Upgrade {
                         project_id,
                         building_id: *building_id,
-                        cost: definition.construction_cost().clone(),
+                        cost: self.world.construction_cost(settlement.id(), &definition),
                         definition,
                     },
                     ActionEffect::ProjectQueued { project_id },

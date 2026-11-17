@@ -4,8 +4,10 @@
 //! summary, not their full observations) and the IDs of other nations are read.
 //! Another nation's treasury, stock and policy never enter the result; a test
 //! compares observations of worlds that differ only in those values.
+use super::nation_observation::DecreesObservation;
 use super::nation_observation::{NationObservation, OwnedSettlementObservation};
 use crate::domain::ids::NationId;
+use crate::domain::nation::decree::Decree;
 use crate::domain::nation::taxation::NationTurnReport;
 use crate::domain::world::{World, WorldError};
 
@@ -53,6 +55,18 @@ pub(crate) fn observe_nation(
             .map(|other| other.id())
             .filter(|&id| id != nation_id)
             .collect(),
+        decrees: DecreesObservation {
+            slots: world.decree_slots(nation_id)?,
+            used_slots: nation.decrees().used_slots(),
+            states: nation.decrees().states().collect(),
+            upkeep: Decree::ALL
+                .into_iter()
+                .map(|decree| Ok((decree, world.decree_upkeep(nation_id, decree)?)))
+                .collect::<Result<_, WorldError>>()?,
+            relocation_cost: world.capital_relocation_cost(nation_id)?,
+            pending_relocation: nation.decrees().relocation(),
+            effects: nation.decrees().effects(),
+        },
         last_turn: last_turn.cloned(),
     })
 }

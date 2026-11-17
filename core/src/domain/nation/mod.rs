@@ -1,6 +1,7 @@
 //! Nations: state agents that own settlements, hold a treasury and a national
 //! stock, and set policy. Ownership itself lives in [`registry::NationRegistry`],
 //! the only record of which nation owns which settlement.
+pub mod decree;
 pub mod registry;
 mod tax;
 pub mod taxation;
@@ -10,6 +11,7 @@ pub use tax::{InvalidTaxRate, TaxRate};
 use crate::domain::economy::gold_inventory::GoldInventory;
 use crate::domain::economy::{InventoryAddResult, ResourceType};
 use crate::domain::ids::{NationId, SettlementId};
+use decree::DecreeBook;
 use std::collections::BTreeMap;
 
 /// National material stock. Each material has its own capacity, set by the
@@ -108,6 +110,8 @@ pub struct Nation {
     tax_rate: TaxRate,
     /// Turns left of the penalty for losing the capital (gameplay §4.2).
     capital_loss_turns: u32,
+    /// Decrees and a pending capital relocation (§7).
+    decrees: DecreeBook,
 }
 
 impl Nation {
@@ -124,6 +128,7 @@ impl Nation {
             stock: NationalStock::default(),
             tax_rate: TaxRate::BASE,
             capital_loss_turns: 0,
+            decrees: DecreeBook::default(),
         }
     }
 
@@ -150,6 +155,19 @@ impl Nation {
     /// Remaining turns of the capital-loss penalty; zero when none applies.
     pub fn capital_loss_turns(&self) -> u32 {
         self.capital_loss_turns
+    }
+
+    pub fn decrees(&self) -> &DecreeBook {
+        &self.decrees
+    }
+
+    pub(crate) fn decrees_mut(&mut self) -> &mut DecreeBook {
+        &mut self.decrees
+    }
+
+    /// Moves the capital by choice (a relocation decree): no penalty.
+    pub(crate) fn relocate_capital(&mut self, capital: SettlementId) {
+        self.capital = capital;
     }
 
     pub(crate) fn set_tax_rate(&mut self, rate: TaxRate) {
@@ -182,9 +200,11 @@ impl Nation {
         self.capital_loss_turns = Self::CAPITAL_LOSS_PENALTY_TURNS;
     }
 
-    /// Counts down per-turn timers at the end of a global turn.
+    /// Counts down per-turn timers at the end of a global turn and moves
+    /// decrees through their lifecycle.
     pub(crate) fn advance_turn(&mut self) {
         self.capital_loss_turns = self.capital_loss_turns.saturating_sub(1);
+        self.decrees.advance_turn();
     }
 }
 

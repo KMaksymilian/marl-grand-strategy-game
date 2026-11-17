@@ -75,5 +75,26 @@ fn execute(
                 returned: transfer.returned,
             })
         }
+        NationCommand::EnactDecree(decree) => {
+            world.enact_decree(nation_id, decree)?;
+            Ok(NationActionEffect::DecreeEnacted {
+                decree,
+                upkeep: world.decree_upkeep(nation_id, decree)?,
+            })
+        }
+        NationCommand::RevokeDecree(decree) => {
+            world.revoke_decree(nation_id, decree)?;
+            Ok(NationActionEffect::DecreeRevoked {
+                decree,
+                cooldown_turns: crate::domain::nation::decree::Decree::COOLDOWN_TURNS,
+            })
+        }
+        NationCommand::RelocateCapital(settlement_id) => {
+            let cost = world.order_capital_relocation(nation_id, settlement_id)?;
+            Ok(NationActionEffect::CapitalRelocationOrdered {
+                settlement_id,
+                cost,
+            })
+        }
     }
 }

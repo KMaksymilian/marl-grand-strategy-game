@@ -351,6 +351,8 @@ See [Nations](nations.md) for rules and the decision contract.
 | File | Contents |
 | --- | --- |
 | [domain/nation/tax.rs](../../../core/src/domain/nation/tax.rs) | `TaxRate` (fraction 0..=1): `from_fraction`, `fraction`, `percent`, `halved`, `apply` (rounds down). |
+| [domain/nation/decree.rs](../../../core/src/domain/nation/decree.rs) | `Decree` (costs, `effects`), `ProductionScope`, `DecreeEffects` (`production_change`, `of`), `DecreeState`, `DecreeBook` (`slots`, `active`, `used_slots`, `enact`, `end`, `advance_turn`), `CapitalRelocation`, `RelocationOutcome`, `DecreeTurnReport`. |
+| [domain/world/state/decrees.rs](../../../core/src/domain/world/state/decrees.rs) | `World::decree_effects`, `construction_cost`, `decree_slots`, `decree_upkeep`, `capital_relocation_cost`, `enact_decree`, `revoke_decree`, `order_capital_relocation`, `resolve_capital_relocations`, `pay_decree_upkeep`. |
 | [domain/nation/taxation.rs](../../../core/src/domain/nation/taxation.rs) | `TaxStatus`, `SettlementTaxReport`, `NationTurnReport`. |
 | [domain/world/state/taxation.rs](../../../core/src/domain/world/state/taxation.rs) | `World::collect_taxes` (effective rate, production tax, national capacity); `TaxCollection`. |
 | [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) | `NationalStock` (`add` with per-material capacity, `take`, `enforce_capacity`, `take_all`), `Nation` (treasury, stock, policy, capital, `replace_lost_capital`, `advance_turn`). |

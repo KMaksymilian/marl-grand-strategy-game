@@ -14,7 +14,10 @@
 //!     { "type": "subsidize", "settlement_id": 2, "gold": 50, "resources": { "Wood": 20 } },
 //!     { "type": "enact_decree", "decree": "agricultural_decree" },
 //!     { "type": "revoke_decree", "decree": "games" },
-//!     { "type": "relocate_capital", "settlement_id": 3 }
+//!     { "type": "relocate_capital", "settlement_id": 3 },
+//!     { "type": "declare_war", "target": 1 },
+//!     { "type": "propose_treaty", "target": 2, "treaty": "trade_agreement" },
+//!     { "type": "respond_to_proposal", "proposer": 2, "treaty": "peace", "accept": true }
 //!   ]
 //! }
 //! ```
@@ -26,6 +29,7 @@ use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::TaxRate;
 use crate::domain::nation::decree::Decree;
+use crate::domain::nation::diplomacy::{DiplomaticAction, Treaty};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -79,6 +83,27 @@ pub enum NationAction {
     /// at the start of the next turn if it is still owned and not under attack;
     /// otherwise the cost is refunded. Uses no slot.
     RelocateCapital { settlement_id: SettlementId },
+    /// Start a war; only from neutrality or an embargo, not during a truce
+    /// and not in the turn a treaty with the target was broken. Allies of the
+    /// target join the war (§8.3).
+    DeclareWar { target: NationId },
+    /// Block trade without war; only from neutrality.
+    DeclareEmbargo { target: NationId },
+    /// End an own embargo; back to neutrality.
+    LiftEmbargo { target: NationId },
+    /// Back to neutrality; counts against the reputation (§8.4).
+    BreakTradeAgreement { target: NationId },
+    /// Back to neutrality; counts against the reputation (§8.4).
+    BreakAlliance { target: NationId },
+    /// Offer a trade agreement, an alliance or peace; the target answers in
+    /// the next turn, otherwise the proposal expires.
+    ProposeTreaty { target: NationId, treaty: Treaty },
+    /// Answer a proposal made in the previous turn.
+    RespondToProposal {
+        proposer: NationId,
+        treaty: Treaty,
+        accept: bool,
+    },
 }
 
 impl NationAction {
@@ -89,7 +114,38 @@ impl NationAction {
             Self::EnactDecree { .. } => NationActionKind::EnactDecree,
             Self::RevokeDecree { .. } => NationActionKind::RevokeDecree,
             Self::RelocateCapital { .. } => NationActionKind::RelocateCapital,
+            Self::DeclareWar { .. } => NationActionKind::DeclareWar,
+            Self::DeclareEmbargo { .. } => NationActionKind::DeclareEmbargo,
+            Self::LiftEmbargo { .. } => NationActionKind::LiftEmbargo,
+            Self::BreakTradeAgreement { .. } => NationActionKind::BreakTradeAgreement,
+            Self::BreakAlliance { .. } => NationActionKind::BreakAlliance,
+            Self::ProposeTreaty { .. } => NationActionKind::ProposeTreaty,
+            Self::RespondToProposal { .. } => NationActionKind::RespondToProposal,
         }
+    }
+
+    /// The domain action of a diplomatic variant; None for other actions.
+    pub fn diplomatic(&self) -> Option<DiplomaticAction> {
+        Some(match *self {
+            Self::DeclareWar { target } => DiplomaticAction::DeclareWar { target },
+            Self::DeclareEmbargo { target } => DiplomaticAction::DeclareEmbargo { target },
+            Self::LiftEmbargo { target } => DiplomaticAction::LiftEmbargo { target },
+            Self::BreakTradeAgreement { target } => {
+                DiplomaticAction::BreakTradeAgreement { target }
+            }
+            Self::BreakAlliance { target } => DiplomaticAction::BreakAlliance { target },
+            Self::ProposeTreaty { target, treaty } => DiplomaticAction::Propose { target, treaty },
+            Self::RespondToProposal {
+                proposer,
+                treaty,
+                accept,
+            } => DiplomaticAction::Respond {
+                proposer,
+                treaty,
+                accept,
+            },
+            _ => return None,
+        })
     }
 }
 
@@ -102,16 +158,30 @@ pub enum NationActionKind {
     EnactDecree,
     RevokeDecree,
     RelocateCapital,
+    DeclareWar,
+    DeclareEmbargo,
+    LiftEmbargo,
+    BreakTradeAgreement,
+    BreakAlliance,
+    ProposeTreaty,
+    RespondToProposal,
 }
 
 impl NationActionKind {
     /// Every kind in a fixed order, e.g. for a fixed-size mask vector.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 12] = [
         Self::SetTaxRate,
         Self::Subsidize,
         Self::EnactDecree,
         Self::RevokeDecree,
         Self::RelocateCapital,
+        Self::DeclareWar,
+        Self::DeclareEmbargo,
+        Self::LiftEmbargo,
+        Self::BreakTradeAgreement,
+        Self::BreakAlliance,
+        Self::ProposeTreaty,
+        Self::RespondToProposal,
     ];
 }
 
@@ -155,6 +225,30 @@ mod tests {
             NationAction::RelocateCapital {
                 settlement_id: SettlementId(3),
             },
+            NationAction::DeclareWar {
+                target: NationId(1),
+            },
+            NationAction::DeclareEmbargo {
+                target: NationId(1),
+            },
+            NationAction::LiftEmbargo {
+                target: NationId(1),
+            },
+            NationAction::BreakTradeAgreement {
+                target: NationId(1),
+            },
+            NationAction::BreakAlliance {
+                target: NationId(1),
+            },
+            NationAction::ProposeTreaty {
+                target: NationId(2),
+                treaty: Treaty::TradeAgreement,
+            },
+            NationAction::RespondToProposal {
+                proposer: NationId(2),
+                treaty: Treaty::Peace,
+                accept: true,
+            },
         ]
     }
 
@@ -181,7 +275,14 @@ mod tests {
                  "resources": {"Stone": 5, "Wood": 20}},
                 {"type": "enact_decree", "decree": "agricultural_decree"},
                 {"type": "revoke_decree", "decree": "games"},
-                {"type": "relocate_capital", "settlement_id": 3}
+                {"type": "relocate_capital", "settlement_id": 3},
+                {"type": "declare_war", "target": 1},
+                {"type": "declare_embargo", "target": 1},
+                {"type": "lift_embargo", "target": 1},
+                {"type": "break_trade_agreement", "target": 1},
+                {"type": "break_alliance", "target": 1},
+                {"type": "propose_treaty", "target": 2, "treaty": "trade_agreement"},
+                {"type": "respond_to_proposal", "proposer": 2, "treaty": "peace", "accept": true}
             ]
         });
         assert_eq!(serde_json::to_value(&decision).unwrap(), expected);
@@ -222,7 +323,9 @@ mod tests {
             wrap(r#"{"type": "subsidize", "settlement_id": 1, "gold": -1}"#),
             wrap(r#"{"type": "subsidize", "settlement_id": 1, "resources": {"Gold": 1}}"#),
             wrap(r#"{"type": "subsidize", "settlement_id": 1, "army": 3}"#),
-            wrap(r#"{"type": "declare_war", "target": 2}"#),
+            wrap(r#"{"type": "declare_war", "nation": 2}"#),
+            wrap(r#"{"type": "propose_treaty", "target": 2, "treaty": "marriage"}"#),
+            wrap(r#"{"type": "respond_to_proposal", "proposer": 2, "treaty": "peace"}"#),
             wrap(r#"{"type": "enact_decree", "decree": "free_beer"}"#),
             wrap(r#"{"type": "enact_decree"}"#),
             wrap(r#"{"type": "relocate_capital", "settlement_id": -1}"#),

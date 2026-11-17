@@ -4,6 +4,7 @@ use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::TaxRate;
 use crate::domain::nation::decree::Decree;
+use crate::domain::nation::diplomacy::{DiplomacyError, DiplomaticOutcome};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -46,8 +47,10 @@ pub enum NationActionError {
     SettlementUnderAttack { settlement_id: SettlementId },
     /// A relocation ordered earlier waits for the next turn.
     RelocationPending { target: SettlementId },
+    /// A diplomatic action that is not possible now (§8), with the reason.
+    Diplomacy { error: DiplomacyError },
     /// An earlier action of the same decision already sets the same policy or
-    /// targets the same decree or relocation.
+    /// targets the same decree, relocation or nation.
     Conflict { with_index: usize },
     /// The engine refused an action that passed validation; the state is unchanged.
     ExecutionFailed,
@@ -82,6 +85,10 @@ pub enum NationActionEffect {
     CapitalRelocationOrdered {
         settlement_id: SettlementId,
         cost: u32,
+    },
+    /// A diplomatic action took effect (§8).
+    Diplomacy {
+        outcome: DiplomaticOutcome,
     },
 }
 

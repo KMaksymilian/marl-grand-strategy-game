@@ -69,6 +69,7 @@ pub(super) fn run_turn(
             (id, report)
         })
         .collect();
+    deliver_diplomatic_events(world, &mut nations);
 
     let mut execution = Vec::new();
     let mut decisions = Vec::new();
@@ -182,6 +183,8 @@ pub(super) fn run_turn(
     // National timers (capital-loss and conquest penalties) count completed
     // turns, so they tick once, after every phase of the turn.
     world.advance_nations_turn();
+    // End-of-turn events: expired proposals and ended truces.
+    deliver_diplomatic_events(world, &mut nations);
     for (nation_id, report) in &mut nations {
         let nation = world.nation(*nation_id).expect("nations survive the turn");
         report.closing_treasury = nation.treasury();
@@ -195,6 +198,17 @@ pub(super) fn run_turn(
         settlements,
         execution,
     })
+}
+
+fn deliver_diplomatic_events(
+    world: &mut World,
+    nations: &mut BTreeMap<NationId, NationTurnReport>,
+) {
+    for (nation_id, event) in world.take_diplomatic_events() {
+        if let Some(report) = nations.get_mut(&nation_id) {
+            report.diplomacy.push(event);
+        }
+    }
 }
 
 fn add_totals(totals: &mut MaterialTotals, added: &MaterialTotals) {

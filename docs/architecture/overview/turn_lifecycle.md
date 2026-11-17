@@ -17,9 +17,10 @@ next phase begins. The order comes from the registry, not hash-map iteration.
 | Taxation | The owning nation takes its rate from each settlement's gross production (see [Nations](../implementation/nations.md)). |
 
 Before settlement decisions, nations resolve last turn's capital relocations,
-apply their decisions and pay decree upkeep. Production applies the owner's
-decree production changes; national timers and decree states advance after the
-turn.
+apply their decisions (including diplomacy) and pay decree upkeep. Production applies the owner's
+decree production changes; national timers, decree states, truces and
+proposals advance after the turn. Caravans of nations at war or under an embargo
+do not trade.
 | EconomicUpdates | Collect output and trade/internal returns, admit materials, record losses and closing stock, and finalize projects. |
 
 After Decisions, `World::begin_trade_turn` moves existing caravans and queues returns.

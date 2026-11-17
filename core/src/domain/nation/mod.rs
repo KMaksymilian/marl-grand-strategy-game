@@ -2,6 +2,7 @@
 //! stock, and set policy. Ownership itself lives in [`registry::NationRegistry`],
 //! the only record of which nation owns which settlement.
 pub mod decree;
+pub mod diplomacy;
 pub mod registry;
 mod tax;
 pub mod taxation;

@@ -24,6 +24,9 @@ pub enum CaravanOutcome {
     ReceiverMissing,
     /// No route between sender and receiver; the caravan never left.
     NoRoute,
+    /// The two nations are at war or under an embargo (§8.1): the caravan did
+    /// not leave, or turned back at the receiver without trading.
+    TradeBlocked,
 }
 
 /// Funded book leaving a settlement, before a route is assigned.
@@ -66,7 +69,8 @@ pub struct Caravan {
     path: Vec<Point>,
     book: TradeBook,
     trades: Vec<TradeExecution>,
-    receiver_missing: bool,
+    /// Why the caravan turned back without trading; None when it traded.
+    aborted: Option<CaravanOutcome>,
     /// Path steps per turn; `MOVE_SPEED` unless the sender's decrees change it.
     speed: usize,
 }
@@ -121,7 +125,7 @@ impl Caravan {
             path,
             book,
             trades: Vec::new(),
-            receiver_missing: false,
+            aborted: None,
             speed: MOVE_SPEED,
         }
     }
@@ -182,10 +186,11 @@ impl Caravan {
         }
     }
 
-    /// Turns back without trading because the receiver does not exist.
-    pub(crate) fn abort_trading(&mut self) {
+    /// Turns back without trading, e.g. because the receiver does not exist
+    /// (`ReceiverMissing`) or its nation blocks trade (`TradeBlocked`).
+    pub(crate) fn abort_trading(&mut self, outcome: CaravanOutcome) {
         if self.caravan_state == CaravanState::Trading {
-            self.receiver_missing = true;
+            self.aborted = Some(outcome);
             self.caravan_state = CaravanState::TravelBack;
         }
     }
@@ -193,11 +198,7 @@ impl Caravan {
     pub fn into_return(self) -> CaravanReturn {
         CaravanReturn {
             receiver_id: self.receiver_id,
-            outcome: if self.receiver_missing {
-                CaravanOutcome::ReceiverMissing
-            } else {
-                CaravanOutcome::Traded
-            },
+            outcome: self.aborted.unwrap_or(CaravanOutcome::Traded),
             book: self.book,
             trades: self.trades,
         }

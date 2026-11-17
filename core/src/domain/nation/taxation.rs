@@ -6,6 +6,7 @@
 //! exists in the settlement economy yet, so no gold is taxed until they do.
 use super::TaxRate;
 use super::decree::{DecreeTurnReport, RelocationOutcome};
+use super::diplomacy::DiplomaticEvent;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
 use serde::{Deserialize, Serialize};
@@ -51,6 +52,10 @@ pub struct NationTurnReport {
     pub capital_relocation: Option<RelocationOutcome>,
     /// Active decrees, upkeep paid and decrees that lapsed this turn.
     pub decrees: DecreeTurnReport,
+    /// Diplomatic events concerning this nation this turn, in order: wars
+    /// declared on it, allies joining, proposals received and answered,
+    /// broken treaties, expired proposals, ended truces.
+    pub diplomacy: Vec<DiplomaticEvent>,
     /// Production taxes of all own settlements stored in the national stock.
     pub stock_received: MaterialTotals,
     /// Production taxes above the per-material capacity; they are lost.
@@ -67,6 +72,7 @@ impl NationTurnReport {
             tax_rate,
             capital_relocation: None,
             decrees: DecreeTurnReport::default(),
+            diplomacy: Vec::new(),
             stock_received: MaterialTotals::new(),
             stock_lost: MaterialTotals::new(),
             settlements: BTreeMap::new(),

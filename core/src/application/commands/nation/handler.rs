@@ -32,6 +32,24 @@ pub(crate) fn handle_nation_decision(
     // World disagree: debug builds panic to expose the bug, release builds report
     // `execution_failed` and keep the world unchanged for that action.
     for (index, command) in validated.accepted {
+        // Diplomatic actions are checked again here: a rejection now is a
+        // legitimate consequence of an earlier action, not a validator bug.
+        if let NationCommand::Diplomacy(action) = command {
+            let outcome = match world.apply_diplomatic_action(nation_id, action) {
+                Ok(outcome) => NationActionOutcome::Applied {
+                    effect: NationActionEffect::Diplomacy { outcome },
+                },
+                Err(error) => NationActionOutcome::Rejected {
+                    error: NationActionError::Diplomacy { error },
+                },
+            };
+            results.push(NationActionResult {
+                index,
+                kind: decision.actions[index].kind(),
+                outcome,
+            });
+            continue;
+        }
         let outcome = match execute(world, nation_id, command) {
             Ok(effect) => NationActionOutcome::Applied { effect },
             Err(error) => {
@@ -96,5 +114,6 @@ fn execute(
                 cost,
             })
         }
+        NationCommand::Diplomacy(_) => unreachable!("applied by handle_nation_decision"),
     }
 }

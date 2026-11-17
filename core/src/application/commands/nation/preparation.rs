@@ -11,6 +11,7 @@ use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::TaxRate;
 use crate::domain::nation::decree::{Decree, DecreeState};
+use crate::domain::nation::diplomacy::DiplomaticAction;
 use crate::domain::world::{World, WorldError};
 use std::collections::BTreeMap;
 
@@ -27,6 +28,9 @@ pub(crate) enum NationCommand {
     EnactDecree(Decree),
     RevokeDecree(Decree),
     RelocateCapital(SettlementId),
+    /// Checked again when it runs: an earlier action of the same decision
+    /// (e.g. a war that draws in allies) may have changed the relations.
+    Diplomacy(DiplomaticAction),
 }
 
 /// Policies and objects that at most one action of a decision may change.
@@ -35,6 +39,8 @@ enum Target {
     TaxRate,
     Decree(Decree),
     Relocation,
+    /// At most one diplomatic action towards each other nation per decision.
+    Nation(NationId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,6 +137,15 @@ fn check_action(
     action: &NationAction,
 ) -> Result<NationCommand, NationActionError> {
     let nation = world.nation(nation_id).expect("checked by the caller");
+    if let Some(diplomatic) = action.diplomatic() {
+        let target = Target::Nation(diplomatic.other());
+        batch.ensure_free(target)?;
+        world
+            .check_diplomatic_action(nation_id, diplomatic)
+            .map_err(|error| NationActionError::Diplomacy { error })?;
+        batch.claim(target, index)?;
+        return Ok(NationCommand::Diplomacy(diplomatic));
+    }
     match action {
         NationAction::SetTaxRate { rate } => {
             batch.claim(Target::TaxRate, index)?;
@@ -269,5 +284,6 @@ fn check_action(
                 resources,
             })
         }
+        _ => unreachable!("diplomatic actions are handled above"),
     }
 }

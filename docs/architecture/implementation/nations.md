@@ -6,8 +6,8 @@ policy, collects taxes, and submits decisions through the same CQRS flow as
 settlements.
 
 Status: ownership, capital, treasury, stock, extinction, subsidies, the tax rate,
-the production tax, decrees, capital relocation, nation decisions, nation reports
-and nation observations are implemented. The gold tax waits for settlement income
+the production tax, decrees, capital relocation, diplomacy, nation decisions,
+nation reports and nation observations are implemented. The gold tax waits for settlement income
 and happiness. Decrees, diplomacy and armies
 are separate tasks and extend the same contract.
 
@@ -17,6 +17,8 @@ are separate tasks and extend the same contract.
 | `TaxRate` | [domain/nation/tax.rs](../../../core/src/domain/nation/tax.rs) |
 | `Decree`, `DecreeEffects`, `DecreeBook`, relocation types | [domain/nation/decree.rs](../../../core/src/domain/nation/decree.rs) |
 | Decree lifecycle, upkeep, relocation, effect lookups | [domain/world/state/decrees.rs](../../../core/src/domain/world/state/decrees.rs) |
+| `Relation`, `Treaty`, `Diplomacy`, events and errors | [domain/nation/diplomacy.rs](../../../core/src/domain/nation/diplomacy.rs) |
+| Relation lookups, trade block, diplomatic actions | [domain/world/state/diplomacy.rs](../../../core/src/domain/world/state/diplomacy.rs) |
 | `TaxStatus`, `SettlementTaxReport`, `NationTurnReport` | [domain/nation/taxation.rs](../../../core/src/domain/nation/taxation.rs) |
 | `NationRegistry`, `Ownership` | [domain/nation/registry.rs](../../../core/src/domain/nation/registry.rs) |
 | Ownership changes, capital succession, extinction, subsidies | [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) |
@@ -24,7 +26,7 @@ are separate tasks and extend the same contract.
 | Decision contract and results | [application/commands/nation/contract.rs](../../../core/src/application/commands/nation/contract.rs), [response.rs](../../../core/src/application/commands/nation/response.rs) |
 | Validation and execution | [preparation.rs](../../../core/src/application/commands/nation/preparation.rs), [handler.rs](../../../core/src/application/commands/nation/handler.rs) |
 | Observation | [queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [queries/observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) |
-| Tests | [nation_tests.rs](../../../core/tests/nation_tests.rs), [taxation_tests.rs](../../../core/tests/taxation_tests.rs), [decree_tests.rs](../../../core/tests/decree_tests.rs) |
+| Tests | [nation_tests.rs](../../../core/tests/nation_tests.rs), [taxation_tests.rs](../../../core/tests/taxation_tests.rs), [decree_tests.rs](../../../core/tests/decree_tests.rs), [diplomacy_tests.rs](../../../core/tests/diplomacy_tests.rs) |
 
 ## Ownership
 
@@ -149,13 +151,72 @@ may be pending. At the start of the next turn the capital moves if the target is
 still owned and not under attack (no capital-loss penalty); otherwise the order
 expires and the cost is refunded (`not_owned`, `under_attack`).
 
+## Diplomacy (§8)
+
+Every pair of nations has one relation, `neutral` until changed.
+
+| `Relation` | Trade | Tariff (§9, for the trade system) |
+| --- | --- | --- |
+| `war { aggressor }` | blocked | — |
+| `truce { turns_left }` | allowed | 20% |
+| `embargo { imposed_by }` | blocked | — |
+| `neutral` | allowed | 20% |
+| `trade_agreement` | allowed | 5% |
+| `alliance` | allowed | 0% |
+
+Tariffs are data (`Relation::tariff_rate`) until customs exist; armies, which
+will pass through allied land, do not exist yet.
+
+| Action | Kind | From | To |
+| --- | --- | --- | --- |
+| `declare_war` | unilateral | neutral, embargo (not a truce, not in the warning turn) | war |
+| `declare_embargo` | unilateral | neutral | embargo |
+| `lift_embargo` | unilateral, imposer only | embargo | neutral |
+| `break_trade_agreement` | unilateral | trade agreement | neutral |
+| `break_alliance` | unilateral | alliance | neutral |
+| `propose_treaty` `trade_agreement` | bilateral | neutral | trade agreement |
+| `propose_treaty` `alliance` | bilateral | neutral, trade agreement | alliance |
+| `propose_treaty` `peace` | bilateral | war | truce |
+
+- **Proposals.** Made in turn T, answered by the target with
+  `respond_to_proposal` in turn T+1 (`answerable` in the observation). An
+  unanswered proposal expires at the end of T+1; both sides get
+  `proposal_expired`. Acceptance checks the transition again. A nation has at
+  most one pending proposal of each kind to each nation.
+- **Warning period.** Breaking a treaty sets the pair to neutral, but war
+  between the two is possible only from the next turn (`warning_period`).
+- **Reputation (§8.4).** Public counter per nation: +1 for breaking a trade
+  agreement or alliance, +1 for a war declared on the same nation within 5 turns
+  after such a break. The aggressor is recorded in `war { aggressor }` for the
+  future war weariness (§11.6).
+- **Defensive alliance (§8.3).** When A declares war on B, every ally of B enters
+  the war against A (`war { aggressor: A }`, `allies_joined` in the effect),
+  except allies that are also allied with A, already at war with A or in a truce
+  with A. Allies of allies are not drawn in.
+- **Peace (§8.5).** Separate per pair: peace between A and B leaves A's wars with
+  B's allies. A truce of 10 turns follows (no war), then neutrality
+  (`truce_ended`). Settlements keep their owners (status quo); armies, which
+  return home after peace, do not exist yet.
+- **Trade block.** Settlements of nations at war or under an embargo cannot
+  trade: the validator rejects `order_caravan` with `trade_blocked`, a caravan
+  ordered before the block does not leave, and a caravan on the road turns back
+  without trading (`CaravanOutcome::TradeBlocked`); its goods return.
+- **One action per nation per decision.** A second diplomatic action towards the
+  same nation in one decision is a `conflict`. Diplomatic actions are checked
+  again when they run, because an earlier action (e.g. a war drawing in allies)
+  may change the relations; such a rejection is an ordinary `diplomacy` error.
+- **Extinction.** A nation that leaves the game takes its relations, proposals
+  and reputation with it.
+
 ## Reports
 
 - `TurnReport::taxation` (each settlement): `SettlementTaxReport` with nation,
   status, nominal and effective rate and production tax.
 - `SimulationTurnReport::nations` (each nation, its own report):
   `NationTurnReport` with tax rate, the capital relocation resolved this turn,
-  decrees (active, upkeep paid, lapsed), materials received and lost, every own
+  decrees (active, upkeep paid, lapsed), diplomatic events concerning the
+  nation (war declared on it, allies joining, proposals received, accepted,
+  rejected or expired, broken treaties, embargoes, ended truces), materials received and lost, every own
   settlement's `SettlementTaxReport`, closing treasury and stock.
 
 ## Decisions
@@ -173,6 +234,7 @@ expires and the cost is refunded (`not_owned`, `under_attack`).
 | `subsidize` | `subsidy_delivered` with `gold`, `delivered` and `returned` | `unknown_settlement`, `settlement_not_owned`, `empty_subsidy`, `labour_is_not_transferable`, `insufficient_treasury`, `insufficient_stock`, `settlement_treasury_full` |
 | `enact_decree` | `decree_enacted` with the current `upkeep` | `decree_already_enacted`, `decree_on_cooldown`, `no_free_decree_slot`, `conflict` |
 | `revoke_decree` | `decree_revoked` with `cooldown_turns` | `decree_not_active`, `decree_minimum_duration`, `conflict` |
+| `declare_war`, `declare_embargo`, `lift_embargo`, `break_trade_agreement`, `break_alliance`, `propose_treaty`, `respond_to_proposal` | `diplomacy` with a `DiplomaticOutcome` (`war_declared`, `embargo_declared`, `embargo_lifted`, `treaty_broken`, `proposal_sent`, `proposal_accepted`, `proposal_rejected`) | `diplomacy` with a `DiplomacyError` (`unknown_nation`, `diplomacy_with_self`, `invalid_relation`, `truce_in_force`, `warning_period`, `not_embargo_imposer`, `proposal_already_pending`, `no_such_proposal`), `conflict` |
 | `relocate_capital` | `capital_relocation_ordered` with `cost` | `unknown_settlement`, `settlement_not_owned`, `already_capital`, `settlement_under_attack`, `relocation_pending`, `insufficient_treasury`, `conflict` |
 
 Actions are checked in order and each one is accepted or rejected on its own; a
@@ -200,11 +262,14 @@ A new rate applies to the same turn's taxes, because nation decisions run first.
 per-material capacity, a summary of each own settlement (province, population,
 gold, conquest penalty, under attack, free warehouse capacity), the IDs of other
 nations, `decrees` (slots, used slots, states, current upkeep of every decree,
-relocation cost, pending relocation, combined effects) and `last_turn`, the
-nation's latest `NationTurnReport`. Another nation's
+relocation cost, pending relocation, combined effects), `diplomacy` (relation
+with every nation, nations in the warning period, own incoming and outgoing
+proposals, every nation's reputation) and `last_turn`, the nation's latest
+`NationTurnReport`. Proposals between other nations are not visible. Another nation's
 treasury, stock and policy are not visible.
 
 A settlement's `SettlementObservation::nation` shows its owner's policy (nation,
-tax rate, capital, whether it is the capital, active decrees). Its `last_turn` includes the
+tax rate, capital, whether it is the capital, active decrees, nations at war
+with). Each `TradePartner` carries `trade_allowed`. Its `last_turn` includes the
 production tax. Each `TradePartner` carries
 the partner's `nation_id`.

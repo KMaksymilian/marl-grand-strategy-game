@@ -46,7 +46,7 @@ impl Settlement {
         environment: &mut (impl ConstructionSpace + TravelCostSource),
         visitors: &mut [&mut Caravan],
     ) -> TurnReport {
-        let prepared = self.prepare_turn(environment, visitors);
+        let prepared = self.prepare_turn(environment, visitors, 1, 0);
         let allocated = self.allocate_turn(prepared);
         let consumed = self.consume_turn(allocated);
         self.progress_construction(&consumed);
@@ -58,6 +58,8 @@ impl Settlement {
         &mut self,
         environment: &mut (impl ConstructionSpace + TravelCostSource),
         visitors: &mut [&mut Caravan],
+        turn: u64,
+        province_id: usize,
     ) -> PreparedTurn {
         self.building_manager.refresh_productivity(environment);
         let opening_stock = InventoryTurnReport::snapshot(
@@ -70,7 +72,7 @@ impl Settlement {
         let mut trade = TradeTurnReport::default();
         self.reserve_market(&mut trade);
         self.fund_caravan_orders(&mut trade);
-        self.trade_with_visitors(visitors, &mut trade);
+        self.trade_with_visitors(visitors, &mut trade, turn, province_id);
         let building_requests = self.building_manager.generate_requests(|building| {
             building
                 .definition()

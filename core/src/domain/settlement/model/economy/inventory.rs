@@ -1,5 +1,5 @@
 use crate::domain::economy::storage_order::{StorageOrder, StorageOrderError};
-use crate::domain::economy::{ResourceInventory, ResourceType};
+use crate::domain::economy::{ResourceCatalog, ResourceInventory, ResourceType};
 use crate::domain::settlement::turn_report::{InventoryLoss, InventoryLossStage};
 use std::collections::HashMap;
 
@@ -11,11 +11,11 @@ pub struct SettlementInventoryManager {
 }
 
 impl SettlementInventoryManager {
-    pub fn new(capacity: u32) -> Self {
+    pub fn new(capacity: u32, resources: &ResourceCatalog) -> Self {
         Self {
             main: ResourceInventory::new(capacity),
             pending_production: ResourceInventory::new(capacity),
-            priorities: StorageOrder::default(),
+            priorities: StorageOrder::for_catalog(resources),
         }
     }
 
@@ -104,9 +104,15 @@ mod tests {
 
     #[test]
     fn configured_priority_controls_buffer_overflow() {
-        let mut manager = SettlementInventoryManager::new(3);
+        let mut manager = SettlementInventoryManager::new(3, ResourceCatalog::standard());
         manager
-            .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
+            .set_storage_order(
+                [
+                    &[ResourceType::Grain, ResourceType::Wood, ResourceType::Stone],
+                    &ResourceType::MATERIALS[3..],
+                ]
+                .concat(),
+            )
             .unwrap();
         let losses = manager.process_production_results(
             HashMap::from([(ResourceType::Wood, 3), (ResourceType::Grain, 3)]),
@@ -128,9 +134,15 @@ mod tests {
 
     #[test]
     fn configured_priority_controls_return_overflow() {
-        let mut manager = SettlementInventoryManager::new(3);
+        let mut manager = SettlementInventoryManager::new(3, ResourceCatalog::standard());
         manager
-            .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
+            .set_storage_order(
+                [
+                    &[ResourceType::Grain, ResourceType::Wood, ResourceType::Stone],
+                    &ResourceType::MATERIALS[3..],
+                ]
+                .concat(),
+            )
             .unwrap();
         let losses = manager.process_production_results(
             HashMap::new(),
@@ -152,10 +164,16 @@ mod tests {
 
     #[test]
     fn configured_priority_controls_warehouse_transfer() {
-        let mut manager = SettlementInventoryManager::new(6);
+        let mut manager = SettlementInventoryManager::new(6, ResourceCatalog::standard());
         manager.main.set_capacity(3).unwrap();
         manager
-            .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
+            .set_storage_order(
+                [
+                    &[ResourceType::Grain, ResourceType::Wood, ResourceType::Stone],
+                    &ResourceType::MATERIALS[3..],
+                ]
+                .concat(),
+            )
             .unwrap();
         assert!(
             manager
@@ -190,8 +208,10 @@ mod tests {
             [Grain, Wood, Stone],
             [Grain, Stone, Wood],
         ] {
-            let mut manager = SettlementInventoryManager::new(4);
-            manager.set_storage_order([Stone, Grain, Wood]).unwrap();
+            let mut manager = SettlementInventoryManager::new(4, ResourceCatalog::standard());
+            manager
+                .set_storage_order([&[Stone, Grain, Wood], &ResourceType::MATERIALS[3..]].concat())
+                .unwrap();
             let losses = manager.process_production_results(
                 order
                     .into_iter()
@@ -223,9 +243,15 @@ mod tests {
 
     #[test]
     fn product_priority_does_not_override_returns_phase() {
-        let mut manager = SettlementInventoryManager::new(1);
+        let mut manager = SettlementInventoryManager::new(1, ResourceCatalog::standard());
         manager
-            .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
+            .set_storage_order(
+                [
+                    &[ResourceType::Grain, ResourceType::Wood, ResourceType::Stone],
+                    &ResourceType::MATERIALS[3..],
+                ]
+                .concat(),
+            )
             .unwrap();
         assert!(
             manager
@@ -261,7 +287,7 @@ mod tests {
             [Grain, Stone, Wood],
         ];
         for order in orders {
-            let mut manager = SettlementInventoryManager::new(2);
+            let mut manager = SettlementInventoryManager::new(2, ResourceCatalog::standard());
             let produced = order
                 .into_iter()
                 .map(|resource| (resource, 3_u64))
@@ -298,7 +324,7 @@ mod tests {
 
     #[test]
     fn returns_are_retained_before_new_products() {
-        let mut manager = SettlementInventoryManager::new(2);
+        let mut manager = SettlementInventoryManager::new(2, ResourceCatalog::standard());
         manager.main.add(ResourceType::Stone, 1);
         assert!(
             manager
@@ -322,7 +348,7 @@ mod tests {
 
     #[test]
     fn returned_overflow_is_reported_separately() {
-        let mut manager = SettlementInventoryManager::new(1);
+        let mut manager = SettlementInventoryManager::new(1, ResourceCatalog::standard());
         manager.main.add(ResourceType::Wood, 1);
         assert_eq!(
             manager.process_production_results(
@@ -340,7 +366,7 @@ mod tests {
     #[test]
     fn test_new_initializes_with_correct_capacities() {
         // Arrange & Act
-        let manager = SettlementInventoryManager::new(150);
+        let manager = SettlementInventoryManager::new(150, ResourceCatalog::standard());
 
         // Assert
         assert_eq!(
@@ -360,7 +386,7 @@ mod tests {
     #[test]
     fn test_refresh_labor_capacity_inserts_and_overwrites() {
         // Arrange
-        let mut manager = SettlementInventoryManager::new(100);
+        let mut manager = SettlementInventoryManager::new(100, ResourceCatalog::standard());
 
         // Act 1: Initial set
         manager.refresh_labor_capacity(50);
@@ -391,7 +417,7 @@ mod tests {
     #[test]
     fn test_process_production_results_routes_correctly() {
         // Arrange
-        let mut manager = SettlementInventoryManager::new(100);
+        let mut manager = SettlementInventoryManager::new(100, ResourceCatalog::standard());
 
         let mut produced = HashMap::new();
         produced.insert(ResourceType::Wood, 30);
@@ -425,7 +451,7 @@ mod tests {
     #[test]
     fn test_commit_pending_production_moves_resources_to_main() {
         // Arrange
-        let mut manager = SettlementInventoryManager::new(100);
+        let mut manager = SettlementInventoryManager::new(100, ResourceCatalog::standard());
 
         // Add some initial resources to main
         manager.main.add(ResourceType::Stone, 10);
@@ -462,7 +488,7 @@ mod tests {
     #[test]
     fn test_commit_pending_production_respects_main_capacity() {
         // Arrange
-        let mut manager = SettlementInventoryManager::new(50);
+        let mut manager = SettlementInventoryManager::new(50, ResourceCatalog::standard());
 
         // Fill main inventory almost to the brim (40/50)
         manager.main.add(ResourceType::Stone, 40);

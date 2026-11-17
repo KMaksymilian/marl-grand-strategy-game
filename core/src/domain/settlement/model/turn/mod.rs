@@ -271,10 +271,22 @@ mod tests {
         let mut food_first = Settlement::new(SettlementId(1), 3, 1, Arc::default());
         let mut wood_first = Settlement::new(SettlementId(2), 3, 1, Arc::default());
         food_first
-            .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
+            .set_storage_order(
+                [
+                    &[ResourceType::Grain, ResourceType::Wood, ResourceType::Stone],
+                    &ResourceType::MATERIALS[3..],
+                ]
+                .concat(),
+            )
             .unwrap();
         wood_first
-            .set_storage_order([ResourceType::Wood, ResourceType::Stone, ResourceType::Grain])
+            .set_storage_order(
+                [
+                    &[ResourceType::Wood, ResourceType::Stone, ResourceType::Grain],
+                    &ResourceType::MATERIALS[3..],
+                ]
+                .concat(),
+            )
             .unwrap();
         let blueprint = definition(vec![BuildingBehavior::Production {
             inputs: vec![],
@@ -305,7 +317,13 @@ mod tests {
         let mut territory = TerritoryManager::default();
         let mut settlement = Settlement::new(SettlementId(1), 3, 1, Arc::default());
         settlement
-            .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
+            .set_storage_order(
+                [
+                    &[ResourceType::Grain, ResourceType::Wood, ResourceType::Stone],
+                    &ResourceType::MATERIALS[3..],
+                ]
+                .concat(),
+            )
             .unwrap();
         add_building(
             &mut settlement,
@@ -332,7 +350,13 @@ mod tests {
         assert_eq!(stock(&settlement, ResourceType::Grain), 3);
 
         settlement
-            .set_storage_order([ResourceType::Wood, ResourceType::Stone, ResourceType::Grain])
+            .set_storage_order(
+                [
+                    &[ResourceType::Wood, ResourceType::Stone, ResourceType::Grain],
+                    &ResourceType::MATERIALS[3..],
+                ]
+                .concat(),
+            )
             .unwrap();
         let report = settlement.process_turn_for_test(
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
@@ -422,7 +446,13 @@ mod tests {
 
         let mut settlement = Settlement::new(SettlementId(1), 10, 1, Arc::default());
         settlement
-            .set_storage_order([ResourceType::Grain, ResourceType::Wood, ResourceType::Stone])
+            .set_storage_order(
+                [
+                    &[ResourceType::Grain, ResourceType::Wood, ResourceType::Stone],
+                    &ResourceType::MATERIALS[3..],
+                ]
+                .concat(),
+            )
             .unwrap();
         settlement
             .inventory_manager

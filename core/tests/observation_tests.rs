@@ -3,7 +3,7 @@
 use simulation_core::buildings::Building;
 use simulation_core::buildings::catalog::BuildingCatalog;
 use simulation_core::buildings::definition::{BuildingBehavior, BuildingDefinition};
-use simulation_core::economy::ResourceType::{Grain, Stone, Wood};
+use simulation_core::economy::ResourceType::{self, Grain, Stone, Wood};
 use simulation_core::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
 use simulation_core::settlement::decision::{OfferSide, OfferSpec};
 use simulation_core::settlement::observation::{
@@ -146,10 +146,7 @@ fn observation_describes_the_local_economy() {
     assert_eq!(observation.inventory.stored, BTreeMap::from([(Wood, 10)]));
     assert_eq!(observation.inventory.stored_total, 10);
     assert!(observation.inventory.pending.is_empty());
-    assert_eq!(
-        observation.inventory.storage_order,
-        vec![Wood, Stone, Grain]
-    );
+    assert_eq!(observation.inventory.storage_order, ResourceType::MATERIALS);
     assert_eq!(observation.needs_per_turn, BTreeMap::from([(Grain, 4)]));
     assert_eq!(observation.workforce.available, 4);
     assert_eq!(observation.workforce.requested, 0);

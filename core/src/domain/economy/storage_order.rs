@@ -1,4 +1,4 @@
-use crate::domain::economy::ResourceType;
+use crate::domain::economy::{ResourceCatalog, ResourceType};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
@@ -17,12 +17,16 @@ pub struct StorageOrder {
 }
 impl Default for StorageOrder {
     fn default() -> Self {
-        Self {
-            materials: ResourceType::MATERIALS.to_vec(),
-        }
+        Self::for_catalog(ResourceCatalog::standard())
     }
 }
 impl StorageOrder {
+    pub fn for_catalog(catalog: &ResourceCatalog) -> Self {
+        Self {
+            materials: catalog.materials().to_vec(),
+        }
+    }
+
     pub fn set(&mut self, materials: impl AsRef<[ResourceType]>) -> Result<(), StorageOrderError> {
         let materials = materials.as_ref();
         Self::validate(materials)?;
@@ -66,7 +70,9 @@ mod tests {
     use ResourceType::*;
     #[test]
     fn validation_checks_the_same_rules_without_changing_an_order() {
-        assert_eq!(StorageOrder::validate(&[Grain, Stone, Wood]), Ok(()));
+        let mut complete = ResourceType::MATERIALS.to_vec();
+        complete[..3].reverse();
+        assert_eq!(StorageOrder::validate(&complete), Ok(()));
         assert_eq!(
             StorageOrder::validate(&[Wood, Wood, Grain]),
             Err(StorageOrderError::DuplicateMaterial(Wood))
@@ -84,7 +90,9 @@ mod tests {
     #[test]
     fn invalid_orders_leave_previous_order_unchanged() {
         let mut order = StorageOrder::default();
-        order.set([Grain, Wood, Stone]).unwrap();
+        let mut preferred = order.get().to_vec();
+        preferred[..3].rotate_right(1);
+        order.set(&preferred).unwrap();
         assert_eq!(
             order.set([Wood, Wood, Grain]),
             Err(StorageOrderError::DuplicateMaterial(Wood))
@@ -93,7 +101,7 @@ mod tests {
             order.set([Wood, Stone, Labour]),
             Err(StorageOrderError::LabourIsNotMaterial)
         );
-        assert_eq!(order.get(), &[Grain, Wood, Stone]);
+        assert_eq!(order.get(), preferred);
         assert_eq!(order.compare(Grain, Wood), Ordering::Less);
     }
 }

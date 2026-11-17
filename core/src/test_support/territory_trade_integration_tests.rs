@@ -1,6 +1,6 @@
 use super::trade_network::TradeNetwork;
 use simulation_core::buildings::definition::BuildingDefinition;
-use simulation_core::economy::ResourceType::{Grain, Stone, Wood};
+use simulation_core::economy::ResourceType::{self, Stone, Wood};
 use simulation_core::ids::ProjectId;
 use simulation_core::ids::SettlementId;
 use simulation_core::settlement::{Settlement, projects::ProjectCost};
@@ -26,7 +26,9 @@ fn scenario(capacity: u32) -> (World, HashMap<SettlementId, Point>, PathFinder) 
     let mut buyer = Settlement::new(SettlementId(1), capacity, 0, Arc::default());
     buyer.deposit_gold(20);
     buyer.deposit(Wood, 3);
-    buyer.set_storage_order([Stone, Wood, Grain]).unwrap();
+    let mut priority = ResourceType::MATERIALS.to_vec();
+    priority.swap(0, 1);
+    buyer.set_storage_order(priority).unwrap();
     buyer
         .order_caravan(
             SettlementId(2),

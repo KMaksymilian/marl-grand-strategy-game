@@ -15,7 +15,8 @@ for full public signatures.
 
 ### [main_app/src/main.rs](../../../main_app/src/main.rs)
 
-`main()` loads `configuration.toml`, logs productivity thresholds, generates the
+`main()` loads `configuration.toml` and the [resource catalog](resource_catalog.md),
+logs productivity thresholds and the number of materials, generates the
 world, creates the screen and shared pathfinding buffer, and runs the render loop.
 It does not execute settlement turns or caravan travel.
 

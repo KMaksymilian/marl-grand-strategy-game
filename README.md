@@ -53,7 +53,8 @@ settlement phases with a typed, ordered registry. The graphical frame loop does 
 advance those turns; trade matching and caravan travel remain outside the coordinator.
 Nations and AI training remain future work.
 
-Run from the repository root so the application can load `configuration.toml`:
+Run from the repository root so the application can load `configuration.toml`
+and `resources.toml`:
 
 ```sh
 cargo run -p marl_grand_strategy

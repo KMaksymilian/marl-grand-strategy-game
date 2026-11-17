@@ -488,7 +488,15 @@ fn storage_orders_use_the_engine_rule() {
             vec![(0, ActionError::InvalidStorageOrder { error })]
         );
     }
-    let result = validate(&world, vec![order(vec![Grain, Stone, Wood])]);
+    let result = validate(
+        &world,
+        vec![order(
+            [Grain, Stone, Wood]
+                .into_iter()
+                .chain(ResourceType::MATERIALS[3..].iter().copied())
+                .collect(),
+        )],
+    );
     assert!(result.rejected.is_empty());
 }
 
@@ -769,7 +777,10 @@ fn later_actions_on_the_same_target_are_conflicts() {
         project_id: ProjectId(3),
     };
     let order = SettlementAction::SetStorageOrder {
-        order: vec![Grain, Stone, Wood],
+        order: [Grain, Stone, Wood]
+            .into_iter()
+            .chain(ResourceType::MATERIALS[3..].iter().copied())
+            .collect(),
     };
     let result = validate(
         &world,
@@ -887,7 +898,10 @@ fn validation_leaves_the_world_unchanged() {
             construct("farm", at(1, 0)),
             workers(FARM, 4),
             SettlementAction::SetStorageOrder {
-                order: vec![Grain, Stone, Wood],
+                order: [Grain, Stone, Wood]
+                    .into_iter()
+                    .chain(ResourceType::MATERIALS[3..].iter().copied())
+                    .collect(),
             },
             publish(vec![offer(Wood, OfferSide::Sell, 1, 1)]),
             caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 1, 1)]),

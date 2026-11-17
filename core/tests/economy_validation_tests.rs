@@ -164,9 +164,9 @@ fn blueprint_owns_its_recipe_and_exposes_only_shared_views() {
 #[test]
 fn variable_length_storage_order_is_validated_atomically() {
     let mut settlement = Settlement::new(SettlementId(1), 10, 1, Arc::default());
-    settlement
-        .set_storage_order(vec![Grain, Wood, Stone])
-        .unwrap();
+    let mut order = ResourceType::MATERIALS.to_vec();
+    order[..3].rotate_right(1);
+    settlement.set_storage_order(&order).unwrap();
     assert_eq!(
         settlement.set_storage_order(vec![Wood, Stone]),
         Err(StorageOrderError::MissingMaterial(Grain))
@@ -175,7 +175,11 @@ fn variable_length_storage_order_is_validated_atomically() {
         settlement.set_storage_order(Vec::<ResourceType>::new()),
         Err(StorageOrderError::MissingMaterial(Wood))
     );
-    assert_eq!(settlement.storage_order(), &[Grain, Wood, Stone]);
+    assert_eq!(
+        settlement.set_storage_order([Wood, Stone, Grain]),
+        Err(StorageOrderError::MissingMaterial(ResourceType::Cattle))
+    );
+    assert_eq!(settlement.storage_order(), order);
     assert_eq!(
         settlement.storage_order().len(),
         ResourceType::MATERIALS.len()

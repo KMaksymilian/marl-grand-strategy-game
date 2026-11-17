@@ -154,6 +154,9 @@ impl BuyTradeOffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::economy::{ResourceCatalog, ResourceType};
+    use crate::domain::trade::book::TradeBook;
+    use std::collections::HashMap;
 
     #[test]
     fn shares_return_to_their_source_offer_without_losing_units() {
@@ -184,5 +187,33 @@ mod tests {
             unreachable!()
         };
         assert_eq!(gold, u32::MAX);
+    }
+
+    #[test]
+    fn trade_limits_and_gold_use_whole_units_for_coal_from_either_source() {
+        let catalog = ResourceCatalog::standard();
+        let seller_resource = catalog.resolve("charcoal").unwrap();
+        let buyer_resource = catalog.resolve("mined_coal").unwrap();
+        let mut seller = TradeBook::new(
+            0,
+            HashMap::from([(seller_resource, TradeOffer::sell(3, 3))]),
+        );
+        let mut buyer =
+            TradeBook::new(15, HashMap::from([(buyer_resource, TradeOffer::buy(2, 5))]));
+
+        assert_eq!(
+            seller.calculate_demand(),
+            (HashMap::from([(ResourceType::Coal, 3)]), 0)
+        );
+        assert_eq!(buyer.calculate_demand(), (HashMap::new(), 10));
+        buyer.trade(&mut seller);
+        assert_eq!(
+            buyer.return_resources(),
+            (HashMap::from([(ResourceType::Coal, 2)]), 7)
+        );
+        assert_eq!(
+            seller.return_resources(),
+            (HashMap::from([(ResourceType::Coal, 1)]), 8)
+        );
     }
 }

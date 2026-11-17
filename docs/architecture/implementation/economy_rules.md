@@ -8,9 +8,10 @@ This document describes the implemented local resource economy of one settlement
 | -------- | -------------------------------------------------------------------------- | ----------------------- |
 | `Labour` | Available workers for the turn                                             | No, in `total_amount()` |
 
-Material roles come from recipe definitions, population needs and project costs
+The [resource catalog](resource_catalog.md) defines materials and food classes.
+Recipes, population needs and projects specify how much of each material they use.
 
-Inventories, grants, recipe inputs/outputs, material costs and per-capita needs all use `u32` in the same whole resource units. A value of `1` means one unit everywhere. Target load and satisfaction remain dimensionless `f32` coefficients, not resource amounts. Allocation uses `u128` for intermediate sums and products. Production combines repeated inputs using `u64` and computes its scale as a fraction using `u128`.
+Content, scenario APIs and simulation calculations share one whole material unit. Stock, recipe inputs and outputs, project costs, per-capita needs and trade limits use `u32` quantities. A trade price is in whole gold per material unit, and population counts people. Target load and satisfaction are dimensionless `f32` coefficients. Allocation uses `u128` for intermediate sums and products. Production combines repeated inputs using `u64` and computes its scale as a fraction using `u128`.
 
 ## 2. Warehouse and Production Buffer
 

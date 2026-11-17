@@ -7,7 +7,7 @@ use simulation_core::buildings::{
     Building,
     definition::{BuildingBehavior, BuildingDefinition},
 };
-use simulation_core::economy::ResourceType::{Grain, Stone, Wood};
+use simulation_core::economy::ResourceType::{self, Grain, Stone, Wood};
 use simulation_core::economy::storage_order::StorageOrderError;
 use simulation_core::ids::BuildingTypeId;
 use simulation_core::ids::{BuildingId, ProjectId};
@@ -523,7 +523,10 @@ fn storage_order_decision_is_applied_before_economic_updates() {
     decide(
         &mut simulation,
         vec![SettlementAction::SetStorageOrder {
-            order: vec![Grain, Wood, Stone],
+            order: [Grain, Wood, Stone]
+                .into_iter()
+                .chain(ResourceType::MATERIALS[3..].iter().copied())
+                .collect(),
         }],
     );
     let report = simulation.step().unwrap();
@@ -538,6 +541,9 @@ fn storage_order_decision_is_applied_before_economic_updates() {
             .unwrap()
             .storage_order(),
         &[Grain, Wood, Stone]
+            .into_iter()
+            .chain(ResourceType::MATERIALS[3..].iter().copied())
+            .collect::<Vec<_>>()
     );
 }
 

@@ -2,6 +2,7 @@ use adapters::view::map::game_screen::GameScreen;
 use adapters::view::map::view_generator::ViewGenerator;
 use macroquad::prelude::*;
 use simulation_core::configuration::Configuration;
+use simulation_core::economy::ResourceCatalog;
 use simulation_core::world::World;
 use simulation_core::world::generation::world_builder::WorldBuilder;
 use simulation_core::world::pathfinding::path_finder::PathFinder;
@@ -10,6 +11,9 @@ use simulation_core::world::pathfinding::path_finder::PathFinder;
 async fn main() {
     let configuration = Configuration::load("configuration.toml")
         .unwrap_or_else(|error| panic!("configuration.toml: {error}"));
+    let resources = ResourceCatalog::load("resources.toml")
+        .unwrap_or_else(|error| panic!("resources.toml: {error}"));
+    info!("Loaded {} materials", resources.materials().len());
     info!(
         "Building productivity uses A* costs: full up to {}, zero from {}",
         configuration

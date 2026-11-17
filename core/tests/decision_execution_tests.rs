@@ -150,7 +150,10 @@ fn every_action_reaches_the_matching_settlement_operation() {
             },
             workers(4),
             SettlementAction::SetStorageOrder {
-                order: vec![Grain, Stone, Wood],
+                order: [Grain, Stone, Wood]
+                    .into_iter()
+                    .chain(ResourceType::MATERIALS[3..].iter().copied())
+                    .collect(),
             },
             SettlementAction::PublishMarketOffers {
                 offers: vec![offer(Wood, OfferSide::Sell, 3, 2)],
@@ -214,7 +217,13 @@ fn every_action_reaches_the_matching_settlement_operation() {
     let local = &report.settlements[&ME];
     assert_eq!(local.inventory.produced[&Grain], 2);
     // Inventory policy.
-    assert_eq!(me(&simulation).storage_order(), &[Grain, Stone, Wood]);
+    assert_eq!(
+        me(&simulation).storage_order(),
+        &[Grain, Stone, Wood]
+            .into_iter()
+            .chain(ResourceType::MATERIALS[3..].iter().copied())
+            .collect::<Vec<_>>()
+    );
     // Market offers stay published for later turns.
     assert_eq!(
         me(&simulation).market_offers(),
@@ -344,7 +353,7 @@ fn rejected_actions_change_nothing_while_valid_ones_apply() {
     );
     assert_eq!(farm(&simulation).target_load(), 0.0);
     assert!(me(&simulation).market_offers().is_empty());
-    assert_eq!(me(&simulation).storage_order(), &[Wood, Stone, Grain]);
+    assert_eq!(me(&simulation).storage_order(), ResourceType::MATERIALS);
     assert_eq!(me(&simulation).active_projects().len(), 1);
     assert!(report.settlements[&ME].trade.caravans_dispatched.is_empty());
     assert!(me(&simulation).caravan_orders().is_empty());

@@ -5,9 +5,9 @@ use simulation_core::buildings::catalog::BuildingCatalog;
 use simulation_core::buildings::definition::{BuildingBehavior, BuildingDefinition};
 use simulation_core::economy::ResourceType::{self, Grain, Labour, Stone, Wood};
 use simulation_core::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
-use simulation_core::settlement::Settlement;
 use simulation_core::settlement::decision::{OfferSide, OfferSpec};
 use simulation_core::settlement::projects::{ProjectCost, ProjectResult};
+use simulation_core::settlement::{NeedRegistry, NeedTier, Settlement};
 use simulation_core::simulation::{
     ActionEffect, ActionError, ActionOutcome, SettlementAction, SettlementDecision, Simulation,
     SimulationTurnReport,
@@ -514,8 +514,9 @@ fn json_from_an_agent_runs_and_results_go_back_as_json() {
     .unwrap();
     simulation.queue_decision(decision).unwrap();
     let report = simulation.step().unwrap();
+    let json = serde_json::to_value(&report).unwrap();
     assert_eq!(
-        serde_json::to_value(&report.decisions).unwrap(),
+        json["decisions"],
         serde_json::json!([{
             "settlement_id": 1,
             "results": [
@@ -528,4 +529,72 @@ fn json_from_an_agent_runs_and_results_go_back_as_json() {
             ]
         }])
     );
+    assert_eq!(json["turn"], simulation.current_turn());
+    assert_eq!(json["settlements"].as_object().unwrap().len(), 2);
+    let inventory = &json["settlements"]["1"]["inventory"];
+    assert_eq!(inventory["opening_stock"]["Grain"], 3);
+    assert_eq!(inventory["produced"]["Grain"], 1);
+    assert_eq!(
+        inventory["closing_stock"]["Grain"],
+        me(&simulation).inventory().amount(Grain)
+    );
+    assert!(report.settlements[&ME].inventory.is_balanced());
+    assert_eq!(
+        json["execution"][0],
+        serde_json::json!({"phase": "decisions", "settlement_id": 1})
+    );
+}
+
+#[test]
+fn exported_project_completion_matches_the_building_on_the_map() {
+    let mut simulation = Simulation::new(world()).unwrap();
+    let position = at(1, 0);
+    let first_report = step_with(&mut simulation, vec![construct("farm", position)]);
+    assert!(first_report.settlements[&ME].projects.is_empty());
+    simulation.step().unwrap();
+    let report = simulation.step().unwrap();
+    let tile = simulation.world().inspect_tile(position).unwrap();
+    let building_id = tile.building.unwrap().instance_id();
+    let json = serde_json::to_value(&report).unwrap();
+    assert_eq!(
+        json["settlements"]["1"]["projects"],
+        serde_json::json!([{
+            "project_id": 1,
+            "result": {"Ok": {"building_constructed": building_id}}
+        }])
+    );
+}
+
+#[test]
+fn exported_consumption_matches_inventory_after_the_turn() {
+    let mut world = World::new(
+        Map::new(1, 1, vec![Area::new(0.5, 0.5)], vec![10]),
+        vec![Province::new(10)],
+    );
+    let needs = Arc::new(NeedRegistry::new(vec![NeedTier {
+        min_population: 1,
+        needs_per_capita: HashMap::from([(Grain, 2)]),
+    }]));
+    let mut settlement = Settlement::new(ME, 100, 3, needs);
+    settlement.deposit(Grain, 10);
+    world.add_settlement(10, settlement).unwrap();
+
+    let mut simulation = Simulation::new(world).unwrap();
+    let report = simulation.step().unwrap();
+    let json = serde_json::to_value(&report).unwrap();
+    let exported = &json["settlements"]["1"];
+    assert_eq!(exported["consumption"]["satisfaction_percent"], 1.0);
+    assert_eq!(
+        exported["consumption"]["missing_resources"],
+        serde_json::json!([])
+    );
+    let inventory = &exported["inventory"];
+    assert_eq!(inventory["opening_stock"]["Grain"], 10);
+    assert_eq!(inventory["population_consumed"]["Grain"], 6);
+    assert_eq!(inventory["closing_stock"]["Grain"], 4);
+    assert_eq!(
+        inventory["closing_stock"]["Grain"],
+        me(&simulation).inventory().amount(Grain)
+    );
+    assert!(report.settlements[&ME].inventory.is_balanced());
 }

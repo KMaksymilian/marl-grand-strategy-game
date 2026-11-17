@@ -9,10 +9,12 @@ use crate::domain::economy::ResourceType;
 use crate::domain::economy::allocation::{AllocationRecipient, DemandRequest};
 use crate::domain::ids::{BuildingId, ProjectId};
 use crate::domain::spatial::Position;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ProjectError {
     MissingProject(ProjectId),
     Territory(crate::domain::spatial::TerritoryError),
@@ -21,13 +23,14 @@ pub enum ProjectError {
     UnsupportedRecruitment,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ProjectCompletion {
     BuildingConstructed(BuildingId),
     BuildingUpgraded(BuildingId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ProjectOutcome {
     pub project_id: ProjectId,
     pub result: Result<ProjectCompletion, ProjectError>,

@@ -31,13 +31,13 @@ generation: [application/queries/observe_settlement.rs](../../../core/src/applic
 | `next_project_id` | ID the next accepted construction or upgrade receives. |
 | `trade` | Own `market_offers` as `OfferSpec`s, own `caravans_in_transit` and `caravans_returning`. |
 | `last_turn` | Satisfaction, missing needs, produced, consumed by population/projects/production, lost, trade reserved/received, gold received, market trade count, caravans dispatched, unfunded caravan orders, completed and failed project IDs. |
-| `territory` | Every tile of the own province in row-major order: elevation and moisture class, occupancy (`empty`, `own_building`, `own_construction`, `foreign`) and `buildable`. |
+| `territory` | Every tile of the own province in row-major order: elevation, moisture, optional `deposit`, occupancy and `buildable`. |
 | `trade_partners` | Other settlements as `{settlement_id, province_id}`, ascending ID. |
-| `building_types` | The public catalog: name, tier, `max_workers`, construction cost and turns, recipes. |
+| `building_types` | The public catalog: name, tier, `max_workers`, construction cost and turns, recipes and optional `required_deposit`. |
 
-`buildable` uses the same placement check as the action validator
-(`World::check_construction_site`), so a `Construct` on a buildable tile passes
-placement validation.
+`buildable` covers province membership, land and vacancy. For a particular
+blueprint, the command also checks that the tile has its `required_deposit`,
+if specified. A mismatch is returned as `required_deposit_missing`.
 
 ## Information boundaries
 

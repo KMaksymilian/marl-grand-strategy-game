@@ -6,7 +6,9 @@ use super::turn_report::TradeTurnReport;
 use super::turn_report::{ConsumptionResult, InventoryTurnReport, MaterialTotals, TurnReport};
 use crate::domain::buildings::productivity::TravelCostSource;
 use crate::domain::economy::ResourceType;
-use crate::domain::economy::allocation::{AllocationEngine, AllocationRecipient, AllocationResult};
+use crate::domain::economy::allocation::{
+    AllocationEngine, AllocationRecipient, AllocationResult, DemandRequest,
+};
 use crate::domain::spatial::ConstructionSpace;
 use crate::domain::trade::caravan::Caravan;
 use std::collections::HashMap;
@@ -15,6 +17,7 @@ pub(crate) struct PreparedTurn {
     trade: TradeTurnReport,
     projects: Vec<ProjectOutcome>,
     opening_stock: MaterialTotals,
+    building_requests: Vec<DemandRequest>,
 }
 
 pub(crate) struct AllocatedTurn {
@@ -68,10 +71,17 @@ impl Settlement {
         self.reserve_market(&mut trade);
         self.fund_caravan_orders(&mut trade);
         self.trade_with_visitors(visitors, &mut trade);
+        let building_requests = self.building_manager.generate_requests(|building| {
+            building
+                .definition()
+                .required_deposit()
+                .is_none_or(|resource| environment.can_extract(building.position(), resource))
+        });
         PreparedTurn {
             trade,
             projects,
             opening_stock,
+            building_requests,
         }
     }
 
@@ -79,7 +89,7 @@ impl Settlement {
         let mut requests = Vec::new();
         requests.extend(self.population_manager.generate_requests());
         requests.extend(self.project_manager.generate_requests());
-        requests.extend(self.building_manager.generate_requests());
+        requests.extend(prepared.building_requests);
         let allocations = AllocationEngine::execute(&mut self.inventory_manager.main, requests);
         let inventory = InventoryTurnReport::from_allocations(prepared.opening_stock, &allocations);
         AllocatedTurn {

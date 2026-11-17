@@ -2,6 +2,7 @@
 use super::{World, WorldError};
 use crate::domain::spatial::{Point, Position};
 use crate::domain::world::terrain::area::Area;
+use crate::domain::world::terrain::elevation::Elevation;
 
 impl World {
     /// Terrain changes are observed by project validation and productivity next turn.
@@ -17,6 +18,11 @@ impl World {
             .ok_or(WorldError::InvalidMapPosition(position))?;
         if !terrain.elevation_val.is_finite() || !terrain.moisture_val.is_finite() {
             return Err(WorldError::InvalidTerrain(position));
+        }
+        if terrain.determine_elevation() == Elevation::Ocean
+            && self.is_capital_site(index, position)
+        {
+            return Err(WorldError::CapitalSiteProtected(position));
         }
         self.map.terrain[index] = terrain;
         Ok(())
@@ -39,6 +45,9 @@ impl World {
         let previous = self.map.territory[index];
         let point = Point(position.x as usize, position.y as usize);
         if previous != province_id {
+            if self.is_capital_site(index, position) {
+                return Err(WorldError::CapitalSiteProtected(position));
+            }
             if let Some(province) = self
                 .provinces
                 .iter_mut()

@@ -165,8 +165,10 @@ pub struct TileObservation {
     pub position: Position,
     pub elevation: Elevation,
     pub moisture: Moisture,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deposit: Option<ResourceType>,
     pub occupancy: TileState,
-    /// A `Construct` action on this tile would pass placement checks.
+    /// Basic ownership, terrain and vacancy checks. Check the blueprint's deposit separately.
     pub buildable: bool,
 }
 
@@ -201,6 +203,8 @@ pub struct BuildingTypeObservation {
     pub max_workers: u32,
     pub construction_resources: ResourceAmounts,
     pub construction_turns: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_deposit: Option<ResourceType>,
     /// Inputs and outputs per turn at full staff.
     pub recipes: Vec<RecipeObservation>,
 }

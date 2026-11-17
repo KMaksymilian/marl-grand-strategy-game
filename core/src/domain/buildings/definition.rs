@@ -31,6 +31,7 @@ pub struct BuildingDefinition {
     max_workers: u32,
     behaviors: Vec<BuildingBehavior>,
     construction_cost: ProjectCost,
+    required_deposit: Option<ResourceType>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +39,7 @@ pub enum DefinitionError {
     InputOverflow(ResourceType),
     OutputOverflow(ResourceType),
     LabourInRecipe,
+    InvalidDepositResource(ResourceType),
     StatOverflow,
     /// `max_workers` above `BuildingDefinition::MAX_WORKERS`.
     TooManyWorkers,
@@ -62,6 +64,7 @@ impl BuildingDefinition {
             max_workers,
             behaviors,
             construction_cost,
+            required_deposit: None,
         };
         definition.validate()?;
         Ok(definition)
@@ -84,6 +87,18 @@ impl BuildingDefinition {
     }
     pub fn construction_cost(&self) -> &ProjectCost {
         &self.construction_cost
+    }
+
+    pub fn requiring_deposit(mut self, resource: ResourceType) -> Result<Self, DefinitionError> {
+        if !ResourceType::MATERIALS.contains(&resource) {
+            return Err(DefinitionError::InvalidDepositResource(resource));
+        }
+        self.required_deposit = Some(resource);
+        Ok(self)
+    }
+
+    pub fn required_deposit(&self) -> Option<ResourceType> {
+        self.required_deposit
     }
 
     fn validate(&self) -> Result<(), DefinitionError> {

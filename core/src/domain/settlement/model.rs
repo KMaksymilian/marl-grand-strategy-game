@@ -17,6 +17,7 @@ use crate::domain::buildings::productivity::BuildingProductivityCalculator;
 use crate::domain::economy::ResourceType;
 use crate::domain::economy::gold_inventory::GoldInventory;
 use crate::domain::ids::{BuildingId, SettlementId};
+use crate::domain::spatial::Position;
 use crate::domain::trade::book::TradeBook;
 use economy::{BuildingManager, PopulationManager, SettlementInventoryManager};
 use projects::Project;
@@ -41,6 +42,7 @@ pub enum BuildingCommandError {
 #[derive(Debug)]
 pub struct Settlement {
     id: SettlementId,
+    capital: Option<Position>,
     gold_inventory: GoldInventory,
     inventory_manager: SettlementInventoryManager,
     book: TradeBook,
@@ -59,6 +61,7 @@ impl Settlement {
     ) -> Self {
         Self {
             id,
+            capital: None,
             gold_inventory: GoldInventory::default(),
             inventory_manager: SettlementInventoryManager::new(initial_capacity),
             book: TradeBook::default(),
@@ -71,6 +74,17 @@ impl Settlement {
 
     pub fn id(&self) -> SettlementId {
         self.id
+    }
+
+    /// The map position assigned by World at registration.
+    pub fn capital(&self) -> Option<Position> {
+        self.capital
+    }
+
+    /// Registration accepts empty settlements, so no building cache needs updating.
+    pub(crate) fn assign_capital(&mut self, capital: Position) {
+        self.capital = Some(capital);
+        self.building_manager.use_capital(capital);
     }
 
     pub fn population(&self) -> u32 {

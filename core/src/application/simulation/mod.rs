@@ -16,7 +16,7 @@ use crate::application::queries::{observation::SettlementObservation, observe_se
 use crate::domain::settlement::turn_report::TurnReport;
 use crate::domain::settlement::{NeedRegistry, Settlement};
 use crate::domain::world::settlement_registry::SettlementRegistry;
-use crate::domain::world::{World, WorldError, pathfinding::path_finder::PathFinder};
+use crate::domain::world::{Position, World, WorldError, pathfinding::path_finder::PathFinder};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,6 +79,23 @@ impl Simulation {
     ) -> Result<SettlementId, WorldError> {
         self.world.initialize_settlement(
             province_id,
+            initial_capacity,
+            initial_population,
+            need_registry,
+        )
+    }
+
+    pub fn initialize_settlement_at(
+        &mut self,
+        province_id: usize,
+        capital: Position,
+        initial_capacity: u32,
+        initial_population: u32,
+        need_registry: Arc<NeedRegistry>,
+    ) -> Result<SettlementId, WorldError> {
+        self.world.initialize_settlement_at(
+            province_id,
+            capital,
             initial_capacity,
             initial_population,
             need_registry,
@@ -151,6 +168,16 @@ impl Simulation {
         settlement: Settlement,
     ) -> Result<(), WorldError> {
         self.world.add_settlement(province_id, settlement)
+    }
+
+    pub fn add_settlement_at(
+        &mut self,
+        province_id: usize,
+        capital: Position,
+        settlement: Settlement,
+    ) -> Result<(), WorldError> {
+        self.world
+            .add_settlement_at(province_id, capital, settlement)
     }
 
     /// Queues an agent decision for the next successful step; does not change world

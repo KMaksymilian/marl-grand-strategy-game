@@ -40,6 +40,15 @@ impl BuildingManager {
         self.productivity_calculator
     }
 
+    pub(in crate::domain::settlement) fn use_capital(
+        &mut self,
+        capital: crate::domain::spatial::Position,
+    ) {
+        self.productivity_calculator = self
+            .productivity_calculator
+            .map(|calculator| BuildingProductivityCalculator::new(capital, calculator.policy()));
+    }
+
     pub fn set_productivity_calculator(
         &mut self,
         calculator: Option<BuildingProductivityCalculator>,
@@ -112,9 +121,10 @@ impl BuildingManager {
         }
     }
 
-    pub fn generate_requests(&self) -> Vec<DemandRequest> {
+    pub fn generate_requests(&self, can_operate: impl Fn(&Building) -> bool) -> Vec<DemandRequest> {
         self.buildings
             .iter()
+            .filter(|building| can_operate(building))
             .filter_map(|b| {
                 let demand = b.calculate_demand();
                 if demand.is_empty() {
@@ -338,7 +348,7 @@ mod tests {
             .unwrap();
 
         // Act
-        let requests = manager.generate_requests();
+        let requests = manager.generate_requests(|_| true);
 
         // Assert
         assert_eq!(

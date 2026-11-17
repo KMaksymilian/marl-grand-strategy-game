@@ -38,12 +38,17 @@ fn scenario(capacity: u32) -> (World, HashMap<SettlementId, Point>, PathFinder) 
     seller
         .publish_trade_offers(HashMap::from([(Stone, TradeOffer::sell(4, 2))]))
         .unwrap();
-    world.add_settlement(20, seller).unwrap(); // deliberately reverse insertion order
-    world.add_settlement(10, buyer).unwrap();
+    // Deliberately reverse insertion order and use non-default capitals.
+    world
+        .add_settlement_at(20, Position { x: 3, y: 0 }, seller)
+        .unwrap();
+    world
+        .add_settlement_at(10, Position { x: 1, y: 0 }, buyer)
+        .unwrap();
     (
         world,
         HashMap::from([
-            (SettlementId(1), Point(0, 0)),
+            (SettlementId(1), Point(1, 0)),
             (SettlementId(2), Point(3, 0)),
         ]),
         PathFinder::new(4, 1),
@@ -74,6 +79,12 @@ fn global_coordinator_matches_the_network_for_trade_and_construction() {
             TradeNetwork::process_turn(&mut local, &locations, &mut finder).unwrap();
         let global_report = simulation.step().unwrap();
         assert_eq!(global_report.turn, turn);
+        if turn == 1 {
+            assert_eq!(simulation.world().caravans[0].position(), Point(1, 0));
+        }
+        if turn == 2 {
+            assert_eq!(simulation.world().caravans[0].position(), Point(3, 0));
+        }
         assert_eq!(
             global_report.settlements.values().collect::<Vec<_>>(),
             local_reports.iter().collect::<Vec<_>>()
@@ -212,7 +223,7 @@ fn canceling_a_project_preserves_trade_and_return_overflow_is_reported() {
 #[test]
 fn invalid_membership_blocks_the_whole_turn_before_funding_or_movement() {
     let (mut world, locations, mut finder) = scenario(100);
-    let site = Position { x: 1, y: 0 };
+    let site = Position { x: 0, y: 0 };
     world
         .queue_construction(
             SettlementId(1),
@@ -225,9 +236,7 @@ fn invalid_membership_blocks_the_whole_turn_before_funding_or_movement() {
             },
         )
         .unwrap();
-    world
-        .set_tile_province(Position { x: 1, y: 0 }, 20)
-        .unwrap();
+    world.set_tile_province(site, 20).unwrap();
     assert!(matches!(
         TradeNetwork::process_turn(&mut world, &locations, &mut finder),
         Err(WorldError::SettlementOutsideProvince { .. })

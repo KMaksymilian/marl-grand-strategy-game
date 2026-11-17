@@ -3,7 +3,13 @@
 `World` owns one `SettlementRegistry`; `Simulation` owns it through that world.
 It stores actual settlement instances in `BTreeMap<SettlementId, Settlement>`.
 
-
+Scenario setup can place an explicit capital with `add_settlement_at` or
+`initialize_settlement_at`. The site must be on the map, on land, and in the
+settlement's province. The existing setup methods select the first valid land
+tile in row-major order. Registration fails if there is no valid site.
+`Settlement::capital()` returns the recorded position for a registered
+settlement. A capital is a location marker and can share a tile with a building.
+Map edits cannot flood a capital or transfer its tile to a different province.
 
 
 ## Class view

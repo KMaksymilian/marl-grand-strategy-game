@@ -14,20 +14,21 @@ pub struct Position {
 }
 
 /// Project IDs are local to their settlement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ProjectReference {
     pub settlement_id: SettlementId,
     pub project_id: ProjectId,
 }
 
 /// Building IDs are local to their settlement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BuildingReference {
     pub settlement_id: SettlementId,
     pub building_id: BuildingId,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TileOccupancy {
     #[default]
     Empty,
@@ -35,7 +36,8 @@ pub enum TileOccupancy {
     Building(BuildingReference),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TerritoryError {
     InvalidMapPosition(Position),
     OceanTile(Position),

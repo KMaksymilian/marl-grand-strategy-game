@@ -105,6 +105,12 @@ after preparation. Per-action results serialize to JSON.
 - `settlements: BTreeMap<SettlementId, TurnReport>`: local accounting and project outcomes.
 - `execution: Vec<PhaseExecution>`: actual phase/settlement invocation order.
 
+The full report implements `serde::Serialize`. A caller can export it with
+`serde_json::to_writer(writer, &report)`. JSON settlement keys are string forms
+of the numeric settlement IDs, for example `"1"`. Phase names use snake case.
+The application layer returns the report. The caller chooses the output
+destination and when to write it.
+
 Local reports contain population consumption, project outcomes, material accounting
 and `TradeTurnReport`. Material balance includes trade reservations/receipts; gold
 and cargo in transit are outside its scope. Reports do not retain completed-project
@@ -124,8 +130,14 @@ cargo run -p simulation_core --example headless -- 100
 ```
 
 The example creates a small farm scenario directly in Rust, executes the requested
-turn count and drops each report after use. The optional count defaults to 10.
-It initializes neither Macroquad nor a graphical window.
+turn count and prints a summary. The optional count defaults to 10. To stream
+one full JSON report per turn to standard output, use:
+
+```sh
+cargo run -p simulation_core --example headless -- 100 --jsonl > turns.jsonl
+```
+
+Both modes run without Macroquad or a graphical window.
 
 Sources: [coordinator](../../../core/src/application/simulation/mod.rs),
 [command handler](../../../core/src/application/commands/settlement/handler.rs),

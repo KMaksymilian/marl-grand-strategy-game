@@ -1,9 +1,10 @@
 use crate::domain::economy::ResourceType;
 use crate::domain::economy::allocation::{AllocationRecipient, DemandRequest};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ConsumptionResult {
     pub satisfaction_percent: f32,
     pub missing_resources: Vec<ResourceType>,

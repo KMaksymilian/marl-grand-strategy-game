@@ -1,8 +1,10 @@
 //! Records of executed bilateral trades.
 use crate::domain::economy::ResourceType;
+use serde::Serialize;
 
 /// Direction of a trade, seen from the book that records it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TradeSide {
     Bought,
     Sold,
@@ -18,7 +20,7 @@ impl TradeSide {
 }
 
 /// One resource exchanged between two books at a single unit price.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct TradeExecution {
     pub resource: ResourceType,
     pub units: u32,

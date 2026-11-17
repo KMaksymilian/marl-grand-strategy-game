@@ -4,8 +4,9 @@
 use crate::application::commands::settlement::contract::{OfferSide, OfferSpec};
 use crate::application::queries::observation::{
     BuildingObservation, BuildingTypeObservation, InventoryObservation, LastTurnObservation,
-    ProjectObservation, ProjectTarget, RecipeObservation, ResourceAmounts, SettlementObservation,
-    TileObservation, TileState, TradeObservation, TradePartner, WorkforceObservation,
+    NationPolicyObservation, ProjectObservation, ProjectTarget, RecipeObservation, ResourceAmounts,
+    SettlementObservation, TileObservation, TileState, TradeObservation, TradePartner,
+    WorkforceObservation,
 };
 use crate::domain::buildings::Building;
 use crate::domain::buildings::definition::BuildingBehavior;
@@ -92,6 +93,21 @@ impl ObservationQuery<'_> {
             territory: self.own_tiles(settlement_id)?,
             trade_partners: self.trade_partners(settlement_id),
             building_types: self.building_types(),
+            nation: self.nation_policy(settlement_id),
+        })
+    }
+
+    /// The owner's policy (gameplay spec 5.3: a settlement sees its nation's
+    /// policy and adapts to it). None for an independent settlement.
+    fn nation_policy(&self, settlement_id: SettlementId) -> Option<NationPolicyObservation> {
+        let nation = self
+            .world
+            .nation(self.world.settlement_owner(settlement_id)?)?;
+        Some(NationPolicyObservation {
+            nation_id: nation.id(),
+            tax_rate: nation.tax_rate(),
+            capital: nation.capital(),
+            is_capital: nation.capital() == settlement_id,
         })
     }
 
@@ -146,6 +162,7 @@ impl ObservationQuery<'_> {
                 Some(TradePartner {
                     settlement_id: id,
                     province_id: self.world.settlement_province(id)?,
+                    nation_id: self.world.settlement_owner(id),
                 })
             })
             .collect()

@@ -52,13 +52,16 @@ Contains `Simulation` and `SimulationError`; `World` remains the only settlement
 | `initialize_settlement` | Delegate initialization and unique automatic ID allocation. |
 | `add_settlement` | Delegate one-province settlement registration. |
 | `queue_decision` | Queue a known settlement's `SettlementDecision` for the next successful step. |
+| `queue_nation_decision` | Queue an existing nation's `NationDecision`; nation decisions run first. |
+| `found_nation`, `transfer_settlement` | Delegate ownership changes to World; drop pending decisions of an extinct nation. |
+| `observe`, `observe_all`, `observe_nation`, `observe_all_nations` | Build settlement and nation observations. |
 | `into_world` | Recover the world, discarding pending commands. |
 | `SimulationError::fmt` | Format map, counter or preflight failures. |
 
 ### [core/src/application/simulation/turn_coordinator.rs](../../../core/src/application/simulation/turn_coordinator.rs)
 
-`run_turn` preflights all settlements, consumes decisions once and executes
-each phase globally in ascending settlement ID order. `Simulation::step` delegates
+`run_turn` preflights all settlements, applies nation decisions, consumes settlement decisions once and executes
+each phase globally in ascending settlement ID order, then counts down national timers. `Simulation::step` delegates
 to the coordinator and stores the completed turn number and latest reports.
 
 ### [core/src/application/simulation/turn_report.rs](../../../core/src/application/simulation/turn_report.rs)
@@ -338,8 +341,20 @@ at zero. Currency is separate from warehouse materials.
 
 ### [core/src/domain/ids.rs](../../../core/src/domain/ids.rs)
 
-`SettlementId`, `BuildingId` and `ProjectId` are distinct `u32` tuple types.
+`SettlementId`, `NationId`, `BuildingId` and `ProjectId` are distinct `u32` tuple types.
 `SettlementId::fmt` formats the numeric ID without conflating it with other ID types.
+
+## Nations
+
+See [Nations](nations.md) for rules and the decision contract.
+
+| File | Contents |
+| --- | --- |
+| [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) | `TaxRate` (basis points), `NationalStock` (`add` with per-material capacity, `take`, `enforce_capacity`, `take_all`), `Nation` (treasury, stock, policy, capital, `replace_lost_capital`, `advance_turn`). |
+| [domain/nation/registry.rs](../../../core/src/domain/nation/registry.rs) | `NationRegistry`: nations and the single ownership record; `owner_of`, `settlements_of`, `stock_capacity`, `found`, `set_owner`, `remove`. |
+| [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) | `World::nations`, `nation`, `settlement_owner`, `province_owner`, `nation_settlements`, `nation_stock_capacity`, `found_nation`, `transfer_settlement` (capital succession, capacity cut, extinction), `deposit_nation_gold`, `deposit_nation_resource`, `set_tax_rate`, `subsidize`, `advance_nations_turn`; `OwnershipChange`, `SubsidyTransfer`. |
+| [application/commands/nation/](../../../core/src/application/commands/nation/) | `contract.rs` (`NationDecision`, `NationAction`, `NationActionKind`), `response.rs` (errors, effects, outcomes), `preparation.rs` (read-only validation with a shared subsidy budget), `handler.rs` (execution). |
+| [application/queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) | `NationObservation`, `OwnedSettlementObservation` and their builder. |
 
 ## Trade and transport
 

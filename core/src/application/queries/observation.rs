@@ -8,7 +8,8 @@
 //! offers, caravans and any tile outside the own province.
 use crate::application::commands::settlement::contract::OfferSpec;
 use crate::domain::economy::ResourceType;
-use crate::domain::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
+use crate::domain::ids::{BuildingId, BuildingTypeId, NationId, ProjectId, SettlementId};
+use crate::domain::nation::TaxRate;
 use crate::domain::spatial::Position;
 use crate::domain::world::terrain::elevation::Elevation;
 use crate::domain::world::terrain::moisture::Moisture;
@@ -46,6 +47,9 @@ pub struct SettlementObservation {
     pub trade_partners: Vec<TradePartner>,
     /// Building types available for construction and upgrades, ascending ID.
     pub building_types: Vec<BuildingTypeObservation>,
+    /// Policy of the owning nation; None for an independent settlement.
+    #[serde(default)]
+    pub nation: Option<NationPolicyObservation>,
 }
 
 impl SettlementObservation {
@@ -192,6 +196,20 @@ pub enum TileState {
 pub struct TradePartner {
     pub settlement_id: SettlementId,
     pub province_id: usize,
+    /// Owning nation (public information); None for an independent settlement.
+    #[serde(default)]
+    pub nation_id: Option<NationId>,
+}
+
+/// The owning nation's policy as seen by one of its settlements (gameplay §5.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NationPolicyObservation {
+    pub nation_id: NationId,
+    pub tax_rate: TaxRate,
+    pub capital: SettlementId,
+    /// This settlement is the national capital.
+    pub is_capital: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

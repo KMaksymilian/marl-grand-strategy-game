@@ -1,9 +1,13 @@
 //! Executes the phases of one global turn.
 use std::collections::BTreeMap;
 
-use super::{PhaseExecution, SettlementDecision, SimulationError, SimulationTurnReport, TurnPhase};
+use super::{
+    NationDecision, PhaseExecution, SettlementDecision, SimulationError, SimulationTurnReport,
+    TurnPhase,
+};
+use crate::application::commands::nation::handler::handle_nation_decision;
 use crate::application::commands::settlement::{CommandDispatch, handler::handle_decision};
-use crate::domain::ids::SettlementId;
+use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::world::{World, pathfinding::path_finder::PathFinder};
 
 /// Completes each phase for every settlement in ascending ID order.
@@ -12,6 +16,7 @@ pub(super) fn run_turn(
     world: &mut World,
     finder: &mut PathFinder,
     pending_decisions: &mut BTreeMap<SettlementId, Vec<SettlementDecision>>,
+    pending_nation_decisions: &mut BTreeMap<NationId, Vec<NationDecision>>,
     current_turn: u64,
 ) -> Result<SimulationTurnReport, SimulationError> {
     let turn = current_turn
@@ -28,6 +33,21 @@ pub(super) fn run_turn(
                 settlement_id: id,
                 error,
             })?;
+    }
+
+    // Nations decide first, so settlements decide under the new policy and
+    // with this turn's subsidies. The queue is a BTreeMap, so nations run in
+    // ascending ID order. The `expect` cannot fire: `queue_nation_decision`
+    // rejects unknown nations and `Simulation::transfer_settlement` drops the
+    // queue of a nation that goes extinct.
+    let mut nation_decisions = Vec::new();
+    for (_, queued) in std::mem::take(pending_nation_decisions) {
+        for decision in queued {
+            nation_decisions.push(
+                handle_nation_decision(world, &decision)
+                    .expect("queued decisions belong to registered nations"),
+            );
+        }
     }
 
     let mut execution = Vec::new();
@@ -109,8 +129,12 @@ pub(super) fn run_turn(
     }
     let locations = world.capital_trade_locations();
     world.finish_trade_turn(&locations, finder);
+    // National timers (e.g. the capital-loss penalty) count completed turns,
+    // so they tick once, after every phase of the turn.
+    world.advance_nations_turn();
     Ok(SimulationTurnReport {
         turn,
+        nation_decisions,
         decisions,
         settlements,
         execution,

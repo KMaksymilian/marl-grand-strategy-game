@@ -3,13 +3,16 @@ use std::collections::HashMap;
 mod construction;
 mod inspection;
 mod map_commands;
+mod nations;
 mod resource_sites;
 mod trade;
 pub use inspection::TileView;
+pub use nations::{OwnershipChange, SubsidyTransfer};
 
 use super::settlement_registry::SettlementRegistry;
 use super::territory::{TerritoryManager, Tile};
 use crate::domain::buildings::catalog::BuildingCatalog;
+use crate::domain::nation::registry::NationRegistry;
 use crate::domain::settlement::{NeedRegistry, Settlement};
 use crate::domain::trade::caravan::Caravan;
 use crate::domain::world::{Position, coordinates::Point, map::Map, province::Province};
@@ -55,6 +58,20 @@ pub enum WorldError {
         settlement_id: SettlementId,
         registered_settlement: Option<SettlementId>,
     },
+    MissingNation(crate::domain::ids::NationId),
+    NationIdExhausted,
+    /// The settlement already belongs to this nation.
+    SettlementAlreadyOwned {
+        settlement_id: SettlementId,
+        nation_id: crate::domain::ids::NationId,
+    },
+    /// The settlement does not belong to this nation.
+    SettlementNotOwned {
+        settlement_id: SettlementId,
+        nation_id: crate::domain::ids::NationId,
+    },
+    /// The national treasury or stock holds less than requested.
+    InsufficientNationalFunds(crate::domain::ids::NationId),
 }
 
 /// World layers are read-only outside the aggregate.
@@ -73,6 +90,8 @@ pub struct World {
     province_settlements: HashMap<usize, SettlementId>,
     /// Building types agents may construct or upgrade to.
     building_catalog: BuildingCatalog,
+    /// Nations and the single record of settlement ownership.
+    nations: NationRegistry,
 }
 impl World {
     /// The province a settlement is registered in.
@@ -212,6 +231,7 @@ impl World {
             settlements: SettlementRegistry::default(),
             province_settlements: HashMap::new(),
             building_catalog: BuildingCatalog::default(),
+            nations: NationRegistry::default(),
         }
     }
 

@@ -3,16 +3,27 @@ use crate::domain::ids::SettlementId;
 mod turn_coordinator;
 pub mod turn_report;
 
+pub use crate::application::commands::nation::contract::{
+    NationAction, NationActionEffect, NationActionError, NationActionKind, NationActionOutcome,
+    NationActionResult, NationDecision, NationDecisionOutcome,
+};
 pub use crate::application::commands::settlement::contract::{
     ActionEffect, ActionError, ActionOutcome, ActionResult, DecisionOutcome, SettlementAction,
     SettlementDecision,
 };
+pub use crate::application::queries::nation_observation::{
+    NationObservation, OwnedSettlementObservation,
+};
+pub use crate::domain::world::OwnershipChange;
 pub use turn_report::{PhaseExecution, SimulationTurnReport, TurnPhase};
 
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
-use crate::application::queries::{observation::SettlementObservation, observe_settlement};
+use crate::application::queries::{
+    observation::SettlementObservation, observe_nation, observe_settlement,
+};
+use crate::domain::ids::NationId;
 use crate::domain::settlement::turn_report::TurnReport;
 use crate::domain::settlement::{NeedRegistry, Settlement};
 use crate::domain::world::settlement_registry::SettlementRegistry;
@@ -54,6 +65,9 @@ pub struct Simulation {
     current_turn: u64,
     finder: PathFinder,
     pending_decisions: BTreeMap<SettlementId, Vec<SettlementDecision>>,
+    /// Nation decisions waiting for the next `step`; they run before settlement
+    /// decisions. Kept separate because the two agent kinds have different contracts.
+    pending_nation_decisions: BTreeMap<NationId, Vec<NationDecision>>,
     /// Each settlement's report from the latest completed turn, for observations.
     last_reports: BTreeMap<SettlementId, TurnReport>,
 }
@@ -132,6 +146,7 @@ impl Simulation {
             current_turn: 0,
             finder,
             pending_decisions: BTreeMap::new(),
+            pending_nation_decisions: BTreeMap::new(),
             last_reports: BTreeMap::new(),
         })
     }
@@ -142,6 +157,7 @@ impl Simulation {
             &mut self.world,
             &mut self.finder,
             &mut self.pending_decisions,
+            &mut self.pending_nation_decisions,
             self.current_turn,
         )?;
         self.current_turn = report.turn;
@@ -216,6 +232,57 @@ impl Simulation {
             .map(|settlement| {
                 let id = settlement.id();
                 (id, self.observe(id).expect("registered settlement"))
+            })
+            .collect()
+    }
+
+    /// Queues a nation decision for the next successful step. Nation decisions
+    /// run before settlement decisions; several decisions of one nation run in
+    /// submission order.
+    pub fn queue_nation_decision(&mut self, decision: NationDecision) -> Result<(), WorldError> {
+        let nation_id = decision.nation_id;
+        if self.world.nation(nation_id).is_none() {
+            return Err(WorldError::MissingNation(nation_id));
+        }
+        self.pending_nation_decisions
+            .entry(nation_id)
+            .or_default()
+            .push(decision);
+        Ok(())
+    }
+
+    /// Scenario setup: an independent settlement founds a nation and becomes its capital.
+    pub fn found_nation(&mut self, capital: SettlementId) -> Result<NationId, WorldError> {
+        self.world.found_nation(capital)
+    }
+
+    /// Gives a settlement to a nation (see `World::transfer_settlement`). Pending
+    /// decisions of a nation that goes extinct are discarded.
+    pub fn transfer_settlement(
+        &mut self,
+        settlement_id: SettlementId,
+        to: NationId,
+    ) -> Result<OwnershipChange, WorldError> {
+        let change = self.world.transfer_settlement(settlement_id, to)?;
+        if let (true, Some(previous)) = (change.extinct, change.from) {
+            self.pending_nation_decisions.remove(&previous);
+        }
+        Ok(change)
+    }
+
+    /// What the nation's agent may see now.
+    pub fn observe_nation(&self, nation_id: NationId) -> Result<NationObservation, WorldError> {
+        observe_nation::observe_nation(&self.world, nation_id, self.current_turn)
+    }
+
+    /// Observations of every nation, ascending ID.
+    pub fn observe_all_nations(&self) -> BTreeMap<NationId, NationObservation> {
+        self.world
+            .nations()
+            .iter()
+            .map(|nation| {
+                let id = nation.id();
+                (id, self.observe_nation(id).expect("registered nation"))
             })
             .collect()
     }

@@ -15,6 +15,10 @@ when the caller advances the global turn.
 | Submit | `queue_decision(decision)` | `Result<(), WorldError>`. Success means the decision is queued. An unknown settlement is rejected immediately. |
 | Advance | `step()` | `Result<SimulationTurnReport, SimulationError>`. The report contains each action's effect or rejection reason. |
 
+Nation agents use the same flow with `observe_nation(nation_id)`,
+`queue_nation_decision(decision)` and `SimulationTurnReport::nation_decisions`;
+nation decisions run before settlement decisions. See [Nations](nations.md).
+
 For example, with a configured simulation and a registered settlement:
 
 ```rust
@@ -53,6 +57,9 @@ decisions for several settlements before calling `step()` once for all of them.
 | `initialize_settlement(province_id, capacity, population, needs)` | Allocate an unused ID, create a settlement and register it; return the ID. |
 | `add_settlement_at(province_id, capital, settlement)`, `initialize_settlement_at(province_id, capital, capacity, population, needs)` | Place an explicit capital in the settlement's province during registration. |
 | `queue_decision(decision)` | Queue a `SettlementDecision` of a known settlement; no immediate world mutation. |
+| `queue_nation_decision(decision)` | Queue a `NationDecision` of an existing nation; it runs before settlement decisions in the next step. |
+| `found_nation(capital)`, `transfer_settlement(settlement, nation)` | Scenario setup and ownership changes through World; a transfer that removes a nation discards its pending decisions. See [Nations](nations.md). |
+| `observe_nation(id)`, `observe_all_nations()` | Build nation observations: own treasury, stock, policy and settlement summaries. |
 | `step()` | Delegate to the turn coordinator, store the new turn and reports, and return `SimulationTurnReport`. |
 | `observe(id)`, `observe_all()` | Build agent [observations](settlement_observations.md) from the current state and the latest turn reports. |
 | `into_world()` | Consume the coordinator and recover its world; pending decisions are discarded. |

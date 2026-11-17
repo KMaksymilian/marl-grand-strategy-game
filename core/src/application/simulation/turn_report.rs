@@ -2,7 +2,7 @@ use crate::domain::ids::SettlementId;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
-use super::DecisionOutcome;
+use super::{DecisionOutcome, NationDecisionOutcome};
 use crate::domain::settlement::turn_report::TurnReport;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -29,6 +29,8 @@ pub struct PhaseExecution {
 pub struct SimulationTurnReport {
     /// Number of the global turn just completed; the first report has turn 1.
     pub turn: u64,
+    /// Nation decisions, applied before settlement decisions; ascending nation ID.
+    pub nation_decisions: Vec<NationDecisionOutcome>,
     pub decisions: Vec<DecisionOutcome>,
     pub settlements: BTreeMap<SettlementId, TurnReport>,
     pub execution: Vec<PhaseExecution>,

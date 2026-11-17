@@ -193,7 +193,8 @@ fn observation_describes_the_local_economy() {
         observation.trade_partners,
         vec![TradePartner {
             settlement_id: NEIGHBOUR,
-            province_id: 20
+            province_id: 20,
+            nation_id: None,
         }]
     );
     assert_eq!(

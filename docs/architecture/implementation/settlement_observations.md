@@ -32,8 +32,9 @@ generation: [application/queries/observe_settlement.rs](../../../core/src/applic
 | `trade` | Own `market_offers` as `OfferSpec`s, own `caravans_in_transit` and `caravans_returning`. |
 | `last_turn` | Satisfaction, missing needs, produced, consumed by population/projects/production, lost, trade reserved/received, gold received, market trade count, caravans dispatched, unfunded caravan orders, completed and failed project IDs. |
 | `territory` | Every tile of the own province in row-major order: elevation, moisture, optional `deposit`, occupancy and `buildable`. |
-| `trade_partners` | Other settlements as `{settlement_id, province_id}`, ascending ID. |
+| `trade_partners` | Other settlements as `{settlement_id, province_id, nation_id}`, ascending ID; `nation_id` is the public owner or `null`. |
 | `building_types` | The public catalog: name, tier, `max_workers`, construction cost and turns, recipes and optional `required_deposit`. |
+| `nation` | The owner's policy: `nation_id`, `tax_rate`, `capital`, `is_capital`; `null` for an independent settlement. See [Nations](nations.md). |
 
 `buildable` covers province membership, land and vacancy. For a particular
 blueprint, the command also checks that the tile has its `required_deposit`,

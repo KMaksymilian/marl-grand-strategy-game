@@ -1,9 +1,56 @@
 //! The ordered store of nations and the single ownership record
-//! `settlement -> nation`. Rules that need settlement data (capital succession,
-//! extinction) are coordinated by World.
+//! `settlement -> nation`. Every registered settlement belongs to exactly one
+//! nation; there are no independent settlements. Rules that need settlement
+//! data (capital succession, extinction) are coordinated by World.
 use super::Nation;
 use crate::domain::ids::{NationId, SettlementId};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+
+/// Who owns a settlement and its political state towards that owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ownership {
+    nation: NationId,
+    /// Remaining conquest penalty (§4.2): 20 right after the capture, 5 less
+    /// after every turn. While above zero the settlement pays half the tax rate
+    /// (§6). Its effect on happiness belongs to the future happiness model.
+    conquest_penalty: u32,
+    /// An enemy army stands in the settlement's province (§11.2); such a
+    /// settlement pays no tax. Set by the war system.
+    under_attack: bool,
+}
+
+impl Ownership {
+    /// Conquest penalty right after a capture (four turns of half tax).
+    pub const CONQUEST_PENALTY: u32 = 20;
+    /// How much the conquest penalty shrinks every turn.
+    pub const CONQUEST_PENALTY_DECAY: u32 = 5;
+
+    fn new(nation: NationId) -> Self {
+        Self {
+            nation,
+            conquest_penalty: 0,
+            under_attack: false,
+        }
+    }
+
+    pub fn nation(&self) -> NationId {
+        self.nation
+    }
+
+    pub fn conquest_penalty(&self) -> u32 {
+        self.conquest_penalty
+    }
+
+    /// Freshly conquered: the conquest penalty still applies.
+    pub fn is_freshly_conquered(&self) -> bool {
+        self.conquest_penalty > 0
+    }
+
+    pub fn is_under_attack(&self) -> bool {
+        self.under_attack
+    }
+}
 
 /// Read-only public access; changes go through World.
 /// ```compile_fail
@@ -16,9 +63,9 @@ use std::collections::BTreeMap;
 pub struct NationRegistry {
     /// BTreeMap so iteration (turn order, observations) is always by ascending ID.
     nations: BTreeMap<NationId, Nation>,
-    /// The only ownership record. A settlement missing here is independent.
+    /// The only ownership record. Every registered settlement has an entry.
     /// Keyed by settlement, so one settlement can never have two owners.
-    owners: BTreeMap<SettlementId, NationId>,
+    owners: BTreeMap<SettlementId, Ownership>,
     /// Next ID to hand out; None once u32 is exhausted. IDs of removed nations
     /// are never reused, so an old ID in a report or a Python agent's memory
     /// can never point at a different, newer nation.
@@ -53,9 +100,14 @@ impl NationRegistry {
         self.nations.is_empty()
     }
 
-    /// The nation that owns the settlement, or None for an independent settlement.
+    /// The owning nation; None only for an unregistered settlement ID.
     pub fn owner_of(&self, settlement_id: SettlementId) -> Option<NationId> {
-        self.owners.get(&settlement_id).copied()
+        self.owners.get(&settlement_id).map(Ownership::nation)
+    }
+
+    /// The full ownership record; None only for an unregistered settlement ID.
+    pub fn ownership(&self, settlement_id: SettlementId) -> Option<&Ownership> {
+        self.owners.get(&settlement_id)
     }
 
     /// Settlements owned by the nation, ascending ID.
@@ -64,7 +116,7 @@ impl NationRegistry {
     pub fn settlements_of(&self, nation_id: NationId) -> Vec<SettlementId> {
         self.owners
             .iter()
-            .filter(|(_, owner)| **owner == nation_id)
+            .filter(|(_, ownership)| ownership.nation == nation_id)
             .map(|(&settlement_id, _)| settlement_id)
             .collect()
     }
@@ -75,38 +127,81 @@ impl NationRegistry {
         settlements.saturating_mul(Nation::STOCK_CAPACITY_PER_SETTLEMENT)
     }
 
+    /// Whether `found` can still assign an ID.
+    pub(crate) fn can_found(&self) -> bool {
+        self.next_id.is_some()
+    }
+
     pub(crate) fn get_mut(&mut self, id: NationId) -> Option<&mut Nation> {
         self.nations.get_mut(&id)
     }
 
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut Nation> {
-        self.nations.values_mut()
-    }
-
-    /// Creates a nation owning one settlement, which becomes its capital.
-    /// The caller checks that the settlement exists and is not owned.
+    /// Creates a nation owning one newly registered settlement, which becomes
+    /// its capital. The caller checks `can_found` and that the settlement has
+    /// no owner yet.
     pub(crate) fn found(&mut self, capital: SettlementId) -> Option<NationId> {
         let id = self.next_id?;
         debug_assert!(!self.owners.contains_key(&capital));
         self.nations.insert(id, Nation::new(id, capital));
-        self.owners.insert(capital, id);
+        self.owners.insert(capital, Ownership::new(id));
         self.next_id = id.0.checked_add(1).map(NationId);
         Some(id)
     }
 
-    /// Records the new owner and returns the previous one.
-    pub(crate) fn set_owner(
+    /// Adds a newly registered settlement to an existing nation, without any
+    /// conquest penalty (scenario setup).
+    pub(crate) fn add_member(&mut self, settlement_id: SettlementId, nation_id: NationId) {
+        debug_assert!(self.nations.contains_key(&nation_id));
+        debug_assert!(!self.owners.contains_key(&settlement_id));
+        self.owners.insert(settlement_id, Ownership::new(nation_id));
+    }
+
+    /// Gives the settlement to a new owner after a conquest and returns the
+    /// previous owner. Starts the conquest penalty; the siege is over.
+    pub(crate) fn capture(
         &mut self,
         settlement_id: SettlementId,
         nation_id: NationId,
     ) -> Option<NationId> {
-        self.owners.insert(settlement_id, nation_id)
+        let previous = self.owner_of(settlement_id);
+        self.owners.insert(
+            settlement_id,
+            Ownership {
+                nation: nation_id,
+                conquest_penalty: Ownership::CONQUEST_PENALTY,
+                under_attack: false,
+            },
+        );
+        previous
+    }
+
+    /// Returns false for an unregistered settlement.
+    pub(crate) fn set_under_attack(&mut self, settlement_id: SettlementId, attacked: bool) -> bool {
+        match self.owners.get_mut(&settlement_id) {
+            Some(ownership) => {
+                ownership.under_attack = attacked;
+                true
+            }
+            None => false,
+        }
     }
 
     /// Removes a nation that owns nothing any more. IDs are never reused.
     pub(crate) fn remove(&mut self, nation_id: NationId) -> Option<Nation> {
         debug_assert!(self.settlements_of(nation_id).is_empty());
         self.nations.remove(&nation_id)
+    }
+
+    /// Counts down per-turn timers of nations and ownerships at the end of a turn.
+    pub(crate) fn advance_turn(&mut self) {
+        for nation in self.nations.values_mut() {
+            nation.advance_turn();
+        }
+        for ownership in self.owners.values_mut() {
+            ownership.conquest_penalty = ownership
+                .conquest_penalty
+                .saturating_sub(Ownership::CONQUEST_PENALTY_DECAY);
+        }
     }
 }
 
@@ -131,8 +226,8 @@ mod tests {
         let mut registry = NationRegistry::default();
         let first = registry.found(SettlementId(1)).unwrap();
         let second = registry.found(SettlementId(2)).unwrap();
-        assert_eq!(registry.set_owner(SettlementId(3), first), None);
-        assert_eq!(registry.set_owner(SettlementId(3), second), Some(first));
+        registry.add_member(SettlementId(3), first);
+        assert_eq!(registry.capture(SettlementId(3), second), Some(first));
         assert_eq!(registry.settlements_of(first), vec![SettlementId(1)]);
         assert_eq!(
             registry.settlements_of(second),
@@ -142,11 +237,44 @@ mod tests {
     }
 
     #[test]
+    fn only_a_capture_starts_the_conquest_penalty_which_decays_per_turn() {
+        let mut registry = NationRegistry::default();
+        let first = registry.found(SettlementId(1)).unwrap();
+        let second = registry.found(SettlementId(2)).unwrap();
+        registry.add_member(SettlementId(3), first);
+        assert_eq!(
+            registry
+                .ownership(SettlementId(3))
+                .unwrap()
+                .conquest_penalty(),
+            0
+        );
+
+        assert!(registry.set_under_attack(SettlementId(3), true));
+        registry.capture(SettlementId(3), second);
+        let ownership = *registry.ownership(SettlementId(3)).unwrap();
+        assert_eq!(ownership.conquest_penalty(), 20);
+        assert!(ownership.is_freshly_conquered());
+        assert!(!ownership.is_under_attack(), "a capture ends the siege");
+        for expected in [15, 10, 5, 0, 0] {
+            registry.advance_turn();
+            assert_eq!(
+                registry
+                    .ownership(SettlementId(3))
+                    .unwrap()
+                    .conquest_penalty(),
+                expected
+            );
+        }
+        assert!(!registry.set_under_attack(SettlementId(9), true));
+    }
+
+    #[test]
     fn removed_nation_ids_are_not_reused() {
         let mut registry = NationRegistry::default();
         let first = registry.found(SettlementId(1)).unwrap();
         let second = registry.found(SettlementId(2)).unwrap();
-        registry.set_owner(SettlementId(1), second);
+        registry.capture(SettlementId(1), second);
         assert!(registry.remove(first).is_some());
         assert!(registry.get(first).is_none());
         assert_eq!(registry.found(SettlementId(3)), Some(NationId(2)));

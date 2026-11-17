@@ -53,7 +53,7 @@ Contains `Simulation` and `SimulationError`; `World` remains the only settlement
 | `add_settlement` | Delegate one-province settlement registration. |
 | `queue_decision` | Queue a known settlement's `SettlementDecision` for the next successful step. |
 | `queue_nation_decision` | Queue an existing nation's `NationDecision`; nation decisions run first. |
-| `found_nation`, `transfer_settlement` | Delegate ownership changes to World; drop pending decisions of an extinct nation. |
+| `add_settlement_to_nation`, `transfer_settlement`, `set_settlement_under_attack` | Delegate ownership and siege changes to World; drop pending decisions of an extinct nation. |
 | `observe`, `observe_all`, `observe_nation`, `observe_all_nations` | Build settlement and nation observations. |
 | `into_world` | Recover the world, discarding pending commands. |
 | `SimulationError::fmt` | Format map, counter or preflight failures. |
@@ -350,9 +350,12 @@ See [Nations](nations.md) for rules and the decision contract.
 
 | File | Contents |
 | --- | --- |
-| [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) | `TaxRate` (basis points), `NationalStock` (`add` with per-material capacity, `take`, `enforce_capacity`, `take_all`), `Nation` (treasury, stock, policy, capital, `replace_lost_capital`, `advance_turn`). |
-| [domain/nation/registry.rs](../../../core/src/domain/nation/registry.rs) | `NationRegistry`: nations and the single ownership record; `owner_of`, `settlements_of`, `stock_capacity`, `found`, `set_owner`, `remove`. |
-| [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) | `World::nations`, `nation`, `settlement_owner`, `province_owner`, `nation_settlements`, `nation_stock_capacity`, `found_nation`, `transfer_settlement` (capital succession, capacity cut, extinction), `deposit_nation_gold`, `deposit_nation_resource`, `set_tax_rate`, `subsidize`, `advance_nations_turn`; `OwnershipChange`, `SubsidyTransfer`. |
+| [domain/nation/tax.rs](../../../core/src/domain/nation/tax.rs) | `TaxRate` (fraction 0..=1): `from_fraction`, `fraction`, `percent`, `halved`, `apply` (rounds down). |
+| [domain/nation/taxation.rs](../../../core/src/domain/nation/taxation.rs) | `TaxStatus`, `SettlementTaxReport`, `NationTurnReport`. |
+| [domain/world/state/taxation.rs](../../../core/src/domain/world/state/taxation.rs) | `World::collect_taxes` (effective rate, production tax, national capacity); `TaxCollection`. |
+| [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) | `NationalStock` (`add` with per-material capacity, `take`, `enforce_capacity`, `take_all`), `Nation` (treasury, stock, policy, capital, `replace_lost_capital`, `advance_turn`). |
+| [domain/nation/registry.rs](../../../core/src/domain/nation/registry.rs) | `Ownership` (nation, conquest penalty, under attack) and `NationRegistry`: nations and the single ownership record; `owner_of`, `ownership`, `settlements_of`, `stock_capacity`, `found`, `add_member`, `capture`, `set_under_attack`, `remove`, `advance_turn`. |
+| [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) | `World::nations`, `nation`, `settlement_owner`, `province_owner`, `nation_settlements`, `nation_stock_capacity`, `transfer_settlement` (conquest: penalty, capital succession, capacity cut, extinction), `deposit_nation_gold`, `deposit_nation_resource`, `set_tax_rate`, `subsidize`, `set_settlement_under_attack`, `advance_nations_turn`; `OwnershipChange`, `SubsidyTransfer`. Settlement registration in `state.rs` founds or joins a nation (`add_settlement_to_nation`). |
 | [application/commands/nation/](../../../core/src/application/commands/nation/) | `contract.rs` (`NationDecision`, `NationAction`, `NationActionKind`), `response.rs` (errors, effects, outcomes), `preparation.rs` (read-only validation with a shared subsidy budget), `handler.rs` (execution). |
 | [application/queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) | `NationObservation`, `OwnedSettlementObservation` and their builder. |
 

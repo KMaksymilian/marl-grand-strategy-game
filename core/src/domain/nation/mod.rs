@@ -2,78 +2,15 @@
 //! stock, and set policy. Ownership itself lives in [`registry::NationRegistry`],
 //! the only record of which nation owns which settlement.
 pub mod registry;
+mod tax;
+pub mod taxation;
+
+pub use tax::{InvalidTaxRate, TaxRate};
 
 use crate::domain::economy::gold_inventory::GoldInventory;
 use crate::domain::economy::{InventoryAddResult, ResourceType};
 use crate::domain::ids::{NationId, SettlementId};
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::fmt;
-
-/// The common tax rate in basis points (1 = 0.01%), from 0 to 10 000 (100%).
-/// Serializes as the plain integer; values above 10 000 do not parse.
-///
-/// The specification asks for a continuous rate. An integer in basis points is
-/// fine-grained enough for that, stays deterministic (no float rounding between
-/// Rust and Python) and cannot be NaN. The private field plus `try_from` in serde
-/// mean an invalid rate can never exist in memory, so later code need not re-check.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(try_from = "u16", into = "u16")]
-pub struct TaxRate(u16);
-
-/// A tax rate above 100%.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InvalidTaxRate(pub u16);
-
-impl fmt::Display for InvalidTaxRate {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "tax rate {} exceeds {} basis points",
-            self.0,
-            TaxRate::MAX_BASIS_POINTS
-        )
-    }
-}
-
-impl TaxRate {
-    pub const MAX_BASIS_POINTS: u16 = 10_000;
-    /// 10%: the rate every nation starts with and the neutral rate for happiness.
-    pub const BASE: Self = Self(1_000);
-    pub const ZERO: Self = Self(0);
-    pub const FULL: Self = Self(Self::MAX_BASIS_POINTS);
-
-    pub fn from_basis_points(basis_points: u16) -> Result<Self, InvalidTaxRate> {
-        if basis_points > Self::MAX_BASIS_POINTS {
-            return Err(InvalidTaxRate(basis_points));
-        }
-        Ok(Self(basis_points))
-    }
-
-    pub fn basis_points(self) -> u16 {
-        self.0
-    }
-}
-
-impl Default for TaxRate {
-    fn default() -> Self {
-        Self::BASE
-    }
-}
-
-impl TryFrom<u16> for TaxRate {
-    type Error = InvalidTaxRate;
-
-    fn try_from(basis_points: u16) -> Result<Self, Self::Error> {
-        Self::from_basis_points(basis_points)
-    }
-}
-
-impl From<TaxRate> for u16 {
-    fn from(rate: TaxRate) -> Self {
-        rate.0
-    }
-}
 
 /// National material stock. Each material has its own capacity, set by the
 /// number of owned settlements; additions above it are lost. Labour is never stored.
@@ -255,29 +192,6 @@ impl Nation {
 mod tests {
     use super::*;
     use ResourceType::{Grain, Labour, Wood};
-
-    #[test]
-    fn tax_rate_accepts_zero_to_one_hundred_percent() {
-        assert_eq!(TaxRate::from_basis_points(0), Ok(TaxRate::ZERO));
-        assert_eq!(TaxRate::from_basis_points(10_000), Ok(TaxRate::FULL));
-        assert_eq!(
-            TaxRate::from_basis_points(10_001),
-            Err(InvalidTaxRate(10_001))
-        );
-        assert_eq!(TaxRate::default().basis_points(), 1_000);
-    }
-
-    #[test]
-    fn tax_rate_serializes_as_basis_points_and_rejects_values_above_full() {
-        assert_eq!(serde_json::to_string(&TaxRate::BASE).unwrap(), "1000");
-        assert_eq!(
-            serde_json::from_str::<TaxRate>("2550").unwrap(),
-            TaxRate::from_basis_points(2_550).unwrap()
-        );
-        assert!(serde_json::from_str::<TaxRate>("10001").is_err());
-        assert!(serde_json::from_str::<TaxRate>("-1").is_err());
-        assert!(serde_json::from_str::<TaxRate>("12.5").is_err());
-    }
 
     #[test]
     fn stock_capacity_is_per_material_and_overflow_is_reported() {

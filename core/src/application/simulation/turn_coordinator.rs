@@ -8,6 +8,7 @@ use super::{
 use crate::application::commands::nation::handler::handle_nation_decision;
 use crate::application::commands::settlement::{CommandDispatch, handler::handle_decision};
 use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::nation::taxation::{MaterialTotals, NationTurnReport};
 use crate::domain::world::{World, pathfinding::path_finder::PathFinder};
 
 /// Completes each phase for every settlement in ascending ID order.
@@ -116,8 +117,36 @@ pub(super) fn run_turn(
         produced.push((id, settlement.produce_turn(state)));
     }
 
+    // Taxation: the production tax of every settlement, between production and
+    // storage, so the tax is taken from gross output. Settlements of one nation
+    // fill its stock in ascending ID order, which decides who hits the capacity.
+    let mut nations: BTreeMap<_, _> = world
+        .nations()
+        .iter()
+        .map(|nation| (nation.id(), NationTurnReport::new(nation.tax_rate())))
+        .collect();
+    let mut taxes = BTreeMap::new();
+    let mut taxed = Vec::with_capacity(produced.len());
+    for (id, mut state) in produced {
+        execution.push(PhaseExecution {
+            phase: TurnPhase::Taxation,
+            settlement_id: id,
+        });
+        let collection = world
+            .collect_taxes(id, &mut state)
+            .expect("every registered settlement has an owner");
+        let nation = nations
+            .get_mut(&collection.report.nation_id)
+            .expect("owners exist for the whole turn");
+        add_totals(&mut nation.stock_received, &collection.stock_received);
+        add_totals(&mut nation.stock_lost, &collection.stock_lost);
+        nation.settlements.insert(id, collection.report.clone());
+        taxes.insert(id, collection.report);
+        taxed.push((id, state));
+    }
+
     let mut settlements = BTreeMap::new();
-    for (id, state) in produced {
+    for (id, state) in taxed {
         execution.push(PhaseExecution {
             phase: TurnPhase::EconomicUpdates,
             settlement_id: id,
@@ -125,20 +154,34 @@ pub(super) fn run_turn(
         let (settlement, mut environment) = world
             .settlement_turn_parts(id, finder)
             .expect("registered settlement");
-        settlements.insert(id, settlement.finish_turn(state, &mut environment));
+        let mut report = settlement.finish_turn(state, &mut environment);
+        report.taxation = taxes.remove(&id);
+        settlements.insert(id, report);
     }
     let locations = world.capital_trade_locations();
     world.finish_trade_turn(&locations, finder);
-    // National timers (e.g. the capital-loss penalty) count completed turns,
-    // so they tick once, after every phase of the turn.
+    // National timers (capital-loss and conquest penalties) count completed
+    // turns, so they tick once, after every phase of the turn.
     world.advance_nations_turn();
+    for (nation_id, report) in &mut nations {
+        let nation = world.nation(*nation_id).expect("nations survive the turn");
+        report.closing_treasury = nation.treasury();
+        report.closing_stock = nation.stock().resources().collect();
+    }
     Ok(SimulationTurnReport {
         turn,
         nation_decisions,
+        nations,
         decisions,
         settlements,
         execution,
     })
+}
+
+fn add_totals(totals: &mut MaterialTotals, added: &MaterialTotals) {
+    for (&resource, &amount) in added {
+        *totals.entry(resource).or_default() += amount;
+    }
 }
 
 #[cfg(test)]

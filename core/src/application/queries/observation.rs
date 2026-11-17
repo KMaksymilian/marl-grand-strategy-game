@@ -47,9 +47,8 @@ pub struct SettlementObservation {
     pub trade_partners: Vec<TradePartner>,
     /// Building types available for construction and upgrades, ascending ID.
     pub building_types: Vec<BuildingTypeObservation>,
-    /// Policy of the owning nation; None for an independent settlement.
-    #[serde(default)]
-    pub nation: Option<NationPolicyObservation>,
+    /// Policy of the owning nation. Every settlement belongs to one.
+    pub nation: NationPolicyObservation,
 }
 
 impl SettlementObservation {
@@ -161,6 +160,8 @@ pub struct LastTurnObservation {
     pub unfunded_caravan_orders: usize,
     pub completed_projects: Vec<ProjectId>,
     pub failed_projects: Vec<ProjectId>,
+    /// Materials the nation took from last turn's production.
+    pub production_tax: ResourceTotals,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -196,9 +197,8 @@ pub enum TileState {
 pub struct TradePartner {
     pub settlement_id: SettlementId,
     pub province_id: usize,
-    /// Owning nation (public information); None for an independent settlement.
-    #[serde(default)]
-    pub nation_id: Option<NationId>,
+    /// Owning nation (public information).
+    pub nation_id: NationId,
 }
 
 /// The owning nation's policy as seen by one of its settlements (gameplay §5.3).

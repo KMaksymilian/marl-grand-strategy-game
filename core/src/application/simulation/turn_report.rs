@@ -1,4 +1,5 @@
-use crate::domain::ids::SettlementId;
+use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::nation::taxation::NationTurnReport;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -14,6 +15,8 @@ pub enum TurnPhase {
     Consumption,
     Construction,
     Production,
+    /// Production tax (§6), between production and storage.
+    Taxation,
     EconomicUpdates,
 }
 
@@ -31,6 +34,8 @@ pub struct SimulationTurnReport {
     pub turn: u64,
     /// Nation decisions, applied before settlement decisions; ascending nation ID.
     pub nation_decisions: Vec<NationDecisionOutcome>,
+    /// What every nation collected this turn; the nation agent's report.
+    pub nations: BTreeMap<NationId, NationTurnReport>,
     pub decisions: Vec<DecisionOutcome>,
     pub settlements: BTreeMap<SettlementId, TurnReport>,
     pub execution: Vec<PhaseExecution>,

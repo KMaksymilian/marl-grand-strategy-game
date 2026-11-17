@@ -39,6 +39,9 @@ pub struct InventoryTurnReport {
     pub trade_reserved: MaterialTotals,
     /// Materials coming back from trade (purchases, unsold stock, caravans), before losses.
     pub trade_received: MaterialTotals,
+    /// Production tax taken by the owning nation from `produced` before it is
+    /// stored (gameplay §6).
+    pub taxed: MaterialTotals,
     pub losses: Vec<InventoryLoss>,
 }
 
@@ -113,6 +116,7 @@ impl InventoryTurnReport {
             &self.production_consumed,
             &self.trade_reserved,
             &self.trade_received,
+            &self.taxed,
         ]
         .into_iter()
         .flat_map(|totals| totals.keys().copied())
@@ -134,6 +138,7 @@ impl InventoryTurnReport {
                     + amount(&self.project_consumed)
                     + amount(&self.production_consumed)
                     + amount(&self.trade_reserved)
+                    + amount(&self.taxed)
                     + losses
         })
     }
@@ -146,6 +151,9 @@ pub struct TurnReport {
     pub projects: Vec<ProjectOutcome>,
     pub inventory: InventoryTurnReport,
     pub trade: TradeTurnReport,
+    /// Production tax of the owning nation; set by the global turn (`None` only when a
+    /// settlement runs its phases alone, e.g. in unit tests).
+    pub taxation: Option<crate::domain::nation::taxation::SettlementTaxReport>,
 }
 
 /// A trade made at this settlement's market with a visiting caravan.

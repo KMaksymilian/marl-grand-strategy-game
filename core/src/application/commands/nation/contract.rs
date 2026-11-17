@@ -10,7 +10,7 @@
 //! {
 //!   "nation_id": 0,
 //!   "actions": [
-//!     { "type": "set_tax_rate", "rate": 1500 },
+//!     { "type": "set_tax_rate", "rate": 0.15 },
 //!     { "type": "subsidize", "settlement_id": 2, "gold": 50, "resources": { "Wood": 20 } }
 //!   ]
 //! }
@@ -54,7 +54,7 @@ impl NationDecision {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NationAction {
-    /// The common tax rate of all own settlements, in basis points (0..=10000).
+    /// The common tax rate of all own settlements, as a fraction: 0.0 is 0%, 0.1 is 10%, 1.0 is 100%.
     SetTaxRate { rate: TaxRate },
     /// Move gold and materials from the national treasury and stock to an own
     /// settlement. Materials that do not fit its warehouse stay national.
@@ -113,7 +113,7 @@ mod tests {
     fn one_of_each() -> Vec<NationAction> {
         vec![
             NationAction::SetTaxRate {
-                rate: TaxRate::from_basis_points(1_500).unwrap(),
+                rate: TaxRate::from_fraction(0.15).unwrap(),
             },
             NationAction::Subsidize {
                 settlement_id: SettlementId(2),
@@ -136,12 +136,12 @@ mod tests {
     }
 
     #[test]
-    fn json_shape_uses_snake_case_tags_and_basis_points() {
+    fn json_shape_uses_snake_case_tags_and_fractional_rates() {
         let decision = NationDecision::new(NationId(0), one_of_each());
         let expected = serde_json::json!({
             "nation_id": 0,
             "actions": [
-                {"type": "set_tax_rate", "rate": 1500},
+                {"type": "set_tax_rate", "rate": 0.15},
                 {"type": "subsidize", "settlement_id": 2, "gold": 50,
                  "resources": {"Stone": 5, "Wood": 20}}
             ]
@@ -177,9 +177,9 @@ mod tests {
     fn malformed_decisions_are_rejected_when_parsing() {
         let wrap = |action: &str| format!(r#"{{"nation_id": 1, "actions": [{action}]}}"#);
         let cases = [
-            wrap(r#"{"type": "set_tax_rate", "rate": 10001}"#),
-            wrap(r#"{"type": "set_tax_rate", "rate": -5}"#),
-            wrap(r#"{"type": "set_tax_rate", "rate": 10.5}"#),
+            wrap(r#"{"type": "set_tax_rate", "rate": 1.5}"#),
+            wrap(r#"{"type": "set_tax_rate", "rate": -0.1}"#),
+            wrap(r#"{"type": "set_tax_rate", "rate": "0.1"}"#),
             wrap(r#"{"type": "set_tax_rate"}"#),
             wrap(r#"{"type": "subsidize", "settlement_id": 1, "gold": -1}"#),
             wrap(r#"{"type": "subsidize", "settlement_id": 1, "resources": {"Gold": 1}}"#),

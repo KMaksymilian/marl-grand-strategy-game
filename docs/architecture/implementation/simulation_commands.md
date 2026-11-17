@@ -58,7 +58,8 @@ decisions for several settlements before calling `step()` once for all of them.
 | `add_settlement_at(province_id, capital, settlement)`, `initialize_settlement_at(province_id, capital, capacity, population, needs)` | Place an explicit capital in the settlement's province during registration. |
 | `queue_decision(decision)` | Queue a `SettlementDecision` of a known settlement; no immediate world mutation. |
 | `queue_nation_decision(decision)` | Queue a `NationDecision` of an existing nation; it runs before settlement decisions in the next step. |
-| `found_nation(capital)`, `transfer_settlement(settlement, nation)` | Scenario setup and ownership changes through World; a transfer that removes a nation discards its pending decisions. See [Nations](nations.md). |
+| `add_settlement_to_nation(nation, province, settlement)`, `transfer_settlement(settlement, nation)` | Join an existing nation (a settlement added otherwise founds its own); change ownership after a conquest. A transfer that removes a nation discards its pending decisions. See [Nations](nations.md). |
+| `set_settlement_under_attack(settlement, attacked)` | Mark a siege: an attacked settlement pays no tax. |
 | `observe_nation(id)`, `observe_all_nations()` | Build nation observations: own treasury, stock, policy and settlement summaries. |
 | `step()` | Delegate to the turn coordinator, store the new turn and reports, and return `SimulationTurnReport`. |
 | `observe(id)`, `observe_all()` | Build agent [observations](settlement_observations.md) from the current state and the latest turn reports. |

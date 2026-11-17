@@ -2,44 +2,52 @@
 
 A nation is a state agent that owns settlements (gameplay specification §5). It
 produces and trades nothing itself. It holds a treasury, a national stock and a
-policy, and it submits decisions through the same CQRS flow as settlements.
+policy, collects taxes, and submits decisions through the same CQRS flow as
+settlements.
 
-Status: ownership, capital, treasury, stock, extinction, subsidies, the tax-rate
-policy, nation decisions and nation observations are implemented. Tax collection,
-decrees, diplomacy and armies are planned as separate tasks and will extend the
-same contract.
+Status: ownership, capital, treasury, stock, extinction, subsidies, the tax rate,
+the production tax, nation decisions, nation reports and nation observations are
+implemented. The gold tax waits for settlement income and happiness. Decrees, diplomacy and armies
+are separate tasks and extend the same contract.
 
 | Part | Source |
 | --- | --- |
-| `Nation`, `NationalStock`, `TaxRate` | [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) |
-| `NationRegistry` (nations and ownership) | [domain/nation/registry.rs](../../../core/src/domain/nation/registry.rs) |
-| Ownership changes, capital succession, extinction, transfers | [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) |
+| `Nation`, `NationalStock` | [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) |
+| `TaxRate` | [domain/nation/tax.rs](../../../core/src/domain/nation/tax.rs) |
+| `TaxStatus`, `SettlementTaxReport`, `NationTurnReport` | [domain/nation/taxation.rs](../../../core/src/domain/nation/taxation.rs) |
+| `NationRegistry`, `Ownership` | [domain/nation/registry.rs](../../../core/src/domain/nation/registry.rs) |
+| Ownership changes, capital succession, extinction, subsidies | [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) |
+| Tax collection | [domain/world/state/taxation.rs](../../../core/src/domain/world/state/taxation.rs) |
 | Decision contract and results | [application/commands/nation/contract.rs](../../../core/src/application/commands/nation/contract.rs), [response.rs](../../../core/src/application/commands/nation/response.rs) |
 | Validation and execution | [preparation.rs](../../../core/src/application/commands/nation/preparation.rs), [handler.rs](../../../core/src/application/commands/nation/handler.rs) |
 | Observation | [queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [queries/observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) |
-| Tests | [core/tests/nation_tests.rs](../../../core/tests/nation_tests.rs) |
+| Tests | [nation_tests.rs](../../../core/tests/nation_tests.rs), [taxation_tests.rs](../../../core/tests/taxation_tests.rs) |
 
 ## Ownership
 
-`NationRegistry` keeps the only record `settlement -> nation`. A nation does not
-store its settlements, so ownership cannot disagree between two places. A
-settlement without an entry is independent. A province belongs to the owner of its
-settlement; an empty province belongs to nobody (`World::province_owner`).
+**Every settlement belongs to exactly one nation.** `NationRegistry` keeps the
+only record `settlement -> Ownership`. Each `Ownership` holds the nation, the
+remaining conquest penalty and whether the settlement is under attack. A nation
+does not store its settlements, so ownership cannot disagree between two places.
+A province belongs to the owner of its settlement; an empty province belongs to
+nobody (`World::province_owner`).
 
-Only `World` changes ownership:
+Nations come into existence when settlements register:
 
 | Method | Rule |
 | --- | --- |
-| `found_nation(capital)` | An existing, independent settlement founds a nation and becomes its capital. IDs are consecutive and never reused. |
-| `transfer_settlement(settlement, to)` | Gives an independent or owned settlement to an existing nation. Fails without changes for unknown IDs or when `to` already owns it. Returns `OwnershipChange`. |
+| `add_settlement`, `add_settlement_at`, `initialize_settlement(_at)` | The settlement founds a new nation and becomes its capital. Nation IDs are consecutive and never reused. |
+| `add_settlement_to_nation(nation, province, settlement)` | The settlement joins an existing nation (scenario setup), without a penalty. |
+| `transfer_settlement(settlement, to)` | Ownership change after a conquest (§11.5). Starts the conquest penalty and ends an attack. Fails without changes for unknown IDs or when `to` already owns it. Returns `OwnershipChange`. |
+
+A failed registration changes nothing and founds no nation.
 
 After a transfer, the previous owner:
 
 1. **Gets a new capital** if it lost its capital: the most populous remaining
    settlement, lowest ID on ties. The capital-loss penalty runs for
-   `Nation::CAPITAL_LOSS_PENALTY_TURNS` (10) turns and counts down at the end of
-   every global turn (`capital_loss_turns`). Its effect on happiness belongs to
-   the happiness model (§4.2).
+   `Nation::CAPITAL_LOSS_PENALTY_TURNS` (10) turns; its happiness effect (§4.2)
+   arrives with the happiness model.
 2. **Loses stock above its reduced capacity**, reported in `stock_lost`.
 3. **Is removed when it owns nothing.** Its treasury and stock vanish and are
    reported in `gold_lost` and `stock_lost`; `extinct` is set.
@@ -53,21 +61,54 @@ After a transfer, the previous owner:
   `Nation::STOCK_CAPACITY_PER_SETTLEMENT` (500) × owned settlements. Additions
   above it are lost (`deposit_nation_resource` reports the rejected part). Labour
   is never stored.
-- `deposit_nation_gold` and `deposit_nation_resource` are the entry points for
-  scenarios and, later, for taxes and customs.
 
-## Policy
+## Tax rate
 
-`TaxRate` is the common rate of all own settlements in basis points
-(1 = 0.01%), `0..=10000`, starting at `TaxRate::BASE` (1000 = 10%). It serializes
-as a plain integer; values above 10000 do not parse. Collection is part of the
-taxation task.
+`TaxRate` is the common rate of all own settlements as a fraction: `0.0` is 0%,
+`0.1` is 10% (`TaxRate::BASE`, the starting rate), `1.0` is 100%. It serializes as
+a plain number; values outside `0..=1`, NaN and infinities do not parse, so an
+invalid rate cannot exist. `apply(amount)` rounds down to whole units and never
+returns more than `amount`; a relative tolerance of 1e-9 removes floating-point
+artifacts (29% of 100 is 29, not 28).
+
+## Taxation (§6)
+
+Taxes are collected in the `Taxation` phase of every global turn, after
+`Production` and before `EconomicUpdates`, for every settlement in ascending ID.
+The nation simply goes through its settlements and takes its rate from what each
+one produced this turn.
+
+| Step | Rule |
+| --- | --- |
+| Effective rate | `under_attack`: 0. Freshly conquered (penalty above zero): half the rate. Otherwise the nation's rate. |
+| Production tax | Every material of this turn's gross production, separately, rounded down. Taken before the buffer and warehouse, so storage losses never reduce it. Intermediate goods are taxed at every stage. |
+| National side | Materials go to the stock up to its per-material capacity; what does not fit is lost and reported. Settlements of one nation fill the stock in ascending ID. |
+
+**Gold is not taxed yet.** The gold tax applies to the settlement's gold income
+(§4.4), which depends on settlement happiness (§4.2). Neither exists in the
+settlement economy yet; the gold tax is added together with them. Until then the
+treasury changes only through subsidies and scenario deposits.
+
+The conquest penalty starts at 20 and drops by 5 after every turn: a conquered
+settlement pays half for four turns. `World::set_settlement_under_attack` marks a
+siege until the war system sets it from army positions.
+
+Material balance: a settlement's `InventoryTurnReport` lists the tax in `taxed`,
+and `is_balanced` counts it as an outflow.
+
+## Reports
+
+- `TurnReport::taxation` (each settlement): `SettlementTaxReport` with nation,
+  status, nominal and effective rate and production tax.
+- `SimulationTurnReport::nations` (each nation, its own report):
+  `NationTurnReport` with tax rate, materials received and lost, every own
+  settlement's `SettlementTaxReport`, closing treasury and stock.
 
 ## Decisions
 
 ```json
 {"nation_id": 0, "actions": [
-  {"type": "set_tax_rate", "rate": 1500},
+  {"type": "set_tax_rate", "rate": 0.15},
   {"type": "subsidize", "settlement_id": 2, "gold": 50, "resources": {"Wood": 20}}
 ]}
 ```
@@ -77,37 +118,31 @@ taxation task.
 | `set_tax_rate` | `tax_rate_set` | `conflict` for a second rate in the same decision |
 | `subsidize` | `subsidy_delivered` with `gold`, `delivered` and `returned` | `unknown_settlement`, `settlement_not_owned`, `empty_subsidy`, `labour_is_not_transferable`, `insufficient_treasury`, `insufficient_stock`, `settlement_treasury_full` |
 
-The policy matches settlement decisions: actions are checked in order and each
-one is accepted or rejected on its own; a rejected action changes and claims
-nothing. Subsidies of one decision share the treasury and stock, so `available`
-in an error is what earlier accepted subsidies left. Materials that do not fit
-the settlement's warehouse stay in the national stock (`returned`), so a subsidy
-neither creates nor destroys goods.
-
-Missing `actions` means none; missing `gold` or `resources` mean zero. Unknown
-fields and tags, negative or fractional amounts and rates above 10000 fail to
-parse with `invalid nation decision`.
+Actions are checked in order and each one is accepted or rejected on its own; a
+rejected action changes and claims nothing. Subsidies of one decision share the
+treasury and stock. Materials that do not fit the settlement's warehouse stay in
+the national stock (`returned`), so a subsidy neither creates nor destroys goods.
 
 ## Global turn
 
-`Simulation::queue_nation_decision` accepts decisions of existing nations. In
-`step`, nation decisions run first, in ascending nation ID and submission order,
-before settlement decisions. Settlements therefore decide under the new policy
-and can use this turn's subsidies. `SimulationTurnReport::nation_decisions` holds
-one `NationDecisionOutcome` per decision. National timers count down after the
-economic phases.
+```
+Nation decisions -> settlement decisions -> Preparation -> Allocation ->
+Consumption -> Construction -> Production -> Taxation -> EconomicUpdates ->
+trade dispatch -> national timers (capital loss, conquest penalty)
+```
 
-Settlement decisions stay independent: a nation never builds, staffs or trades
-for its settlements.
+A new rate applies to the same turn's taxes, because nation decisions run first.
 
 ## Observations
 
-`Simulation::observe_nation(id)` and `observe_all_nations()` return a
+`Simulation::observe_nation(id)` / `observe_all_nations()` return a
 `NationObservation`: capital, capital-loss turns, tax rate, treasury, stock,
 per-material capacity, a summary of each own settlement (province, population,
-gold, free warehouse capacity) and the IDs of other nations. Another nation's
+gold, conquest penalty, under attack, free warehouse capacity), the IDs of other
+nations and `last_turn`, the nation's latest `NationTurnReport`. Another nation's
 treasury, stock and policy are not visible.
 
 A settlement's `SettlementObservation::nation` shows its owner's policy (nation,
-tax rate, capital, whether it is the capital); it is `null` for an independent
-settlement. Each `TradePartner` carries the partner's `nation_id`.
+tax rate, capital, whether it is the capital). Its `last_turn` includes the
+production tax. Each `TradePartner` carries
+the partner's `nation_id`.

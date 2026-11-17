@@ -85,8 +85,20 @@ fn global_coordinator_matches_the_network_for_trade_and_construction() {
         if turn == 2 {
             assert_eq!(simulation.world().caravans[0].position(), Point(3, 0));
         }
+        // The network has no nations; the global turn adds a taxation report
+        // (nothing here is produced, so no materials are taxed).
+        let global_economy: Vec<_> = global_report
+            .settlements
+            .values()
+            .map(|report| {
+                assert!(report.inventory.taxed.is_empty());
+                let mut report = report.clone();
+                report.taxation = None;
+                report
+            })
+            .collect();
         assert_eq!(
-            global_report.settlements.values().collect::<Vec<_>>(),
+            global_economy.iter().collect::<Vec<_>>(),
             local_reports.iter().collect::<Vec<_>>()
         );
         assert!(

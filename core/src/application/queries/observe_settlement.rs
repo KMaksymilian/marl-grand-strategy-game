@@ -93,12 +93,14 @@ impl ObservationQuery<'_> {
             territory: self.own_tiles(settlement_id)?,
             trade_partners: self.trade_partners(settlement_id),
             building_types: self.building_types(),
-            nation: self.nation_policy(settlement_id),
+            nation: self
+                .nation_policy(settlement_id)
+                .ok_or(WorldError::MissingSettlement(settlement_id))?,
         })
     }
 
     /// The owner's policy (gameplay spec 5.3: a settlement sees its nation's
-    /// policy and adapts to it). None for an independent settlement.
+    /// policy and adapts to it). None only for an unknown settlement.
     fn nation_policy(&self, settlement_id: SettlementId) -> Option<NationPolicyObservation> {
         let nation = self
             .world
@@ -162,7 +164,7 @@ impl ObservationQuery<'_> {
                 Some(TradePartner {
                     settlement_id: id,
                     province_id: self.world.settlement_province(id)?,
-                    nation_id: self.world.settlement_owner(id),
+                    nation_id: self.world.settlement_owner(id)?,
                 })
             })
             .collect()
@@ -321,5 +323,6 @@ fn last_turn_observation(report: &TurnReport) -> LastTurnObservation {
         unfunded_caravan_orders: report.trade.unfunded_caravan_orders.len(),
         completed_projects: ids(true),
         failed_projects: ids(false),
+        production_tax: report.inventory.taxed.clone(),
     }
 }

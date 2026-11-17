@@ -6,12 +6,14 @@
 //! compares observations of worlds that differ only in those values.
 use super::nation_observation::{NationObservation, OwnedSettlementObservation};
 use crate::domain::ids::NationId;
+use crate::domain::nation::taxation::NationTurnReport;
 use crate::domain::world::{World, WorldError};
 
 pub(crate) fn observe_nation(
     world: &World,
     nation_id: NationId,
     turn: u64,
+    last_turn: Option<&NationTurnReport>,
 ) -> Result<NationObservation, WorldError> {
     let nation = world
         .nation(nation_id)
@@ -22,11 +24,14 @@ pub(crate) fn observe_nation(
         .filter_map(|settlement_id| {
             let settlement = world.settlement(settlement_id)?;
             let inventory = settlement.inventory();
+            let ownership = world.nations().ownership(settlement_id)?;
             Some(OwnedSettlementObservation {
                 settlement_id,
                 province_id: world.settlement_province(settlement_id)?,
                 population: settlement.population(),
                 gold: settlement.gold(),
+                conquest_penalty: ownership.conquest_penalty(),
+                under_attack: ownership.is_under_attack(),
                 free_capacity: u64::from(inventory.capacity())
                     .saturating_sub(inventory.total_amount()),
             })
@@ -48,5 +53,6 @@ pub(crate) fn observe_nation(
             .map(|other| other.id())
             .filter(|&id| id != nation_id)
             .collect(),
+        last_turn: last_turn.cloned(),
     })
 }

@@ -24,6 +24,7 @@ use crate::application::queries::{
     observation::SettlementObservation, observe_nation, observe_settlement,
 };
 use crate::domain::ids::NationId;
+use crate::domain::nation::taxation::NationTurnReport;
 use crate::domain::settlement::turn_report::TurnReport;
 use crate::domain::settlement::{NeedRegistry, Settlement};
 use crate::domain::world::settlement_registry::SettlementRegistry;
@@ -70,6 +71,8 @@ pub struct Simulation {
     pending_nation_decisions: BTreeMap<NationId, Vec<NationDecision>>,
     /// Each settlement's report from the latest completed turn, for observations.
     last_reports: BTreeMap<SettlementId, TurnReport>,
+    /// Each nation's report from the latest completed turn, for observations.
+    last_nation_reports: BTreeMap<NationId, NationTurnReport>,
 }
 
 impl Simulation {
@@ -148,6 +151,7 @@ impl Simulation {
             pending_decisions: BTreeMap::new(),
             pending_nation_decisions: BTreeMap::new(),
             last_reports: BTreeMap::new(),
+            last_nation_reports: BTreeMap::new(),
         })
     }
 
@@ -162,6 +166,7 @@ impl Simulation {
         )?;
         self.current_turn = report.turn;
         self.last_reports = report.settlements.clone();
+        self.last_nation_reports = report.nations.clone();
         Ok(report)
     }
 
@@ -251,28 +256,52 @@ impl Simulation {
         Ok(())
     }
 
-    /// Scenario setup: an independent settlement founds a nation and becomes its capital.
-    pub fn found_nation(&mut self, capital: SettlementId) -> Result<NationId, WorldError> {
-        self.world.found_nation(capital)
+    /// Registers an empty settlement as a member of an existing nation.
+    pub fn add_settlement_to_nation(
+        &mut self,
+        nation_id: NationId,
+        province_id: usize,
+        settlement: Settlement,
+    ) -> Result<(), WorldError> {
+        self.world
+            .add_settlement_to_nation(nation_id, province_id, settlement)
     }
 
-    /// Gives a settlement to a nation (see `World::transfer_settlement`). Pending
-    /// decisions of a nation that goes extinct are discarded.
+    /// Marks whether an enemy army stands in the settlement's province; an
+    /// attacked settlement pays no tax (see `World::set_settlement_under_attack`).
+    pub fn set_settlement_under_attack(
+        &mut self,
+        settlement_id: SettlementId,
+        attacked: bool,
+    ) -> Result<(), WorldError> {
+        self.world
+            .set_settlement_under_attack(settlement_id, attacked)
+    }
+
+    /// Gives a settlement to another nation after a conquest (see
+    /// `World::transfer_settlement`). Pending decisions of a nation that goes
+    /// extinct are discarded.
     pub fn transfer_settlement(
         &mut self,
         settlement_id: SettlementId,
         to: NationId,
     ) -> Result<OwnershipChange, WorldError> {
         let change = self.world.transfer_settlement(settlement_id, to)?;
-        if let (true, Some(previous)) = (change.extinct, change.from) {
-            self.pending_nation_decisions.remove(&previous);
+        if change.extinct {
+            self.pending_nation_decisions.remove(&change.from);
+            self.last_nation_reports.remove(&change.from);
         }
         Ok(change)
     }
 
     /// What the nation's agent may see now.
     pub fn observe_nation(&self, nation_id: NationId) -> Result<NationObservation, WorldError> {
-        observe_nation::observe_nation(&self.world, nation_id, self.current_turn)
+        observe_nation::observe_nation(
+            &self.world,
+            nation_id,
+            self.current_turn,
+            self.last_nation_reports.get(&nation_id),
+        )
     }
 
     /// Observations of every nation, ascending ID.

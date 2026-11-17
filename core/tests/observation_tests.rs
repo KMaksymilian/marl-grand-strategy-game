@@ -4,7 +4,7 @@ use simulation_core::buildings::Building;
 use simulation_core::buildings::catalog::BuildingCatalog;
 use simulation_core::buildings::definition::{BuildingBehavior, BuildingDefinition};
 use simulation_core::economy::ResourceType::{Grain, Stone, Wood};
-use simulation_core::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
+use simulation_core::ids::{BuildingId, BuildingTypeId, NationId, ProjectId, SettlementId};
 use simulation_core::settlement::decision::{OfferSide, OfferSpec};
 use simulation_core::settlement::observation::{
     BuildingTypeObservation, ProjectTarget, RecipeObservation, SettlementObservation, TileState,
@@ -194,7 +194,8 @@ fn observation_describes_the_local_economy() {
         vec![TradePartner {
             settlement_id: NEIGHBOUR,
             province_id: 20,
-            nation_id: None,
+            // Every settlement registered alone founds its own nation: 0 for ME, 1 here.
+            nation_id: NationId(1),
         }]
     );
     assert_eq!(

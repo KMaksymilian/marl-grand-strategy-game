@@ -1,6 +1,8 @@
-//! Nations (gameplay specification §5): ownership authority, transfer, capital
-//! succession, extinction, national stock capacity, subsidies, the nation
-//! decision contract and its place in the global turn.
+//! Nations (gameplay specification §5): ownership authority, conquest transfer,
+//! capital succession, extinction, national stock capacity, subsidies, the
+//! nation decision contract and its place in the global turn. Every settlement
+//! belongs to a nation. Taxation is covered in `taxation_tests.rs`; these
+//! worlds produce nothing, so taxes never change national funds.
 use simulation_core::economy::ResourceType::{self, Grain, Labour, Stone, Wood};
 use simulation_core::ids::{NationId, SettlementId};
 use simulation_core::nation::{Nation, TaxRate};
@@ -19,10 +21,17 @@ const A: SettlementId = SettlementId(1);
 const B: SettlementId = SettlementId(2);
 const C: SettlementId = SettlementId(3);
 const D: SettlementId = SettlementId(4);
+const FIRST: NationId = NationId(0);
+const SECOND: NationId = NationId(1);
 
-/// Provinces 10..50 in one row; settlements 1..4 in provinces 10..40 with
-/// populations 5, 9, 9, 3 and warehouse capacity 100; province 50 stays empty.
-fn world() -> World {
+fn settlement(id: SettlementId, population: u32) -> Settlement {
+    Settlement::new(id, 100, population, Arc::default())
+}
+
+/// Provinces 10..50 in one row; settlements have populations 5, 9, 9, 3 and
+/// warehouse capacity 100. A founds nation 0 and B, C join it; D founds
+/// nation 1. Province 50 stays empty. Nothing is produced, so nothing is taxed.
+fn two_nations() -> World {
     let mut world = World::new(
         Map::new(5, 1, vec![Area::new(0.5, 0.5); 5], vec![10, 20, 30, 40, 50]),
         [10, 20, 30, 40, 50]
@@ -30,25 +39,15 @@ fn world() -> World {
             .map(Province::new)
             .collect(),
     );
-    for (id, province, population) in [(A, 10, 5), (B, 20, 9), (C, 30, 9), (D, 40, 3)] {
-        world
-            .add_settlement(
-                province,
-                Settlement::new(id, 100, population, Arc::default()),
-            )
-            .unwrap();
-    }
+    world.add_settlement(10, settlement(A, 5)).unwrap();
     world
-}
-
-/// Nation 0 owns A (capital), B and C; nation 1 owns D; nothing is independent.
-fn two_nations() -> (World, NationId, NationId) {
-    let mut world = world();
-    let first = world.found_nation(A).unwrap();
-    world.transfer_settlement(B, first).unwrap();
-    world.transfer_settlement(C, first).unwrap();
-    let second = world.found_nation(D).unwrap();
-    (world, first, second)
+        .add_settlement_to_nation(FIRST, 20, settlement(B, 9))
+        .unwrap();
+    world
+        .add_settlement_to_nation(FIRST, 30, settlement(C, 9))
+        .unwrap();
+    world.add_settlement(40, settlement(D, 3)).unwrap();
+    world
 }
 
 fn subsidy(
@@ -63,8 +62,8 @@ fn subsidy(
     }
 }
 
-fn rate(basis_points: u16) -> TaxRate {
-    TaxRate::from_basis_points(basis_points).unwrap()
+fn rate(fraction: f64) -> TaxRate {
+    TaxRate::from_fraction(fraction).unwrap()
 }
 
 fn error_of(outcome: &NationActionOutcome) -> &NationActionError {
@@ -77,68 +76,34 @@ fn error_of(outcome: &NationActionOutcome) -> &NationActionError {
 // ---------------------------------------------------------------- ownership
 
 #[test]
-fn a_founded_nation_owns_its_capital_and_settled_province() {
-    let mut world = world();
-    let nation = world.found_nation(B).unwrap();
-    assert_eq!(nation, NationId(0));
-    let state = world.nation(nation).unwrap();
-    assert_eq!(state.capital(), B);
-    assert_eq!(state.tax_rate(), TaxRate::BASE);
-    assert_eq!((state.treasury(), state.capital_loss_turns()), (0, 0));
-    assert_eq!(world.settlement_owner(B), Some(nation));
-    assert_eq!(world.settlement_owner(A), None, "independent settlement");
-    assert_eq!(world.province_owner(20), Ok(Some(nation)));
-    assert_eq!(world.province_owner(10), Ok(None));
+fn a_settlement_registered_alone_founds_a_nation_and_becomes_its_capital() {
+    let world = two_nations();
+    let first = world.nation(FIRST).unwrap();
+    assert_eq!(first.capital(), A);
+    assert_eq!(first.tax_rate(), TaxRate::BASE);
+    assert_eq!((first.treasury(), first.capital_loss_turns()), (0, 0));
+    assert_eq!(world.nation(SECOND).unwrap().capital(), D);
+    assert_eq!(
+        world.nations().len(),
+        2,
+        "joining settlements found nothing"
+    );
+    assert_eq!(world.settlement_owner(B), Some(FIRST));
+    assert_eq!(world.settlement_owner(SettlementId(9)), None, "unknown ID");
+    assert_eq!(world.province_owner(20), Ok(Some(FIRST)));
     assert_eq!(world.province_owner(50), Ok(None), "empty province");
     assert_eq!(
         world.province_owner(99),
         Err(WorldError::MissingProvince(99))
     );
-    assert_eq!(world.nation_settlements(nation), Ok(vec![B]));
-    assert_eq!(world.nation_stock_capacity(nation), Ok(500));
+    assert_eq!(world.nation_settlements(FIRST), Ok(vec![A, B, C]));
+    assert_eq!(world.nation_stock_capacity(FIRST), Ok(1_500));
 }
 
 #[test]
-fn a_settlement_can_found_only_one_nation_and_must_exist() {
-    let mut world = world();
-    let nation = world.found_nation(A).unwrap();
-    assert_eq!(
-        world.found_nation(A),
-        Err(WorldError::SettlementAlreadyOwned {
-            settlement_id: A,
-            nation_id: nation
-        })
-    );
-    assert_eq!(
-        world.found_nation(SettlementId(9)),
-        Err(WorldError::MissingSettlement(SettlementId(9)))
-    );
-    assert_eq!(world.nations().len(), 1);
-}
-
-#[test]
-fn every_settlement_has_at_most_one_owner_and_transfers_move_it() {
-    let (mut world, first, second) = two_nations();
-    assert_eq!(world.nation_settlements(first), Ok(vec![A, B, C]));
-    assert_eq!(world.nation_settlements(second), Ok(vec![D]));
-
-    let change = world.transfer_settlement(B, second).unwrap();
-    assert_eq!(
-        change,
-        OwnershipChange {
-            settlement_id: B,
-            from: Some(first),
-            to: second,
-            new_capital: None,
-            extinct: false,
-            gold_lost: 0,
-            stock_lost: BTreeMap::new(),
-        }
-    );
-    assert_eq!(world.nation_settlements(first), Ok(vec![A, C]));
-    assert_eq!(world.nation_settlements(second), Ok(vec![B, D]));
-    assert_eq!(world.province_owner(20), Ok(Some(second)));
-    for settlement in [A, B, C, D] {
+fn every_registered_settlement_belongs_to_exactly_one_nation() {
+    let world = two_nations();
+    for settlement in world.settlements() {
         let owners = world
             .nations()
             .iter()
@@ -146,24 +111,66 @@ fn every_settlement_has_at_most_one_owner_and_transfers_move_it() {
                 world
                     .nation_settlements(nation.id())
                     .unwrap()
-                    .contains(&settlement)
+                    .contains(&settlement.id())
             })
             .count();
-        assert_eq!(owners, 1, "{settlement:?}");
+        assert_eq!(owners, 1, "{:?}", settlement.id());
     }
-    // Capacities follow the number of settlements.
-    assert_eq!(world.nation_stock_capacity(first), Ok(1_000));
-    assert_eq!(world.nation_stock_capacity(second), Ok(1_000));
+}
+
+#[test]
+fn joining_a_missing_nation_registers_nothing() {
+    let mut world = two_nations();
+    assert_eq!(
+        world.add_settlement_to_nation(NationId(7), 50, settlement(SettlementId(5), 1)),
+        Err(WorldError::MissingNation(NationId(7)))
+    );
+    assert!(world.settlement(SettlementId(5)).is_none());
+    assert_eq!(world.province_settlement(50), Ok(None));
+    // A failed registration of any kind founds no nation either.
+    assert_eq!(
+        world.add_settlement(10, settlement(SettlementId(6), 1)),
+        Err(WorldError::ProvinceOccupied {
+            province_id: 10,
+            settlement_id: A
+        })
+    );
+    assert_eq!(world.nations().len(), 2);
+}
+
+#[test]
+fn a_conquest_transfer_moves_ownership_and_capacity() {
+    let mut world = two_nations();
+    let change = world.transfer_settlement(B, SECOND).unwrap();
+    assert_eq!(
+        change,
+        OwnershipChange {
+            settlement_id: B,
+            from: FIRST,
+            to: SECOND,
+            new_capital: None,
+            extinct: false,
+            gold_lost: 0,
+            stock_lost: BTreeMap::new(),
+        }
+    );
+    assert_eq!(world.nation_settlements(FIRST), Ok(vec![A, C]));
+    assert_eq!(world.nation_settlements(SECOND), Ok(vec![B, D]));
+    assert_eq!(world.province_owner(20), Ok(Some(SECOND)));
+    assert_eq!(world.nation_stock_capacity(FIRST), Ok(1_000));
+    assert_eq!(world.nation_stock_capacity(SECOND), Ok(1_000));
+    let ownership = world.nations().ownership(B).unwrap();
+    assert_eq!(ownership.conquest_penalty(), 20, "a transfer is a conquest");
 }
 
 #[test]
 fn invalid_transfers_change_nothing() {
-    let (mut world, first, _) = two_nations();
+    let mut world = two_nations();
     assert_eq!(
-        world.transfer_settlement(B, first),
+        world.transfer_settlement(B, FIRST),
         Err(WorldError::SettlementAlreadyOwned {
             settlement_id: B,
-            nation_id: first
+            nation_id: FIRST
         })
     );
     assert_eq!(
@@ -171,55 +178,56 @@ fn invalid_transfers_change_nothing() {
         Err(WorldError::MissingNation(NationId(7)))
     );
     assert_eq!(
-        world.transfer_settlement(SettlementId(9), first),
+        world.transfer_settlement(SettlementId(9), FIRST),
         Err(WorldError::MissingSettlement(SettlementId(9)))
     );
-    assert_eq!(world.nation_settlements(first), Ok(vec![A, B, C]));
+    assert_eq!(world.nation_settlements(FIRST), Ok(vec![A, B, C]));
+    assert_eq!(world.nations().ownership(B).unwrap().conquest_penalty(), 0);
 }
 
 // ---------------------------------------------------------------- capital
 
 #[test]
 fn losing_the_capital_moves_it_to_the_largest_settlement_and_starts_the_penalty() {
-    let (mut world, first, second) = two_nations();
-    let change = world.transfer_settlement(A, second).unwrap();
+    let mut world = two_nations();
+    let change = world.transfer_settlement(A, SECOND).unwrap();
     // B and C both have population 9: the lower ID wins the tie.
     assert_eq!(change.new_capital, Some(B));
-    let nation = world.nation(first).unwrap();
+    let nation = world.nation(FIRST).unwrap();
     assert_eq!(nation.capital(), B);
     assert_eq!(
         nation.capital_loss_turns(),
         Nation::CAPITAL_LOSS_PENALTY_TURNS
     );
     // The receiving nation keeps its capital.
-    assert_eq!(world.nation(second).unwrap().capital(), D);
-    assert_eq!(world.nation(second).unwrap().capital_loss_turns(), 0);
+    assert_eq!(world.nation(SECOND).unwrap().capital(), D);
+    assert_eq!(world.nation(SECOND).unwrap().capital_loss_turns(), 0);
 }
 
 #[test]
 fn losing_another_settlement_keeps_the_capital() {
-    let (mut world, first, second) = two_nations();
-    let change = world.transfer_settlement(C, second).unwrap();
+    let mut world = two_nations();
+    let change = world.transfer_settlement(C, SECOND).unwrap();
     assert_eq!(change.new_capital, None);
-    assert_eq!(world.nation(first).unwrap().capital(), A);
-    assert_eq!(world.nation(first).unwrap().capital_loss_turns(), 0);
+    assert_eq!(world.nation(FIRST).unwrap().capital(), A);
+    assert_eq!(world.nation(FIRST).unwrap().capital_loss_turns(), 0);
 }
 
 #[test]
 fn the_capital_loss_penalty_counts_down_once_per_turn() {
-    let (mut world, first, second) = two_nations();
-    world.transfer_settlement(A, second).unwrap();
+    let mut world = two_nations();
+    world.transfer_settlement(A, SECOND).unwrap();
     let mut simulation = Simulation::new(world).unwrap();
     for expected in (0..Nation::CAPITAL_LOSS_PENALTY_TURNS).rev() {
         simulation.step().unwrap();
         assert_eq!(
-            simulation.observe_nation(first).unwrap().capital_loss_turns,
+            simulation.observe_nation(FIRST).unwrap().capital_loss_turns,
             expected
         );
     }
     simulation.step().unwrap();
     assert_eq!(
-        simulation.observe_nation(first).unwrap().capital_loss_turns,
+        simulation.observe_nation(FIRST).unwrap().capital_loss_turns,
         0
     );
 }
@@ -228,27 +236,27 @@ fn the_capital_loss_penalty_counts_down_once_per_turn() {
 
 #[test]
 fn stock_above_the_reduced_capacity_is_lost_and_reported() {
-    let (mut world, first, second) = two_nations();
+    let mut world = two_nations();
     assert_eq!(
         world
-            .deposit_nation_resource(first, Wood, 1_400)
+            .deposit_nation_resource(FIRST, Wood, 1_400)
             .unwrap()
             .accepted,
         1_400
     );
-    let overflow = world.deposit_nation_resource(first, Wood, 200).unwrap();
+    let overflow = world.deposit_nation_resource(FIRST, Wood, 200).unwrap();
     assert_eq!((overflow.accepted, overflow.rejected), (100, 100));
-    world.deposit_nation_resource(first, Stone, 400).unwrap();
+    world.deposit_nation_resource(FIRST, Stone, 400).unwrap();
 
-    let change = world.transfer_settlement(C, second).unwrap();
+    let change = world.transfer_settlement(C, SECOND).unwrap();
     assert_eq!(change.stock_lost, BTreeMap::from([(Wood, 500)]));
-    let stock = world.nation(first).unwrap().stock();
+    let stock = world.nation(FIRST).unwrap().stock();
     assert_eq!((stock.amount(Wood), stock.amount(Stone)), (1_000, 400));
     // Conservation: what stayed plus what was lost equals what was stored.
     assert_eq!(stock.amount(Wood) + change.stock_lost[&Wood], 1_500);
     assert_eq!(
         world
-            .deposit_nation_resource(first, Labour, 5)
+            .deposit_nation_resource(FIRST, Labour, 5)
             .unwrap()
             .rejected,
         5,
@@ -258,82 +266,84 @@ fn stock_above_the_reduced_capacity_is_lost_and_reported() {
 
 #[test]
 fn a_nation_without_settlements_is_removed_with_its_treasury_and_stock() {
-    let (mut world, first, second) = two_nations();
-    world.deposit_nation_gold(second, 70).unwrap();
-    world.deposit_nation_resource(second, Grain, 30).unwrap();
+    let mut world = two_nations();
+    world.deposit_nation_gold(SECOND, 70).unwrap();
+    world.deposit_nation_resource(SECOND, Grain, 30).unwrap();
 
-    let change = world.transfer_settlement(D, first).unwrap();
+    let change = world.transfer_settlement(D, FIRST).unwrap();
     assert!(change.extinct);
     assert_eq!(change.gold_lost, 70);
     assert_eq!(change.stock_lost, BTreeMap::from([(Grain, 30)]));
-    assert!(world.nation(second).is_none());
+    assert!(world.nation(SECOND).is_none());
     assert_eq!(world.nations().len(), 1);
     assert_eq!(
-        world.nation_settlements(second),
-        Err(WorldError::MissingNation(second))
+        world.nation_settlements(SECOND),
+        Err(WorldError::MissingNation(SECOND))
     );
-    assert_eq!(world.nation_settlements(first), Ok(vec![A, B, C, D]));
-    // A removed ID is never reused.
+    assert_eq!(world.nation_settlements(FIRST), Ok(vec![A, B, C, D]));
+    // A removed ID is never reused: the next settlement founds nation 2.
     world
-        .add_settlement(50, Settlement::new(SettlementId(5), 100, 1, Arc::default()))
+        .add_settlement(50, settlement(SettlementId(5), 1))
         .unwrap();
-    assert_eq!(world.found_nation(SettlementId(5)), Ok(NationId(2)));
+    assert_eq!(world.settlement_owner(SettlementId(5)), Some(NationId(2)));
 }
 
 #[test]
 fn extinct_nations_lose_their_pending_decisions_and_reject_new_ones() {
-    let (world, first, second) = two_nations();
-    let mut simulation = Simulation::new(world).unwrap();
+    let mut simulation = Simulation::new(two_nations()).unwrap();
     simulation
         .queue_nation_decision(NationDecision::new(
-            second,
-            vec![NationAction::SetTaxRate { rate: rate(0) }],
+            SECOND,
+            vec![NationAction::SetTaxRate { rate: rate(0.0) }],
         ))
         .unwrap();
-    simulation.transfer_settlement(D, first).unwrap();
+    simulation.transfer_settlement(D, FIRST).unwrap();
     assert_eq!(
-        simulation.queue_nation_decision(NationDecision::new(second, vec![])),
-        Err(WorldError::MissingNation(second))
+        simulation.queue_nation_decision(NationDecision::new(SECOND, vec![])),
+        Err(WorldError::MissingNation(SECOND))
     );
     assert_eq!(
-        simulation.observe_nation(second),
-        Err(WorldError::MissingNation(second))
+        simulation.observe_nation(SECOND),
+        Err(WorldError::MissingNation(SECOND))
     );
     let report = simulation.step().unwrap();
     assert!(report.nation_decisions.is_empty());
+    assert_eq!(
+        report.nations.keys().copied().collect::<Vec<_>>(),
+        vec![FIRST]
+    );
     assert_eq!(
         simulation
             .observe_all_nations()
             .keys()
             .copied()
             .collect::<Vec<_>>(),
-        vec![first]
+        vec![FIRST]
     );
 }
 
 // ---------------------------------------------------------------- decisions
 
-fn simulation_with_funds(gold: u32, wood: u32) -> (Simulation, NationId, NationId) {
-    let (mut world, first, second) = two_nations();
-    world.deposit_nation_gold(first, gold).unwrap();
-    world.deposit_nation_resource(first, Wood, wood).unwrap();
-    (Simulation::new(world).unwrap(), first, second)
+fn simulation_with_funds(gold: u32, wood: u32) -> Simulation {
+    let mut world = two_nations();
+    world.deposit_nation_gold(FIRST, gold).unwrap();
+    world.deposit_nation_resource(FIRST, Wood, wood).unwrap();
+    Simulation::new(world).unwrap()
 }
 
 #[test]
 fn subsidies_move_gold_and_materials_without_creating_or_destroying_any() {
-    let (mut simulation, first, _) = simulation_with_funds(100, 80);
+    let mut simulation = simulation_with_funds(100, 80);
     let gold_before = simulation.settlement(B).unwrap().gold();
     simulation
         .queue_nation_decision(NationDecision::new(
-            first,
+            FIRST,
             vec![subsidy(B, 60, &[(Wood, 50)])],
         ))
         .unwrap();
     let report = simulation.step().unwrap();
-    let result = &report.nation_decisions[0].results[0];
     assert_eq!(
-        result.outcome,
+        report.nation_decisions[0].results[0].outcome,
         NationActionOutcome::Applied {
             effect: NationActionEffect::SubsidyDelivered {
                 settlement_id: B,
@@ -343,7 +353,7 @@ fn subsidies_move_gold_and_materials_without_creating_or_destroying_any() {
             }
         }
     );
-    let nation = simulation.world().nation(first).unwrap();
+    let nation = simulation.world().nation(FIRST).unwrap();
     let settlement = simulation.settlement(B).unwrap();
     assert_eq!(nation.treasury() + settlement.gold(), 100 + gold_before);
     assert_eq!(
@@ -355,13 +365,11 @@ fn subsidies_move_gold_and_materials_without_creating_or_destroying_any() {
 
 #[test]
 fn materials_that_do_not_fit_the_warehouse_stay_in_the_national_stock() {
-    let (mut world, first, _) = two_nations();
-    world.deposit_nation_resource(first, Wood, 300).unwrap();
-    let mut simulation = Simulation::new(world).unwrap();
+    let mut simulation = simulation_with_funds(0, 300);
     // Warehouse capacity is 100.
     simulation
         .queue_nation_decision(NationDecision::new(
-            first,
+            FIRST,
             vec![subsidy(C, 0, &[(Wood, 130)])],
         ))
         .unwrap();
@@ -379,7 +387,7 @@ fn materials_that_do_not_fit_the_warehouse_stay_in_the_national_stock() {
     );
     let stock = simulation
         .world()
-        .nation(first)
+        .nation(FIRST)
         .unwrap()
         .stock()
         .amount(Wood);
@@ -392,10 +400,10 @@ fn materials_that_do_not_fit_the_warehouse_stay_in_the_national_stock() {
 
 #[test]
 fn subsidies_of_one_decision_share_the_treasury_and_stock() {
-    let (mut simulation, first, _) = simulation_with_funds(100, 50);
+    let mut simulation = simulation_with_funds(100, 50);
     simulation
         .queue_nation_decision(NationDecision::new(
-            first,
+            FIRST,
             vec![
                 subsidy(A, 70, &[(Wood, 30)]),
                 subsidy(B, 40, &[]),
@@ -422,27 +430,19 @@ fn subsidies_of_one_decision_share_the_treasury_and_stock() {
         }
     );
     assert!(results[3].is_applied(), "rejected actions claim nothing");
-    let nation = simulation.world().nation(first).unwrap();
+    let nation = simulation.world().nation(FIRST).unwrap();
     assert_eq!((nation.treasury(), nation.stock().amount(Wood)), (0, 0));
 }
 
 #[test]
 fn subsidies_go_only_to_own_settlements_and_must_carry_something() {
-    let (mut world, first, _) = two_nations();
-    world.deposit_nation_gold(first, 10).unwrap();
-    world.deposit_nation_resource(first, Wood, 10).unwrap();
-    // Settlement 5 stays independent.
-    world
-        .add_settlement(50, Settlement::new(SettlementId(5), 100, 1, Arc::default()))
-        .unwrap();
-    let mut simulation = Simulation::new(world).unwrap();
+    let mut simulation = simulation_with_funds(10, 10);
     simulation
         .queue_nation_decision(NationDecision::new(
-            first,
+            FIRST,
             vec![
                 subsidy(D, 5, &[]),
                 subsidy(SettlementId(9), 5, &[]),
-                subsidy(SettlementId(5), 5, &[]),
                 subsidy(A, 0, &[]),
                 subsidy(A, 0, &[(Wood, 0)]),
                 subsidy(A, 0, &[(Labour, 1)]),
@@ -462,31 +462,27 @@ fn subsidies_go_only_to_own_settlements_and_must_carry_something() {
             NationActionError::UnknownSettlement {
                 settlement_id: SettlementId(9)
             },
-            NationActionError::SettlementNotOwned {
-                settlement_id: SettlementId(5)
-            },
             NationActionError::EmptySubsidy,
             NationActionError::EmptySubsidy,
             NationActionError::LabourIsNotTransferable,
             NationActionError::LabourIsNotTransferable,
         ]
     );
-    let nation = simulation.world().nation(first).unwrap();
+    let nation = simulation.world().nation(FIRST).unwrap();
     assert_eq!((nation.treasury(), nation.stock().amount(Wood)), (10, 10));
 }
 
 #[test]
 fn a_subsidy_that_would_overflow_settlement_gold_is_rejected() {
-    let (mut world, first, _) = two_nations();
-    world.deposit_nation_gold(first, 10).unwrap();
-    let mut settlement_rich = Settlement::new(SettlementId(5), 100, 1, Arc::default());
-    settlement_rich.deposit_gold(u32::MAX - 5);
-    world.add_settlement(50, settlement_rich).unwrap();
-    world.transfer_settlement(SettlementId(5), first).unwrap();
+    let mut world = two_nations();
+    world.deposit_nation_gold(FIRST, 10).unwrap();
+    let mut rich = settlement(SettlementId(5), 1);
+    rich.deposit_gold(u32::MAX - 5);
+    world.add_settlement_to_nation(FIRST, 50, rich).unwrap();
     let mut simulation = Simulation::new(world).unwrap();
     simulation
         .queue_nation_decision(NationDecision::new(
-            first,
+            FIRST,
             vec![
                 subsidy(SettlementId(5), 4, &[]),
                 subsidy(SettlementId(5), 2, &[]),
@@ -505,13 +501,13 @@ fn a_subsidy_that_would_overflow_settlement_gold_is_rejected() {
 
 #[test]
 fn the_tax_rate_is_policy_set_once_per_decision_and_seen_by_own_settlements() {
-    let (mut simulation, first, second) = simulation_with_funds(0, 0);
+    let mut simulation = simulation_with_funds(0, 0);
     simulation
         .queue_nation_decision(NationDecision::new(
-            first,
+            FIRST,
             vec![
-                NationAction::SetTaxRate { rate: rate(2_500) },
-                NationAction::SetTaxRate { rate: rate(0) },
+                NationAction::SetTaxRate { rate: rate(0.25) },
+                NationAction::SetTaxRate { rate: rate(0.0) },
             ],
         ))
         .unwrap();
@@ -520,7 +516,7 @@ fn the_tax_rate_is_policy_set_once_per_decision_and_seen_by_own_settlements() {
     assert_eq!(
         results[0].outcome,
         NationActionOutcome::Applied {
-            effect: NationActionEffect::TaxRateSet { rate: rate(2_500) }
+            effect: NationActionEffect::TaxRateSet { rate: rate(0.25) }
         }
     );
     assert_eq!(
@@ -529,21 +525,21 @@ fn the_tax_rate_is_policy_set_once_per_decision_and_seen_by_own_settlements() {
     );
     assert_eq!(results[1].kind, NationActionKind::SetTaxRate);
     assert_eq!(
-        simulation.observe_nation(first).unwrap().tax_rate,
-        rate(2_500)
+        simulation.observe_nation(FIRST).unwrap().tax_rate,
+        rate(0.25)
     );
     assert_eq!(
-        simulation.observe_nation(second).unwrap().tax_rate,
+        simulation.observe_nation(SECOND).unwrap().tax_rate,
         TaxRate::BASE
     );
 
-    let policy = simulation.observe(B).unwrap().nation.unwrap();
-    assert_eq!(policy.nation_id, first);
-    assert_eq!(policy.tax_rate, rate(2_500));
+    let policy = simulation.observe(B).unwrap().nation;
+    assert_eq!(policy.nation_id, FIRST);
+    assert_eq!(policy.tax_rate, rate(0.25));
     assert_eq!((policy.capital, policy.is_capital), (A, false));
-    assert!(simulation.observe(A).unwrap().nation.unwrap().is_capital);
+    assert!(simulation.observe(A).unwrap().nation.is_capital);
     assert_eq!(
-        simulation.observe(D).unwrap().nation.unwrap().tax_rate,
+        simulation.observe(D).unwrap().nation.tax_rate,
         TaxRate::BASE
     );
 }
@@ -552,7 +548,7 @@ fn the_tax_rate_is_policy_set_once_per_decision_and_seen_by_own_settlements() {
 fn nation_decisions_run_before_settlement_decisions_in_the_same_turn() {
     // B has no gold; its caravan to D buys Wood for 20 gold. The nation's subsidy
     // of the same turn funds it, because nations decide first.
-    let (mut simulation, first, _) = simulation_with_funds(20, 0);
+    let mut simulation = simulation_with_funds(20, 0);
     assert_eq!(simulation.settlement(B).unwrap().gold(), 0);
     simulation
         .queue_decision(SettlementDecision::new(
@@ -569,7 +565,7 @@ fn nation_decisions_run_before_settlement_decisions_in_the_same_turn() {
         ))
         .unwrap();
     simulation
-        .queue_nation_decision(NationDecision::new(first, vec![subsidy(B, 20, &[])]))
+        .queue_nation_decision(NationDecision::new(FIRST, vec![subsidy(B, 20, &[])]))
         .unwrap();
     let report = simulation.step().unwrap();
     assert!(report.nation_decisions[0].results[0].is_applied());
@@ -583,7 +579,7 @@ fn nation_decisions_run_before_settlement_decisions_in_the_same_turn() {
 
 #[test]
 fn unknown_nations_cannot_queue_decisions() {
-    let (mut simulation, _, _) = simulation_with_funds(0, 0);
+    let mut simulation = simulation_with_funds(0, 0);
     assert_eq!(
         simulation.queue_nation_decision(NationDecision::new(NationId(5), vec![])),
         Err(WorldError::MissingNation(NationId(5)))
@@ -592,16 +588,15 @@ fn unknown_nations_cannot_queue_decisions() {
 
 #[test]
 fn nation_outcomes_serialize_with_tags() {
-    let (mut simulation, first, _) = simulation_with_funds(5, 0);
+    let mut simulation = simulation_with_funds(5, 0);
     simulation
         .queue_nation_decision(
-            NationDecision::from_json(&format!(
-                r#"{{"nation_id": {}, "actions": [
-                    {{"type": "subsidize", "settlement_id": 4, "gold": 1}},
-                    {{"type": "set_tax_rate", "rate": 2000}}
-                ]}}"#,
-                first.0
-            ))
+            NationDecision::from_json(
+                r#"{"nation_id": 0, "actions": [
+                    {"type": "subsidize", "settlement_id": 4, "gold": 1},
+                    {"type": "set_tax_rate", "rate": 0.2}
+                ]}"#,
+            )
             .unwrap(),
         )
         .unwrap();
@@ -615,7 +610,7 @@ fn nation_outcomes_serialize_with_tags() {
                 {"index": 0, "kind": "subsidize", "outcome": {"status": "rejected",
                     "error": {"reason": "settlement_not_owned", "settlement_id": 4}}},
                 {"index": 1, "kind": "set_tax_rate", "outcome": {"status": "applied",
-                    "effect": {"effect": "tax_rate_set", "rate": 2000}}}
+                    "effect": {"effect": "tax_rate_set", "rate": 0.2}}}
             ]
         }])
     );
@@ -625,13 +620,13 @@ fn nation_outcomes_serialize_with_tags() {
 
 #[test]
 fn a_nation_observes_its_own_state_and_only_ids_of_other_nations() {
-    let (mut world, first, second) = two_nations();
-    world.deposit_nation_gold(first, 12).unwrap();
-    world.deposit_nation_resource(first, Stone, 7).unwrap();
+    let mut world = two_nations();
+    world.deposit_nation_gold(FIRST, 12).unwrap();
+    world.deposit_nation_resource(FIRST, Stone, 7).unwrap();
     let simulation = Simulation::new(world).unwrap();
-    let observation = simulation.observe_nation(first).unwrap();
+    let observation = simulation.observe_nation(FIRST).unwrap();
     assert_eq!(observation.turn, 0);
-    assert_eq!((observation.nation_id, observation.capital), (first, A));
+    assert_eq!((observation.nation_id, observation.capital), (FIRST, A));
     assert_eq!(observation.treasury, 12);
     assert_eq!(observation.stock, BTreeMap::from([(Stone, 7)]));
     assert_eq!(observation.stock_capacity_per_resource, 1_500);
@@ -648,7 +643,8 @@ fn a_nation_observes_its_own_state_and_only_ids_of_other_nations() {
         vec![(A, 10, 5), (B, 20, 9), (C, 30, 9)]
     );
     assert_eq!(observation.settlements[0].free_capacity, 100);
-    assert_eq!(observation.other_nations, vec![second]);
+    assert_eq!(observation.other_nations, vec![SECOND]);
+    assert!(observation.last_turn.is_none(), "no turn completed yet");
     let json = observation.to_json();
     assert_eq!(
         serde_json::from_str::<NationObservation>(&json).unwrap(),
@@ -659,12 +655,12 @@ fn a_nation_observes_its_own_state_and_only_ids_of_other_nations() {
 #[test]
 fn another_nations_treasury_and_stock_do_not_change_an_observation() {
     let observe = |gold: u32, stone: u32| {
-        let (mut world, first, second) = two_nations();
-        world.deposit_nation_gold(second, gold).unwrap();
-        world.deposit_nation_resource(second, Stone, stone).unwrap();
+        let mut world = two_nations();
+        world.deposit_nation_gold(SECOND, gold).unwrap();
+        world.deposit_nation_resource(SECOND, Stone, stone).unwrap();
         let simulation = Simulation::new(world).unwrap();
         (
-            simulation.observe_nation(first).unwrap(),
+            simulation.observe_nation(FIRST).unwrap(),
             simulation.observe(A).unwrap(),
         )
     };
@@ -673,8 +669,7 @@ fn another_nations_treasury_and_stock_do_not_change_an_observation() {
 
 #[test]
 fn settlements_see_the_owner_of_trade_partners() {
-    let (world, first, second) = two_nations();
-    let simulation = Simulation::new(world).unwrap();
+    let simulation = Simulation::new(two_nations()).unwrap();
     let partners: Vec<_> = simulation
         .observe(A)
         .unwrap()
@@ -682,18 +677,16 @@ fn settlements_see_the_owner_of_trade_partners() {
         .into_iter()
         .map(|partner| (partner.settlement_id, partner.nation_id))
         .collect();
-    assert_eq!(
-        partners,
-        vec![(B, Some(first)), (C, Some(first)), (D, Some(second))]
-    );
+    assert_eq!(partners, vec![(B, FIRST), (C, FIRST), (D, SECOND)]);
 }
 
 #[test]
-fn turns_do_not_change_national_funds_without_decisions() {
-    let (mut simulation, first, _) = simulation_with_funds(30, 40);
+fn turns_without_decisions_or_production_leave_national_funds_unchanged() {
+    // Nothing is produced, so taxes yield nothing.
+    let mut simulation = simulation_with_funds(30, 40);
     for _ in 0..3 {
         simulation.step().unwrap();
     }
-    let nation = simulation.world().nation(first).unwrap();
+    let nation = simulation.world().nation(FIRST).unwrap();
     assert_eq!((nation.treasury(), nation.stock().amount(Wood)), (30, 40));
 }

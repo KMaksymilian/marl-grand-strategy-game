@@ -21,14 +21,13 @@ pub use super::response::{
 };
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
-use crate::domain::nation::TaxRate;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 
 /// All actions one nation submits for one turn, applied in list order. Each one
 /// is accepted or rejected on its own.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NationDecision {
     pub nation_id: NationId,
@@ -51,12 +50,12 @@ impl NationDecision {
 }
 
 /// One nation decision. Settlements are referenced by ID; amounts are whole units.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NationAction {
-    /// The common tax rate of all own settlements, as a fraction:
-    /// 0.0 is 0%, 0.1 is 10%, 1.0 is 100%.
-    SetTaxRate { rate: TaxRate },
+    /// The common tax rate of all own settlements, any fraction from 0.0 (0%)
+    /// to 1.0 (100%); other values are rejected by validation.
+    SetTaxRate { rate: f32 },
     /// Move gold and materials from the national treasury and stock to an own
     /// settlement. Materials that do not fit its warehouse stay national.
     Subsidize {
@@ -113,9 +112,7 @@ mod tests {
 
     fn one_of_each() -> Vec<NationAction> {
         vec![
-            NationAction::SetTaxRate {
-                rate: TaxRate::from_fraction(0.15).unwrap(),
-            },
+            NationAction::SetTaxRate { rate: 0.15 },
             NationAction::Subsidize {
                 settlement_id: SettlementId(2),
                 gold: 50,
@@ -151,7 +148,10 @@ mod tests {
                  "resources": {"Stone": 5, "Wood": 20}}
             ]
         });
-        assert_eq!(serde_json::to_value(&decision).unwrap(), expected);
+        // Compared as the text an agent receives: `to_value` would widen the f32
+        // rate to f64 (0.15 becomes 0.15000000596…), the JSON text keeps 0.15.
+        let text: serde_json::Value = serde_json::from_str(&decision.to_json()).unwrap();
+        assert_eq!(text, expected);
         for (action, kind) in decision.actions.iter().zip(NationActionKind::ALL) {
             let tag = serde_json::to_value(action).unwrap()["type"].clone();
             assert_eq!(tag, serde_json::to_value(kind).unwrap());
@@ -182,9 +182,8 @@ mod tests {
     fn malformed_decisions_are_rejected_when_parsing() {
         let wrap = |action: &str| format!(r#"{{"nation_id": 1, "actions": [{action}]}}"#);
         let cases = [
-            wrap(r#"{"type": "set_tax_rate", "rate": 1.5}"#),
-            wrap(r#"{"type": "set_tax_rate", "rate": -0.1}"#),
             wrap(r#"{"type": "set_tax_rate", "rate": "0.1"}"#),
+            wrap(r#"{"type": "set_tax_rate", "rate": null}"#),
             wrap(r#"{"type": "set_tax_rate"}"#),
             wrap(r#"{"type": "subsidize", "settlement_id": 1, "gold": -1}"#),
             wrap(r#"{"type": "subsidize", "settlement_id": 1, "resources": {"Gold": 1}}"#),

@@ -1,16 +1,16 @@
 //! One nation's turn, written for the nation agent. Later systems (taxes,
 //! decrees, diplomacy) add their parts here.
-use super::{Nation, TaxRate};
+use super::Nation;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NationTurnReport {
     /// The rate in force during the turn (after this turn's decisions).
-    pub tax_rate: TaxRate,
+    pub tax_rate: f32,
     /// State at the end of the turn.
     pub capital: SettlementId,
     pub capital_loss_turns: u32,
@@ -28,7 +28,7 @@ impl NationTurnReport {
             capital_loss_turns: nation.capital_loss_turns(),
             settlements,
             closing_treasury: nation.treasury(),
-            closing_stock: nation.stock().resources().collect(),
+            closing_stock: nation.stock_amounts(),
         }
     }
 }

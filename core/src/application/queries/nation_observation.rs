@@ -3,11 +3,10 @@
 //! see the owner of each trade partner.
 use super::observation::ResourceAmounts;
 use crate::domain::ids::{NationId, SettlementId};
-use crate::domain::nation::TaxRate;
 use crate::domain::nation::report::NationTurnReport;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NationObservation {
     /// Completed global turns when the observation was generated.
@@ -16,12 +15,14 @@ pub struct NationObservation {
     pub capital: SettlementId,
     /// Remaining turns of the penalty for losing the capital; zero when none.
     pub capital_loss_turns: u32,
-    pub tax_rate: TaxRate,
+    pub tax_rate: f32,
     pub treasury: u32,
     /// National stock, ascending resource; zero amounts are omitted.
     pub stock: ResourceAmounts,
-    /// Capacity of the national stock for every single material.
-    pub stock_capacity_per_resource: u32,
+    /// Materials stored in total and the capacity they share. The stock may
+    /// exceed the capacity after losing a settlement; then it accepts nothing.
+    pub stock_total: u64,
+    pub stock_capacity: u32,
     /// Own settlements, ascending ID.
     pub settlements: Vec<OwnedSettlementObservation>,
     /// Other nations still in the game, ascending ID.

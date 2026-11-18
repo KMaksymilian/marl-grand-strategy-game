@@ -299,6 +299,9 @@ in transit remain separate; see [trading](../systems/trading.md).
 
 ### [core/src/domain/economy/inventory.rs](../../../core/src/domain/economy/inventory.rs)
 
+`resize` (crate-internal) sets a capacity also below the stored amount; nothing
+is discarded and additions wait. The national stock uses it.
+
 Contains capacity-aware `ResourceInventory`, `InventoryAddResult` and
 `CapacityError`. The types are also re-exported from `simulation_core::economy`.
 
@@ -350,11 +353,10 @@ See [Nations](nations.md) for rules and the decision contract.
 
 | File | Contents |
 | --- | --- |
-| [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) | `NationalStock` (`add` with per-material capacity, `take`, `enforce_capacity`, `take_all`), `Nation` (treasury, stock, tax rate, capital, `replace_lost_capital`, `advance_turn`). |
-| [domain/nation/tax.rs](../../../core/src/domain/nation/tax.rs) | `TaxRate` (fraction 0..=1): `from_fraction`, `fraction`, `percent`. |
-| [domain/nation/registry.rs](../../../core/src/domain/nation/registry.rs) | `NationRegistry`: nations and the single ownership record; `owner_of`, `settlements_of`, `stock_capacity`, `can_found`, `found`, `add_member`, `set_owner`, `remove`, `advance_turn`. |
+| [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) | `Nation`: treasury, stock (`ResourceInventory` with one shared capacity), `f32` tax rate (`is_valid_tax_rate`), capital; `deposit_resource`, `withdraw_resource`, `take_stock`, `set_stock_capacity`, `replace_lost_capital`, `advance_turn`. |
+| [domain/nation/registry.rs](../../../core/src/domain/nation/registry.rs) | `NationRegistry`: nations and the single ownership record; `owner_of`, `settlements_of`, `stock_capacity`, `can_found`, `found`, `add_member`, `set_owner` (all update stock capacities), `remove`, `advance_turn`. |
 | [domain/nation/report.rs](../../../core/src/domain/nation/report.rs) | `NationTurnReport` (`closing`). |
-| [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) | `World::nations`, `nation`, `settlement_owner`, `province_owner`, `nation_settlements`, `nation_stock_capacity`, `transfer_settlement` (capital succession, capacity cut, extinction), `deposit_nation_gold`, `deposit_nation_resource`, `set_tax_rate`, `subsidize`, `advance_nations_turn`; `OwnershipChange`, `SubsidyTransfer`. Registration in `state.rs` founds or joins a nation (`add_settlement_to_nation`). |
+| [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) | `World::nations`, `nation`, `settlement_owner`, `province_owner`, `nation_settlements`, `nation_stock_capacity`, `transfer_settlement` (capital succession, extinction), `deposit_nation_gold`, `deposit_nation_resource`, `set_tax_rate`, `subsidize`, `advance_nations_turn`; `OwnershipChange`, `SubsidyTransfer`. Registration in `state.rs` founds or joins a nation (`add_settlement_to_nation`). |
 | [application/commands/nation/](../../../core/src/application/commands/nation/) | `contract.rs` (`NationDecision`, `NationAction`, `NationActionKind`), `response.rs` (errors, effects, outcomes), `preparation.rs` (read-only validation with a shared subsidy budget), `handler.rs` (execution). |
 | [application/queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) | `NationObservation`, `OwnedSettlementObservation` and their builder. |
 

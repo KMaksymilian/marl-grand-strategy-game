@@ -2,14 +2,15 @@
 use super::contract::NationActionKind;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
-use crate::domain::nation::TaxRate;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// Why one action of a nation decision was rejected. A rejected action changes nothing.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "reason", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NationActionError {
+    /// The rate is not a fraction from 0.0 to 1.0.
+    InvalidTaxRate { rate: f32 },
     /// No settlement with this ID exists.
     UnknownSettlement { settlement_id: SettlementId },
     /// The settlement belongs to another nation.
@@ -35,11 +36,11 @@ pub enum NationActionError {
 }
 
 /// What an applied action changed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "effect", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NationActionEffect {
     TaxRateSet {
-        rate: TaxRate,
+        rate: f32,
     },
     SubsidyDelivered {
         settlement_id: SettlementId,
@@ -51,7 +52,7 @@ pub enum NationActionEffect {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NationActionOutcome {
     Applied { effect: NationActionEffect },
@@ -59,7 +60,7 @@ pub enum NationActionOutcome {
 }
 
 /// Result of one submitted action, identified by its position in the decision.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NationActionResult {
     pub index: usize,
@@ -74,7 +75,7 @@ impl NationActionResult {
 }
 
 /// Results of one nation decision, one entry per action in submission order.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NationDecisionOutcome {
     pub nation_id: NationId,

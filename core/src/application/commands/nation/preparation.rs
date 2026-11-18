@@ -7,14 +7,14 @@
 use super::contract::{NationAction, NationActionError, NationActionKind, NationDecision};
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
-use crate::domain::nation::TaxRate;
+use crate::domain::nation::Nation;
 use crate::domain::world::{World, WorldError};
 use std::collections::BTreeMap;
 
 /// An accepted action resolved to the operation that executes it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum NationCommand {
-    SetTaxRate(TaxRate),
+    SetTaxRate(f32),
     Subsidize {
         settlement_id: SettlementId,
         gold: u32,
@@ -23,7 +23,7 @@ pub(crate) enum NationCommand {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RejectedNationAction {
     pub index: usize,
     pub kind: NationActionKind,
@@ -31,7 +31,7 @@ pub(crate) struct RejectedNationAction {
 }
 
 /// Every action index appears exactly once, in `accepted` or in `rejected`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ValidatedNationDecision {
     pub nation_id: NationId,
     pub accepted: Vec<(usize, NationCommand)>,
@@ -64,7 +64,7 @@ pub(crate) fn validate_nation_decision(
     let mut batch = Batch {
         tax_rate_index: None,
         gold_left: nation.treasury(),
-        stock_left: nation.stock().resources().collect(),
+        stock_left: nation.stock_amounts(),
         gold_sent: BTreeMap::new(),
     };
     let mut validated = ValidatedNationDecision {
@@ -95,6 +95,9 @@ fn check_action(
 ) -> Result<NationCommand, NationActionError> {
     match action {
         NationAction::SetTaxRate { rate } => {
+            if !Nation::is_valid_tax_rate(*rate) {
+                return Err(NationActionError::InvalidTaxRate { rate: *rate });
+            }
             if let Some(with_index) = batch.tax_rate_index {
                 return Err(NationActionError::Conflict { with_index });
             }

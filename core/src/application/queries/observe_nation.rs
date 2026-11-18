@@ -40,8 +40,9 @@ pub(crate) fn observe_nation(
         capital_loss_turns: nation.capital_loss_turns(),
         tax_rate: nation.tax_rate(),
         treasury: nation.treasury(),
-        stock: nation.stock().resources().collect(),
-        stock_capacity_per_resource: world.nation_stock_capacity(nation_id)?,
+        stock: nation.stock_amounts(),
+        stock_total: nation.stock().total_amount(),
+        stock_capacity: nation.stock().capacity(),
         settlements,
         other_nations: world
             .nations()

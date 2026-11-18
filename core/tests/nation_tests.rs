@@ -4,7 +4,7 @@
 //! report and its observations.
 use simulation_core::economy::ResourceType::{self, Grain, Labour, Stone, Wood};
 use simulation_core::ids::{NationId, SettlementId};
-use simulation_core::nation::{Nation, TaxRate};
+use simulation_core::nation::Nation;
 use simulation_core::settlement::Settlement;
 use simulation_core::settlement::decision::{OfferSide, OfferSpec};
 use simulation_core::simulation::{
@@ -61,8 +61,10 @@ fn subsidy(
     }
 }
 
-fn rate(fraction: f64) -> TaxRate {
-    TaxRate::from_fraction(fraction).unwrap()
+/// JSON as an agent receives it: the text, parsed back. `serde_json::to_value`
+/// would widen `f32` to `f64` (0.2 becomes 0.20000000298…); the text keeps 0.2.
+fn json<T: serde::Serialize>(value: &T) -> serde_json::Value {
+    serde_json::from_str(&serde_json::to_string(value).unwrap()).unwrap()
 }
 
 fn error_of(outcome: &NationActionOutcome) -> &NationActionError {
@@ -86,7 +88,7 @@ fn a_settlement_registered_alone_founds_a_nation_and_becomes_its_capital() {
     let world = two_nations();
     let first = world.nation(FIRST).unwrap();
     assert_eq!(first.capital(), A);
-    assert_eq!(first.tax_rate(), TaxRate::BASE);
+    assert_eq!(first.tax_rate(), Nation::BASE_TAX_RATE);
     assert_eq!((first.treasury(), first.capital_loss_turns()), (0, 0));
     assert_eq!(world.nation(SECOND).unwrap().capital(), D);
     assert_eq!(
@@ -233,25 +235,19 @@ fn the_capital_loss_penalty_counts_down_once_per_turn() {
 // ---------------------------------------------------------------- stock and extinction
 
 #[test]
-fn stock_above_the_reduced_capacity_is_lost_and_reported() {
+fn the_stock_shares_one_capacity_that_follows_the_settlements() {
     let mut world = two_nations();
+    // Three settlements: 1 500 units for all materials together.
+    assert_eq!(world.nation(FIRST).unwrap().stock().capacity(), 1_500);
     assert_eq!(
         world
-            .deposit_nation_resource(FIRST, Wood, 1_400)
+            .deposit_nation_resource(FIRST, Wood, 1_000)
             .unwrap()
             .accepted,
-        1_400
+        1_000
     );
-    let overflow = world.deposit_nation_resource(FIRST, Wood, 200).unwrap();
-    assert_eq!((overflow.accepted, overflow.rejected), (100, 100));
-    world.deposit_nation_resource(FIRST, Stone, 400).unwrap();
-
-    let change = world.transfer_settlement(C, SECOND).unwrap();
-    assert_eq!(change.stock_lost, BTreeMap::from([(Wood, 500)]));
-    let stock = world.nation(FIRST).unwrap().stock();
-    assert_eq!((stock.amount(Wood), stock.amount(Stone)), (1_000, 400));
-    // Conservation: what stayed plus what was lost equals what was stored.
-    assert_eq!(stock.amount(Wood) + change.stock_lost[&Wood], 1_500);
+    let stone = world.deposit_nation_resource(FIRST, Stone, 700).unwrap();
+    assert_eq!((stone.accepted, stone.rejected), (500, 200));
     assert_eq!(
         world
             .deposit_nation_resource(FIRST, Labour, 5)
@@ -259,6 +255,51 @@ fn stock_above_the_reduced_capacity_is_lost_and_reported() {
             .rejected,
         5,
         "labour is never stored"
+    );
+
+    // Losing a settlement shrinks the capacity but destroys nothing.
+    let change = world.transfer_settlement(C, SECOND).unwrap();
+    assert!(change.stock_lost.is_empty());
+    let stock = world.nation(FIRST).unwrap().stock();
+    assert_eq!((stock.capacity(), stock.total_amount()), (1_000, 1_500));
+    assert_eq!((stock.amount(Wood), stock.amount(Stone)), (1_000, 500));
+    // Above the capacity the stock accepts nothing more.
+    assert_eq!(
+        world
+            .deposit_nation_resource(FIRST, Grain, 1)
+            .unwrap()
+            .rejected,
+        1
+    );
+    assert_eq!(world.nation(SECOND).unwrap().stock().capacity(), 1_000);
+}
+
+#[test]
+fn invalid_tax_rates_are_rejected_by_validation() {
+    let mut simulation = simulation_with_funds(0, 0);
+    simulation
+        .queue_nation_decision(NationDecision::new(
+            FIRST,
+            vec![
+                NationAction::SetTaxRate { rate: 1.5 },
+                NationAction::SetTaxRate { rate: -0.1 },
+                NationAction::SetTaxRate { rate: 0.123_456 },
+            ],
+        ))
+        .unwrap();
+    let results = &simulation.step().unwrap().nation_decisions[0].results;
+    assert_eq!(
+        error_of(&results[0].outcome),
+        &NationActionError::InvalidTaxRate { rate: 1.5 }
+    );
+    assert_eq!(
+        error_of(&results[1].outcome),
+        &NationActionError::InvalidTaxRate { rate: -0.1 }
+    );
+    assert!(results[2].is_applied(), "any fraction in 0..=1 is a rate");
+    assert_eq!(
+        simulation.observe_nation(FIRST).unwrap().tax_rate,
+        0.123_456
     );
 }
 
@@ -292,7 +333,7 @@ fn extinct_nations_lose_their_pending_decisions_and_reject_new_ones() {
     simulation
         .queue_nation_decision(NationDecision::new(
             SECOND,
-            vec![NationAction::SetTaxRate { rate: rate(0.0) }],
+            vec![NationAction::SetTaxRate { rate: 0.0 }],
         ))
         .unwrap();
     simulation.transfer_settlement(D, FIRST).unwrap();
@@ -499,8 +540,8 @@ fn the_tax_rate_is_policy_set_once_per_decision_and_seen_by_own_settlements() {
         .queue_nation_decision(NationDecision::new(
             FIRST,
             vec![
-                NationAction::SetTaxRate { rate: rate(0.25) },
-                NationAction::SetTaxRate { rate: rate(0.0) },
+                NationAction::SetTaxRate { rate: 0.25 },
+                NationAction::SetTaxRate { rate: 0.0 },
             ],
         ))
         .unwrap();
@@ -509,7 +550,7 @@ fn the_tax_rate_is_policy_set_once_per_decision_and_seen_by_own_settlements() {
     assert_eq!(
         results[0].outcome,
         NationActionOutcome::Applied {
-            effect: NationActionEffect::TaxRateSet { rate: rate(0.25) }
+            effect: NationActionEffect::TaxRateSet { rate: 0.25 }
         }
     );
     assert_eq!(
@@ -517,20 +558,20 @@ fn the_tax_rate_is_policy_set_once_per_decision_and_seen_by_own_settlements() {
         &NationActionError::Conflict { with_index: 0 }
     );
     assert_eq!(results[1].kind, NationActionKind::SetTaxRate);
-    assert_eq!(report.nations[&FIRST].tax_rate, rate(0.25));
+    assert_eq!(report.nations[&FIRST].tax_rate, 0.25);
     assert_eq!(
         simulation.observe_nation(SECOND).unwrap().tax_rate,
-        TaxRate::BASE
+        Nation::BASE_TAX_RATE
     );
 
     let policy = simulation.observe(B).unwrap().nation;
     assert_eq!(policy.nation_id, FIRST);
-    assert_eq!(policy.tax_rate, rate(0.25));
+    assert_eq!(policy.tax_rate, 0.25);
     assert_eq!((policy.capital, policy.is_capital), (A, false));
     assert!(simulation.observe(A).unwrap().nation.is_capital);
     assert_eq!(
         simulation.observe(D).unwrap().nation.tax_rate,
-        TaxRate::BASE
+        Nation::BASE_TAX_RATE
     );
 }
 
@@ -591,9 +632,8 @@ fn nation_outcomes_serialize_with_tags() {
         )
         .unwrap();
     let report = simulation.step().unwrap();
-    let json = serde_json::to_value(&report.nation_decisions).unwrap();
     assert_eq!(
-        json,
+        json(&report.nation_decisions),
         serde_json::json!([{
             "nation_id": 0,
             "results": [
@@ -628,7 +668,7 @@ fn every_nation_gets_its_own_end_of_turn_report() {
         simulation.observe_nation(FIRST).unwrap().last_turn.as_ref(),
         Some(first)
     );
-    let json = serde_json::to_value(first).unwrap();
+    let json = json(first);
     assert_eq!(json["tax_rate"], serde_json::json!(0.1));
     assert_eq!(json["closing_stock"], serde_json::json!({"Wood": 40}));
 }
@@ -644,7 +684,10 @@ fn a_nation_observes_its_own_state_and_only_ids_of_other_nations() {
     assert_eq!((observation.nation_id, observation.capital), (FIRST, A));
     assert_eq!(observation.treasury, 12);
     assert_eq!(observation.stock, BTreeMap::from([(Stone, 7)]));
-    assert_eq!(observation.stock_capacity_per_resource, 1_500);
+    assert_eq!(
+        (observation.stock_total, observation.stock_capacity),
+        (7, 1_500)
+    );
     assert_eq!(
         observation
             .settlements

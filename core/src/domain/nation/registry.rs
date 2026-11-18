@@ -69,7 +69,8 @@ impl NationRegistry {
             .collect()
     }
 
-    /// Per-material stock capacity: a fixed amount for every owned settlement.
+    /// Capacity of the national stock, shared by all materials: a fixed amount
+    /// for every owned settlement.
     pub fn stock_capacity(&self, nation_id: NationId) -> u32 {
         let settlements = u32::try_from(self.settlements_of(nation_id).len()).unwrap_or(u32::MAX);
         settlements.saturating_mul(Nation::STOCK_CAPACITY_PER_SETTLEMENT)
@@ -93,7 +94,17 @@ impl NationRegistry {
         self.nations.insert(id, Nation::new(id, capital));
         self.owners.insert(capital, id);
         self.next_id = id.0.checked_add(1).map(NationId);
+        self.refresh_capacity(id);
         Some(id)
+    }
+
+    /// Keeps a nation's stock capacity equal to its number of settlements × the
+    /// per-settlement amount; called after every ownership change.
+    fn refresh_capacity(&mut self, nation_id: NationId) {
+        let capacity = self.stock_capacity(nation_id);
+        if let Some(nation) = self.nations.get_mut(&nation_id) {
+            nation.set_stock_capacity(capacity);
+        }
     }
 
     /// Adds a newly registered settlement to an existing nation.
@@ -101,6 +112,7 @@ impl NationRegistry {
         debug_assert!(self.nations.contains_key(&nation_id));
         debug_assert!(!self.owners.contains_key(&settlement_id));
         self.owners.insert(settlement_id, nation_id);
+        self.refresh_capacity(nation_id);
     }
 
     /// Records a new owner of an existing settlement and returns the previous one.
@@ -109,7 +121,12 @@ impl NationRegistry {
         settlement_id: SettlementId,
         nation_id: NationId,
     ) -> Option<NationId> {
-        self.owners.insert(settlement_id, nation_id)
+        let previous = self.owners.insert(settlement_id, nation_id);
+        self.refresh_capacity(nation_id);
+        if let Some(previous) = previous {
+            self.refresh_capacity(previous);
+        }
+        previous
     }
 
     /// Removes a nation that owns nothing any more. IDs are never reused.
@@ -155,6 +172,9 @@ mod tests {
             vec![SettlementId(2), SettlementId(3)]
         );
         assert_eq!(registry.stock_capacity(second), 1_000);
+        // The nations' stocks follow ownership.
+        assert_eq!(registry.get(second).unwrap().stock().capacity(), 1_000);
+        assert_eq!(registry.get(first).unwrap().stock().capacity(), 500);
     }
 
     #[test]

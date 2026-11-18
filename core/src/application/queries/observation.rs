@@ -9,7 +9,6 @@
 use crate::application::commands::settlement::contract::OfferSpec;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{BuildingId, BuildingTypeId, NationId, ProjectId, SettlementId};
-use crate::domain::nation::TaxRate;
 use crate::domain::spatial::Position;
 use crate::domain::world::terrain::elevation::Elevation;
 use crate::domain::world::terrain::moisture::Moisture;
@@ -200,11 +199,11 @@ pub struct TradePartner {
 }
 
 /// The owning nation's policy as seen by one of its settlements (§5.3).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NationPolicyObservation {
     pub nation_id: NationId,
-    pub tax_rate: TaxRate,
+    pub tax_rate: f32,
     pub capital: SettlementId,
     /// This settlement is the national capital.
     pub is_capital: bool,

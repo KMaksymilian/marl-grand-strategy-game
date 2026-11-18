@@ -10,8 +10,7 @@ implemented. Tax collection, decrees and diplomacy extend this contract.
 
 | Part | Source |
 | --- | --- |
-| `Nation`, `NationalStock` | [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) |
-| `TaxRate` | [domain/nation/tax.rs](../../../core/src/domain/nation/tax.rs) |
+| `Nation` (treasury, stock, tax rate, capital) | [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) |
 | `NationRegistry` (nations and ownership) | [domain/nation/registry.rs](../../../core/src/domain/nation/registry.rs) |
 | `NationTurnReport` | [domain/nation/report.rs](../../../core/src/domain/nation/report.rs) |
 | Ownership changes, capital succession, extinction, subsidies | [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) |
@@ -40,7 +39,8 @@ previous owner:
    settlement, lowest ID on ties; the capital-loss penalty runs for
    `Nation::CAPITAL_LOSS_PENALTY_TURNS` (10) turns (its effect on happiness
    arrives with the happiness model);
-2. **loses stock above its reduced capacity**, reported in `stock_lost`;
+2. **keeps its whole stock**: the capacity shrinks, nothing is discarded, and a
+   stock above the capacity accepts nothing until it drops below;
 3. **is removed when it owns nothing**: treasury and stock vanish (`gold_lost`,
    `stock_lost`, `extinct`). `Simulation::transfer_settlement` also discards its
    pending decisions and last report.
@@ -49,13 +49,14 @@ previous owner:
 
 - Treasury: gold, never above `u32::MAX` (`deposit_nation_gold` returns the
   accepted amount).
-- Stock: every material has its own capacity,
-  `Nation::STOCK_CAPACITY_PER_SETTLEMENT` (500) × owned settlements. Additions
-  above it are lost (`deposit_nation_resource` reports the rejected part). Labour
-  is never stored.
-- `TaxRate`: a fraction, `0.0` (0%) to `1.0` (100%), starting at `0.1`. It
-  serializes as a plain number; values outside the range, NaN and infinities do
-  not parse. Collection is a separate step.
+- Stock: one warehouse (`ResourceInventory`, as in settlements) whose single
+  capacity, `Nation::STOCK_CAPACITY_PER_SETTLEMENT` (500) × owned settlements,
+  is shared by all materials. The registry updates it on every ownership change.
+  Additions above it are lost (`deposit_nation_resource` reports the rejected
+  part). Labour is never stored. Gold is separate, in the treasury.
+- Tax rate: a plain `f32`, any fraction from `0.0` (0%) to `1.0` (100%),
+  starting at `Nation::BASE_TAX_RATE` (0.1). The validator rejects other values
+  with `invalid_tax_rate`. Collection is a separate step.
 
 ## Decisions
 
@@ -68,7 +69,7 @@ previous owner:
 
 | Action | Effect | Errors |
 | --- | --- | --- |
-| `set_tax_rate` | `tax_rate_set` | `conflict` for a second rate in the same decision |
+| `set_tax_rate` | `tax_rate_set` | `invalid_tax_rate` outside 0.0..=1.0, `conflict` for a second rate in the same decision |
 | `subsidize` | `subsidy_delivered` with `gold`, `delivered` and `returned` | `unknown_settlement`, `settlement_not_owned`, `empty_subsidy`, `labour_is_not_transferable`, `insufficient_treasury`, `insufficient_stock`, `settlement_treasury_full` |
 
 Actions are checked in order and each one is accepted or rejected on its own; a
@@ -98,7 +99,7 @@ settlements.
 
 `Simulation::observe_nation(id)` / `observe_all_nations()` return a
 `NationObservation`: capital, capital-loss turns, tax rate, treasury, stock,
-per-material capacity, a summary of each own settlement (province, population,
+stored total and shared capacity, a summary of each own settlement (province, population,
 gold, free warehouse capacity), the IDs of other nations and `last_turn`. Another
 nation's treasury, stock and policy are not visible.
 

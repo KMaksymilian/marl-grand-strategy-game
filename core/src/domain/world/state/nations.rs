@@ -10,8 +10,8 @@
 use super::{World, WorldError};
 use crate::domain::economy::{InventoryAddResult, ResourceType};
 use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::nation::Nation;
 use crate::domain::nation::registry::NationRegistry;
-use crate::domain::nation::{Nation, TaxRate};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -27,8 +27,7 @@ pub struct OwnershipChange {
     pub extinct: bool,
     /// Gold that vanished: the whole treasury of an extinct nation.
     pub gold_lost: u32,
-    /// Materials that vanished: stock above the previous owner's reduced
-    /// capacity, or the whole stock of an extinct nation.
+    /// Materials that vanished: the whole stock of an extinct nation.
     pub stock_lost: BTreeMap<ResourceType, u32>,
 }
 
@@ -72,7 +71,7 @@ impl World {
         Ok(self.nations.settlements_of(nation_id))
     }
 
-    /// Per-material capacity of the national stock.
+    /// Capacity of the national stock, shared by all materials.
     pub fn nation_stock_capacity(&self, nation_id: NationId) -> Result<u32, WorldError> {
         self.nation(nation_id)
             .ok_or(WorldError::MissingNation(nation_id))?;
@@ -97,8 +96,8 @@ impl World {
 impl World {
     /// Gives a settlement to another nation (the war system will call this when
     /// a settlement is conquered, §11.5). The previous owner gets a new capital
-    /// when it lost its capital, loses stock above its reduced capacity, and is
-    /// removed with its treasury and stock when nothing is left. Fails without
+    /// when it lost its capital and is removed with its treasury and stock when
+    /// nothing is left. Its stock capacity shrinks, but no stock is discarded. Fails without
     /// changes for unknown IDs or when `to` already owns the settlement.
     pub fn transfer_settlement(
         &mut self,
@@ -118,7 +117,7 @@ impl World {
                 nation_id: to,
             });
         }
-        // 2. The single ownership record changes.
+        // 2. The single ownership record changes; both stock capacities follow.
         let from = self
             .nations
             .set_owner(settlement_id, to)
@@ -139,12 +138,10 @@ impl World {
             let mut nation = self.nations.remove(from).expect("previous owner exists");
             change.extinct = true;
             change.gold_lost = nation.take_treasury();
-            change.stock_lost = nation.stock_mut().take_all();
+            change.stock_lost = nation.take_stock();
             return Ok(change);
         }
-        // 4. The previous owner survives. Its capacity is read after the
-        //    ownership change, so it already counts one settlement less.
-        let capacity = self.nations.stock_capacity(from);
+        // 4. The previous owner survives.
         let new_capital = self.largest_settlement(&remaining);
         let nation = self.nations.get_mut(from).expect("previous owner exists");
         // 5. Losing the capital moves it and starts the capital-loss penalty.
@@ -153,8 +150,6 @@ impl World {
             nation.replace_lost_capital(capital);
             change.new_capital = Some(capital);
         }
-        // 6. Stock above the reduced capacity is discarded and reported.
-        change.stock_lost = nation.stock_mut().enforce_capacity(capacity);
         Ok(change)
     }
 }
@@ -171,24 +166,24 @@ impl World {
         Ok(self.nation_mut(nation_id)?.deposit_gold(amount))
     }
 
-    /// Adds materials to the national stock up to its capacity; the rest is lost.
+    /// Adds materials to the national stock up to its shared capacity; the rest
+    /// is lost.
     pub fn deposit_nation_resource(
         &mut self,
         nation_id: NationId,
         resource: ResourceType,
         amount: u32,
     ) -> Result<InventoryAddResult, WorldError> {
-        let capacity = self.nation_stock_capacity(nation_id)?;
         Ok(self
             .nation_mut(nation_id)?
-            .stock_mut()
-            .add(resource, amount, capacity))
+            .deposit_resource(resource, amount))
     }
 
+    /// `rate` must be a valid fraction (`Nation::is_valid_tax_rate`).
     pub(crate) fn set_tax_rate(
         &mut self,
         nation_id: NationId,
-        rate: TaxRate,
+        rate: f32,
     ) -> Result<(), WorldError> {
         self.nation_mut(nation_id)?.set_tax_rate(rate);
         Ok(())
@@ -232,7 +227,7 @@ impl World {
         let nation = self.nations.get_mut(nation_id).expect("checked above");
         assert!(nation.withdraw_gold(gold));
         for (&resource, &amount) in resources {
-            assert!(nation.stock_mut().take(resource, amount));
+            assert!(nation.withdraw_resource(resource, amount));
         }
         let settlement = self
             .settlements
@@ -256,7 +251,7 @@ impl World {
         // What the warehouse rejected goes back; it just left this stock, so it fits.
         let nation = self.nations.get_mut(nation_id).expect("checked above");
         for (&resource, &amount) in &transfer.returned {
-            let back = nation.stock_mut().add(resource, amount, u32::MAX);
+            let back = nation.deposit_resource(resource, amount);
             debug_assert_eq!(back.rejected, 0);
         }
         Ok(transfer)

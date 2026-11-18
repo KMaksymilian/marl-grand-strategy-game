@@ -9,8 +9,8 @@ mod turn;
 pub use commands::TradeCommandError;
 pub use economy::{NeedRegistry, NeedTier};
 pub use trading::CaravanOrder;
-pub(crate) use turn::PreparedTurn;
 pub use turn::report as turn_report;
+pub(crate) use turn::{PreparedTurn, ProducedTurn};
 
 use crate::domain::buildings::Building;
 use crate::domain::buildings::productivity::BuildingProductivityCalculator;

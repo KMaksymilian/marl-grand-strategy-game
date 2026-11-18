@@ -53,13 +53,16 @@ Contains `Simulation` and `SimulationError`; `World` remains the only settlement
 | `initialize_settlement` | Delegate initialization and unique automatic ID allocation. |
 | `add_settlement` | Delegate one-province settlement registration. |
 | `queue_decision` | Queue a known settlement's `SettlementDecision` for the next successful step. |
+| `queue_nation_decision` | Queue an existing nation's `NationDecision`; nation decisions run first. |
+| `add_settlement_to_nation`, `transfer_settlement` | Delegate ownership changes to World; drop pending decisions and the last report of an extinct nation. |
+| `observe_nation`, `observe_all_nations` | Build nation observations with the latest nation reports. |
 | `into_world` | Recover the world, discarding pending commands. |
 | `SimulationError::fmt` | Format map, counter or preflight failures. |
 
 ### [core/src/application/simulation/turn_coordinator.rs](../../../core/src/application/simulation/turn_coordinator.rs)
 
-`run_turn` preflights all settlements, consumes decisions once and executes
-each phase globally in ascending settlement ID order. `Simulation::step` delegates
+`run_turn` preflights all settlements, applies nation decisions, consumes settlement decisions once and executes
+each phase globally in ascending settlement ID order, then counts down national timers and writes the nation reports. `Simulation::step` delegates
 to the coordinator and stores the completed turn number and latest reports.
 
 ### [core/src/application/simulation/turn_report.rs](../../../core/src/application/simulation/turn_report.rs)
@@ -297,6 +300,9 @@ in transit remain separate; see [trading](../systems/trading.md).
 
 ### [core/src/domain/economy/inventory.rs](../../../core/src/domain/economy/inventory.rs)
 
+`resize` (crate-internal) sets a capacity also below the stored amount; nothing
+is discarded and additions wait. The national stock uses it.
+
 Contains capacity-aware `ResourceInventory`, `InventoryAddResult` and
 `CapacityError`. The types are also re-exported from `simulation_core::economy`.
 
@@ -339,8 +345,23 @@ at zero. Currency is separate from warehouse materials.
 
 ### [core/src/domain/ids.rs](../../../core/src/domain/ids.rs)
 
-`SettlementId`, `BuildingId` and `ProjectId` are distinct `u32` tuple types.
+`SettlementId`, `NationId`, `BuildingId` and `ProjectId` are distinct `u32` tuple types.
 `SettlementId::fmt` formats the numeric ID without conflating it with other ID types.
+
+## Nations
+
+See [Nations](nations.md) for rules and the decision contract.
+
+| File | Contents |
+| --- | --- |
+| [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) | `Nation`: treasury, stock (`ResourceInventory` with one shared capacity), `f32` tax rate (`is_valid_tax_rate`), capital; `deposit_resource`, `withdraw_resource`, `take_stock`, `set_stock_capacity`, `replace_lost_capital`, `advance_turn`. |
+| [domain/nation/registry.rs](../../../core/src/domain/nation/registry.rs) | `Ownership` (nation, conquest turns, under attack) and `NationRegistry`: nations and the single ownership record; `owner_of`, `ownership`, `settlements_of`, `stock_capacity`, `can_found`, `found`, `add_member`, `capture` (all update stock capacities), `set_under_attack`, `remove`, `advance_turn`. |
+| [domain/nation/report.rs](../../../core/src/domain/nation/report.rs) | `NationTurnReport` (`closing`). |
+| [domain/nation/taxation.rs](../../../core/src/domain/nation/taxation.rs) | `tax_amount` (rounded-down share of an amount), `TaxStatus` (`effective_rate`), `SettlementTaxReport`, `NationTaxReport`. |
+| [domain/world/state/taxation.rs](../../../core/src/domain/world/state/taxation.rs) | `World::collect_taxes` (status, production tax, shared capacity); `TaxCollection`. |
+| [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) | `World::nations`, `nation`, `settlement_owner`, `province_owner`, `nation_settlements`, `nation_stock_capacity`, `transfer_settlement` (capital succession, extinction), `deposit_nation_gold`, `deposit_nation_resource`, `set_tax_rate`, `subsidize`, `set_settlement_under_attack`, `advance_nations_turn`; `OwnershipChange`, `SubsidyTransfer`. Registration in `state.rs` founds or joins a nation (`add_settlement_to_nation`). |
+| [application/commands/nation/](../../../core/src/application/commands/nation/) | `contract.rs` (`NationDecision`, `NationAction`, `NationActionKind`), `response.rs` (errors, effects, outcomes), `preparation.rs` (read-only validation with a shared subsidy budget), `handler.rs` (execution). |
+| [application/queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) | `NationObservation`, `OwnedSettlementObservation` and their builder. |
 
 ## Trade and transport
 

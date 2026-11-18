@@ -5,10 +5,11 @@
 //! Visible: the settlement's own economy, its last turn, the tiles of its own
 //! province, the public building catalog and the IDs of other settlements as trade
 //! partners. Not visible: other settlements' stock, gold, buildings, projects,
-//! offers, caravans and any tile outside the own province.
-use crate::application::commands::settlement::contract::OfferSpec;
+//! live offers, caravans and any tile outside the own province. Returned
+//! caravans supply dated foreign-market snapshots.
+use crate::application::commands::settlement::contract::{OfferSide, OfferSpec};
 use crate::domain::economy::ResourceType;
-use crate::domain::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
+use crate::domain::ids::{BuildingId, BuildingTypeId, NationId, ProjectId, SettlementId};
 use crate::domain::spatial::Position;
 use crate::domain::world::terrain::elevation::Elevation;
 use crate::domain::world::terrain::moisture::Moisture;
@@ -46,6 +47,8 @@ pub struct SettlementObservation {
     pub trade_partners: Vec<TradePartner>,
     /// Building types available for construction and upgrades, ascending ID.
     pub building_types: Vec<BuildingTypeObservation>,
+    /// Policy of the owning nation; every settlement belongs to one (§5.3).
+    pub nation: NationPolicyObservation,
 }
 
 impl SettlementObservation {
@@ -125,10 +128,31 @@ pub enum ProjectTarget {
 pub struct TradeObservation {
     /// Published market offers, ascending resource.
     pub market_offers: Vec<OfferSpec>,
+    /// Latest delivered snapshot per foreign market, ascending market settlement ID.
+    #[serde(default)]
+    pub known_markets: Vec<KnownMarketObservation>,
     /// Own caravans currently travelling or trading in the world.
     pub caravans_in_transit: usize,
     /// Own caravans back home, unloaded during the next turn.
     pub caravans_returning: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnownMarketObservation {
+    pub market: SettlementId,
+    pub province_id: usize,
+    pub observed_turn: u64,
+    pub offers: BTreeMap<ResourceType, KnownMarketOffer>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnownMarketOffer {
+    pub side: OfferSide,
+    /// Buy quantities are estimated separately at each price limit against the shared budget.
+    pub units: u32,
+    pub unit_price_limit: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -157,6 +181,8 @@ pub struct LastTurnObservation {
     pub unfunded_caravan_orders: usize,
     pub completed_projects: Vec<ProjectId>,
     pub failed_projects: Vec<ProjectId>,
+    /// Materials the owning nation took from last turn's production (§6).
+    pub production_tax: ResourceTotals,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -192,6 +218,19 @@ pub enum TileState {
 pub struct TradePartner {
     pub settlement_id: SettlementId,
     pub province_id: usize,
+    /// Owning nation (public information).
+    pub nation_id: NationId,
+}
+
+/// The owning nation's policy as seen by one of its settlements (§5.3).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NationPolicyObservation {
+    pub nation_id: NationId,
+    pub tax_rate: f32,
+    pub capital: SettlementId,
+    /// This settlement is the national capital.
+    pub is_capital: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

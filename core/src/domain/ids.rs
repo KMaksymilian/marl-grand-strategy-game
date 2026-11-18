@@ -19,6 +19,21 @@ pub struct ProjectId(pub u32);
 #[serde(transparent)]
 pub struct SettlementId(pub u32);
 
+/// Identifies one nation: a state agent that owns settlements.
+/// ```compile_fail
+/// use simulation_core::ids::{NationId, SettlementId};
+/// let nation_id: NationId = SettlementId(1);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct NationId(pub u32);
+
+impl std::fmt::Display for NationId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
 /// Identifies a building definition in the building catalog, e.g. `"farm"`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]

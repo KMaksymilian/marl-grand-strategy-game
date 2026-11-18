@@ -1,8 +1,10 @@
 use super::trade_network::TradeNetwork;
 use simulation_core::buildings::definition::BuildingDefinition;
 use simulation_core::economy::ResourceType::{self, Stone, Wood};
+use simulation_core::domain::intelligence::{Information, MarketOffer, MarketOfferSide};
 use simulation_core::ids::ProjectId;
 use simulation_core::ids::SettlementId;
+use simulation_core::settlement::observation::SettlementObservation;
 use simulation_core::settlement::{Settlement, projects::ProjectCost};
 use simulation_core::trade::offer::TradeOffer;
 use simulation_core::world::pathfinding::path_finder::PathFinder;
@@ -87,8 +89,20 @@ fn global_coordinator_matches_the_network_for_trade_and_construction() {
         if turn == 2 {
             assert_eq!(simulation.world().caravans[0].position(), Point(3, 0));
         }
+        // The network has no nations; the global turn adds a taxation report
+        // (nothing here is produced, so no materials are taxed).
+        let global_economy: Vec<_> = global_report
+            .settlements
+            .values()
+            .map(|report| {
+                assert!(report.inventory.taxed.is_empty());
+                let mut report = report.clone();
+                report.taxation = None;
+                report
+            })
+            .collect();
         assert_eq!(
-            global_report.settlements.values().collect::<Vec<_>>(),
+            global_economy.iter().collect::<Vec<_>>(),
             local_reports.iter().collect::<Vec<_>>()
         );
         assert!(
@@ -114,6 +128,85 @@ fn global_coordinator_matches_the_network_for_trade_and_construction() {
             .count(),
         1
     );
+}
+
+#[test]
+fn visiting_caravan_records_prefunded_market_offers_even_without_a_trade() {
+    for price in [2, 3] {
+        let (mut world, _, _) = scenario(100);
+        let market = SettlementId(2);
+        world
+            .settlement_mut(market)
+            .unwrap()
+            .publish_trade_offers(HashMap::from([(Stone, TradeOffer::sell(6, price))]))
+            .unwrap();
+        let mut simulation = simulation_core::simulation::Simulation::new(world).unwrap();
+
+        simulation.step().unwrap();
+        assert!(simulation.world().caravans[0].observations().is_empty());
+
+        let report = simulation.step().unwrap();
+        let caravan = &simulation.world().caravans[0];
+        let [snapshot] = caravan.observations() else {
+            panic!("expected one observation from the market visit");
+        };
+        assert_eq!(snapshot.observed_turn(), report.turn);
+        assert_eq!(
+            snapshot.information(),
+            &Information::ForeignMarket {
+                market,
+                province_id: 20,
+                offers: [(
+                    Stone,
+                    MarketOffer {
+                        side: MarketOfferSide::Sell,
+                        units: 4,
+                        unit_price_limit: price,
+                    },
+                )]
+                .into(),
+            }
+        );
+        assert_eq!(caravan.trades().is_empty(), price == 3);
+        let sender = SettlementId(1);
+        assert!(
+            simulation
+                .observe(sender)
+                .unwrap()
+                .trade
+                .known_markets
+                .is_empty()
+        );
+
+        let mut simulation =
+            simulation_core::simulation::Simulation::new(simulation.into_world()).unwrap();
+        assert_eq!(simulation.current_turn(), report.turn);
+        assert_eq!(simulation.step().unwrap().turn, report.turn + 1);
+        let observation = simulation.observe(sender).unwrap();
+        let known = &observation.trade.known_markets;
+        assert_eq!(known.len(), 1);
+        assert_eq!(known[0].market, market);
+        assert_eq!(known[0].province_id, 20);
+        assert_eq!(known[0].observed_turn, report.turn);
+        assert_eq!(known[0].offers[&Stone].units, 4);
+        assert_eq!(known[0].offers[&Stone].unit_price_limit, price);
+        assert_eq!(
+            known[0].offers[&Stone].side,
+            simulation_core::application::commands::settlement::contract::OfferSide::Sell
+        );
+        assert!(
+            simulation
+                .observe(market)
+                .unwrap()
+                .trade
+                .known_markets
+                .is_empty()
+        );
+        assert_eq!(
+            serde_json::from_str::<SettlementObservation>(&observation.to_json(),).unwrap(),
+            observation
+        );
+    }
 }
 
 #[test]

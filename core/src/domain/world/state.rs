@@ -3,13 +3,19 @@ use std::collections::HashMap;
 mod construction;
 mod inspection;
 mod map_commands;
+mod nations;
 mod resource_sites;
+mod taxation;
 mod trade;
 pub use inspection::TileView;
+pub use nations::{OwnershipChange, SubsidyTransfer};
+pub use taxation::TaxCollection;
 
 use super::settlement_registry::SettlementRegistry;
 use super::territory::{TerritoryManager, Tile};
 use crate::domain::buildings::catalog::BuildingCatalog;
+use crate::domain::ids::NationId;
+use crate::domain::nation::registry::NationRegistry;
 use crate::domain::settlement::{NeedRegistry, Settlement};
 use crate::domain::trade::caravan::Caravan;
 use crate::domain::world::{Position, coordinates::Point, map::Map, province::Province};
@@ -55,6 +61,21 @@ pub enum WorldError {
         settlement_id: SettlementId,
         registered_settlement: Option<SettlementId>,
     },
+    MissingNation(NationId),
+    NationIdExhausted,
+    /// The settlement already belongs to this nation.
+    SettlementAlreadyOwned {
+        settlement_id: SettlementId,
+        nation_id: NationId,
+    },
+    /// The settlement does not belong to this nation.
+    SettlementNotOwned {
+        settlement_id: SettlementId,
+        nation_id: NationId,
+    },
+    /// The national treasury or stock holds less than requested, or the
+    /// settlement's gold counter cannot hold it.
+    InsufficientNationalFunds(NationId),
 }
 
 /// World layers are read-only outside the aggregate.
@@ -65,6 +86,7 @@ pub enum WorldError {
 /// }
 /// ```
 pub struct World {
+    completed_turn: u64,
     map: Map,
     provinces: Vec<Province>,
     pub caravans: Vec<Caravan>,
@@ -73,8 +95,18 @@ pub struct World {
     province_settlements: HashMap<usize, SettlementId>,
     /// Building types agents may construct or upgrade to.
     building_catalog: BuildingCatalog,
+    /// Nations and the single record of which nation owns which settlement.
+    nations: NationRegistry,
 }
 impl World {
+    pub(crate) fn completed_turn(&self) -> u64 {
+        self.completed_turn
+    }
+
+    pub(crate) fn set_completed_turn(&mut self, turn: u64) {
+        self.completed_turn = turn;
+    }
+
     /// The province a settlement is registered in.
     pub(crate) fn settlement_province(&self, settlement_id: SettlementId) -> Option<usize> {
         self.province_settlements
@@ -176,6 +208,7 @@ impl World {
             province_id,
             capital,
             Settlement::new(id, initial_capacity, initial_population, need_registry),
+            None,
         )?;
         Ok(id)
     }
@@ -205,6 +238,7 @@ impl World {
 
     pub fn new(map: Map, provinces: Vec<Province>) -> World {
         World {
+            completed_turn: 0,
             map,
             provinces,
             caravans: Vec::new(),
@@ -212,34 +246,59 @@ impl World {
             settlements: SettlementRegistry::default(),
             province_settlements: HashMap::new(),
             building_catalog: BuildingCatalog::default(),
+            nations: NationRegistry::default(),
         }
     }
 
     /// Registers an empty settlement on the first valid land tile in its province.
+    /// Every settlement belongs to a nation: this one founds a new nation and
+    /// becomes its capital (`add_settlement_to_nation` joins an existing one).
     pub fn add_settlement(
         &mut self,
         province_id: usize,
         settlement: Settlement,
     ) -> Result<(), WorldError> {
-        self.register_settlement(province_id, None, settlement)
+        self.register_settlement(province_id, None, settlement, None)
     }
 
-    /// Registers an empty settlement at an explicit capital position.
+    /// Registers an empty settlement at an explicit capital position; it founds
+    /// a new nation like `add_settlement`.
     pub fn add_settlement_at(
         &mut self,
         province_id: usize,
         capital: Position,
         settlement: Settlement,
     ) -> Result<(), WorldError> {
-        self.register_settlement(province_id, Some(capital), settlement)
+        self.register_settlement(province_id, Some(capital), settlement, None)
     }
 
+    /// Registers an empty settlement as a member of an existing nation
+    /// (scenario setup).
+    pub fn add_settlement_to_nation(
+        &mut self,
+        nation_id: NationId,
+        province_id: usize,
+        settlement: Settlement,
+    ) -> Result<(), WorldError> {
+        self.register_settlement(province_id, None, settlement, Some(nation_id))
+    }
+
+    /// `owner`: the nation to join, or None to found a new nation. All checks
+    /// run before anything is registered, so an error changes nothing.
     fn register_settlement(
         &mut self,
         province_id: usize,
         capital: Option<Position>,
         mut settlement: Settlement,
+        owner: Option<NationId>,
     ) -> Result<(), WorldError> {
+        match owner {
+            Some(nation_id) if self.nations.get(nation_id).is_none() => {
+                return Err(WorldError::MissingNation(nation_id));
+            }
+            None if !self.nations.can_found() => return Err(WorldError::NationIdExhausted),
+            _ => {}
+        }
         let id = settlement.id();
         if self.settlements.get(id).is_some() {
             return Err(WorldError::DuplicateSettlement(id));
@@ -269,6 +328,12 @@ impl World {
             .register(settlement)
             .map_err(WorldError::DuplicateSettlement)?;
         self.province_settlements.insert(province_id, id);
+        match owner {
+            Some(nation_id) => self.nations.add_member(id, nation_id),
+            None => {
+                self.nations.found(id).expect("checked by can_found");
+            }
+        }
         Ok(())
     }
 

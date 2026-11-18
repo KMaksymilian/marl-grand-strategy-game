@@ -161,7 +161,7 @@ impl Simulation {
             &mut self.finder,
             &mut self.pending_decisions,
             &mut self.pending_nation_decisions,
-            self.current_turn(),
+            current_turn,
         )?;
         self.world.set_completed_turn(report.turn);
         self.last_reports = report.settlements.clone();

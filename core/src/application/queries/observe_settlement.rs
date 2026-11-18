@@ -7,10 +7,12 @@ use crate::application::queries::observation::{
     ProjectObservation, ProjectTarget, RecipeObservation, ResourceAmounts, SettlementObservation,
     TileObservation, TileState, TradeObservation, TradePartner, WorkforceObservation,
 };
+use crate::application::queries::observation::{KnownMarketObservation, KnownMarketOffer};
 use crate::domain::buildings::Building;
 use crate::domain::buildings::definition::BuildingBehavior;
 use crate::domain::economy::{ResourceInventory, ResourceType};
 use crate::domain::ids::{BuildingTypeId, SettlementId};
+use crate::domain::intelligence::{Information, InformationSnapshot, MarketOfferSide};
 use crate::domain::settlement::Settlement;
 use crate::domain::settlement::projects::ProjectResult;
 use crate::domain::settlement::turn_report::TurnReport;
@@ -80,6 +82,7 @@ impl ObservationQuery<'_> {
             next_project_id: settlement.next_project_id(),
             trade: TradeObservation {
                 market_offers: market_offers(settlement),
+                known_markets: settlement.known_markets().map(known_market).collect(),
                 caravans_in_transit: self
                     .world
                     .caravans
@@ -273,6 +276,37 @@ fn market_offers(settlement: &Settlement) -> Vec<OfferSpec> {
         .collect();
     offers.sort_by_key(|offer| offer.resource);
     offers
+}
+
+fn known_market(snapshot: &InformationSnapshot) -> KnownMarketObservation {
+    match snapshot.information() {
+        Information::ForeignMarket {
+            market,
+            province_id,
+            offers,
+        } => KnownMarketObservation {
+            market: *market,
+            province_id: *province_id,
+            observed_turn: snapshot.observed_turn(),
+            offers: offers
+                .iter()
+                .map(|(&resource, offer)| {
+                    let side = match offer.side {
+                        MarketOfferSide::Buy => OfferSide::Buy,
+                        MarketOfferSide::Sell => OfferSide::Sell,
+                    };
+                    (
+                        resource,
+                        KnownMarketOffer {
+                            side,
+                            units: offer.units,
+                            unit_price_limit: offer.unit_price_limit,
+                        },
+                    )
+                })
+                .collect(),
+        },
+    }
 }
 
 fn last_turn_observation(report: &TurnReport) -> LastTurnObservation {

@@ -51,7 +51,6 @@ impl std::error::Error for SimulationError {}
 
 pub struct Simulation {
     world: World,
-    current_turn: u64,
     finder: PathFinder,
     pending_decisions: BTreeMap<SettlementId, Vec<SettlementDecision>>,
     /// Each settlement's report from the latest completed turn, for observations.
@@ -129,7 +128,6 @@ impl Simulation {
         let finder = PathFinder::new(map.width, map.height);
         Ok(Self {
             world,
-            current_turn: 0,
             finder,
             pending_decisions: BTreeMap::new(),
             last_reports: BTreeMap::new(),
@@ -138,19 +136,20 @@ impl Simulation {
 
     /// Advances one global turn and returns the outcomes of submitted decisions.
     pub fn step(&mut self) -> Result<SimulationTurnReport, SimulationError> {
+        let current_turn = self.current_turn();
         let report = turn_coordinator::run_turn(
             &mut self.world,
             &mut self.finder,
             &mut self.pending_decisions,
-            self.current_turn,
+            current_turn,
         )?;
-        self.current_turn = report.turn;
+        self.world.set_completed_turn(report.turn);
         self.last_reports = report.settlements.clone();
         Ok(report)
     }
 
     pub fn current_turn(&self) -> u64 {
-        self.current_turn
+        self.world.completed_turn()
     }
 
     pub fn world(&self) -> &World {
@@ -204,7 +203,7 @@ impl Simulation {
         observe_settlement::observe_settlement(
             &self.world,
             settlement_id,
-            self.current_turn,
+            self.current_turn(),
             self.last_reports.get(&settlement_id),
         )
     }
@@ -220,7 +219,7 @@ impl Simulation {
             .collect()
     }
 
-    /// Recovers the world, e.g. to edit a scenario. Pending decisions are discarded.
+    /// Recovers the world and its completed turn. Pending decisions and last reports are discarded.
     pub fn into_world(self) -> World {
         self.world
     }

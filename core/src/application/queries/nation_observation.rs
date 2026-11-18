@@ -38,6 +38,10 @@ pub struct OwnedSettlementObservation {
     pub province_id: usize,
     pub population: u32,
     pub gold: u32,
+    /// Turns left of the conquest penalty: the settlement pays half the rate.
+    pub conquest_turns: u32,
+    /// An enemy army stands in the province: the settlement pays no tax.
+    pub under_attack: bool,
     /// Free warehouse space, the limit for material subsidies.
     pub free_capacity: u64,
 }

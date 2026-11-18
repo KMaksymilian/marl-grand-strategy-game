@@ -15,6 +15,8 @@ pub enum TurnPhase {
     Consumption,
     Construction,
     Production,
+    /// Production tax (§6), between production and storage.
+    Taxation,
     EconomicUpdates,
 }
 

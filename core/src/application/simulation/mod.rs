@@ -267,6 +267,17 @@ impl Simulation {
         Ok(())
     }
 
+    /// Marks whether an enemy army stands in the settlement's province; an
+    /// attacked settlement pays no tax (see `World::set_settlement_under_attack`).
+    pub fn set_settlement_under_attack(
+        &mut self,
+        settlement_id: SettlementId,
+        attacked: bool,
+    ) -> Result<(), WorldError> {
+        self.world
+            .set_settlement_under_attack(settlement_id, attacked)
+    }
+
     /// Gives a settlement to another nation (see `World::transfer_settlement`).
     /// A nation that goes extinct loses its pending decisions and last report.
     pub fn transfer_settlement(

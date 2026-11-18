@@ -159,6 +159,8 @@ pub struct LastTurnObservation {
     pub unfunded_caravan_orders: usize,
     pub completed_projects: Vec<ProjectId>,
     pub failed_projects: Vec<ProjectId>,
+    /// Materials the owning nation took from last turn's production (§6).
+    pub production_tax: ResourceTotals,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

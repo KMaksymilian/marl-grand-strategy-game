@@ -9,6 +9,7 @@ use crate::application::commands::nation::handler::handle_nation_decision;
 use crate::application::commands::settlement::{CommandDispatch, handler::handle_decision};
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::report::NationTurnReport;
+use crate::domain::nation::taxation::{MaterialTotals, NationTaxReport};
 use crate::domain::world::{World, pathfinding::path_finder::PathFinder};
 
 /// Completes each phase for every settlement in ascending ID order.
@@ -116,8 +117,28 @@ pub(super) fn run_turn(
         produced.push((id, settlement.produce_turn(state)));
     }
 
+    // Taxation: the owner's rate × this turn's gross output of every
+    // settlement, before storage. Settlements of one nation fill its stock in
+    // ascending ID, which decides who meets a full capacity.
+    let mut taxes: BTreeMap<NationId, NationTaxReport> = BTreeMap::new();
+    let mut taxed = Vec::with_capacity(produced.len());
+    for (id, mut state) in produced {
+        execution.push(PhaseExecution {
+            phase: TurnPhase::Taxation,
+            settlement_id: id,
+        });
+        let collection = world
+            .collect_taxes(id, &mut state)
+            .expect("every registered settlement has an owner");
+        let nation = taxes.entry(collection.report.nation_id).or_default();
+        add_totals(&mut nation.stock_received, &collection.stock_received);
+        add_totals(&mut nation.stock_lost, &collection.stock_lost);
+        nation.settlements.insert(id, collection.report);
+        taxed.push((id, state));
+    }
+
     let mut settlements = BTreeMap::new();
-    for (id, state) in produced {
+    for (id, state) in taxed {
         execution.push(PhaseExecution {
             phase: TurnPhase::EconomicUpdates,
             settlement_id: id,
@@ -125,7 +146,12 @@ pub(super) fn run_turn(
         let (settlement, mut environment) = world
             .settlement_turn_parts(id, finder)
             .expect("registered settlement");
-        settlements.insert(id, settlement.finish_turn(state, &mut environment));
+        let mut report = settlement.finish_turn(state, &mut environment);
+        report.taxation = taxes
+            .values()
+            .find_map(|nation| nation.settlements.get(&id))
+            .cloned();
+        settlements.insert(id, report);
     }
     let locations = world.capital_trade_locations();
     world.finish_trade_turn(&locations, finder);
@@ -136,8 +162,10 @@ pub(super) fn run_turn(
         .nations()
         .iter()
         .map(|nation| {
-            let settlements = world.nations().settlements_of(nation.id());
-            (nation.id(), NationTurnReport::closing(nation, settlements))
+            let id = nation.id();
+            let settlements = world.nations().settlements_of(id);
+            let taxes = taxes.remove(&id).unwrap_or_default();
+            (id, NationTurnReport::closing(nation, settlements, taxes))
         })
         .collect();
     Ok(SimulationTurnReport {
@@ -148,6 +176,12 @@ pub(super) fn run_turn(
         settlements,
         execution,
     })
+}
+
+fn add_totals(totals: &mut MaterialTotals, added: &MaterialTotals) {
+    for (&resource, &amount) in added {
+        *totals.entry(resource).or_default() += amount;
+    }
 }
 
 #[cfg(test)]

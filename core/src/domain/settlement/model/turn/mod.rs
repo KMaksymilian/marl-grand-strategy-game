@@ -9,6 +9,7 @@ use crate::domain::economy::ResourceType;
 use crate::domain::economy::allocation::{
     AllocationEngine, AllocationRecipient, AllocationResult, DemandRequest,
 };
+use crate::domain::nation::taxation::tax_amount;
 use crate::domain::spatial::ConstructionSpace;
 use crate::domain::trade::caravan::Caravan;
 use std::collections::HashMap;
@@ -36,6 +37,27 @@ pub(crate) struct ProducedTurn {
     consumed: ConsumedTurn,
     produced: HashMap<ResourceType, u64>,
     returned: HashMap<ResourceType, u64>,
+}
+
+impl ProducedTurn {
+    /// Takes the production tax out of this turn's gross production, before it
+    /// enters the buffer and the warehouse, and records it in the inventory
+    /// report. Each material is taxed separately and rounded down.
+    pub(crate) fn levy_production_tax(&mut self, rate: f32) -> MaterialTotals {
+        let mut taxed = MaterialTotals::new();
+        for (&resource, amount) in &mut self.produced {
+            if resource == ResourceType::Labour {
+                continue;
+            }
+            let tax = tax_amount(rate, *amount);
+            if tax > 0 {
+                *amount -= tax;
+                taxed.insert(resource, tax);
+            }
+        }
+        self.consumed.allocated.inventory.taxed = taxed.clone();
+        taxed
+    }
 }
 
 impl Settlement {
@@ -172,6 +194,7 @@ impl Settlement {
             consumption,
             projects,
             inventory,
+            taxation: None,
         }
     }
 }

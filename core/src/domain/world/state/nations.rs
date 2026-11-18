@@ -118,9 +118,10 @@ impl World {
             });
         }
         // 2. The single ownership record changes; both stock capacities follow.
+        //    The settlement starts the conquest penalty (half tax, §6).
         let from = self
             .nations
-            .set_owner(settlement_id, to)
+            .capture(settlement_id, to)
             .expect("every registered settlement has an owner");
         let mut change = OwnershipChange {
             settlement_id,
@@ -257,8 +258,23 @@ impl World {
         Ok(transfer)
     }
 
-    /// Counts down national timers (the capital-loss penalty) at the end of a
-    /// global turn.
+    /// Marks whether an enemy army stands in the settlement's province (§11.2):
+    /// an attacked settlement pays no tax. The war system will set this from
+    /// army positions; until then it is a scenario setting.
+    pub fn set_settlement_under_attack(
+        &mut self,
+        settlement_id: SettlementId,
+        attacked: bool,
+    ) -> Result<(), WorldError> {
+        if self.nations.set_under_attack(settlement_id, attacked) {
+            Ok(())
+        } else {
+            Err(WorldError::MissingSettlement(settlement_id))
+        }
+    }
+
+    /// Counts down national timers (capital-loss and conquest penalties) at
+    /// the end of a global turn.
     pub(crate) fn advance_nations_turn(&mut self) {
         self.nations.advance_turn();
     }

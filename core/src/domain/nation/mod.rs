@@ -7,6 +7,7 @@
 //! succession, extinction, subsidies) are coordinated by World.
 pub mod registry;
 pub mod report;
+pub mod taxation;
 
 use crate::domain::economy::gold_inventory::GoldInventory;
 use crate::domain::economy::{InventoryAddResult, ResourceInventory, ResourceType};
@@ -87,11 +88,15 @@ impl Nation {
             .collect()
     }
 
+    // ECONOMY (happiness, §4.2): the tax factor of happiness is
+    // `10 − tax_rate × 100` points in every settlement of the nation.
     pub fn tax_rate(&self) -> f32 {
         self.tax_rate
     }
 
     /// Remaining turns of the capital-loss penalty; zero when none applies.
+    // ECONOMY (happiness, §4.2): −10 happiness in every settlement of the
+    // nation while this is above zero.
     pub fn capital_loss_turns(&self) -> u32 {
         self.capital_loss_turns
     }

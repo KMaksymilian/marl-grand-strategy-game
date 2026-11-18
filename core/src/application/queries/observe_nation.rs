@@ -23,11 +23,14 @@ pub(crate) fn observe_nation(
         .filter_map(|settlement_id| {
             let settlement = world.settlement(settlement_id)?;
             let inventory = settlement.inventory();
+            let ownership = world.nations().ownership(settlement_id)?;
             Some(OwnedSettlementObservation {
                 settlement_id,
                 province_id: world.settlement_province(settlement_id)?,
                 population: settlement.population(),
                 gold: settlement.gold(),
+                conquest_turns: ownership.conquest_turns(),
+                under_attack: ownership.is_under_attack(),
                 free_capacity: u64::from(inventory.capacity())
                     .saturating_sub(inventory.total_amount()),
             })

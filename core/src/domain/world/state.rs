@@ -5,9 +5,11 @@ mod inspection;
 mod map_commands;
 mod nations;
 mod resource_sites;
+mod taxation;
 mod trade;
 pub use inspection::TileView;
 pub use nations::{OwnershipChange, SubsidyTransfer};
+pub use taxation::TaxCollection;
 
 use super::settlement_registry::SettlementRegistry;
 use super::territory::{TerritoryManager, Tile};

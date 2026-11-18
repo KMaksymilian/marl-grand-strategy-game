@@ -323,5 +323,6 @@ fn last_turn_observation(report: &TurnReport) -> LastTurnObservation {
         unfunded_caravan_orders: report.trade.unfunded_caravan_orders.len(),
         completed_projects: ids(true),
         failed_projects: ids(false),
+        production_tax: report.inventory.taxed.clone(),
     }
 }

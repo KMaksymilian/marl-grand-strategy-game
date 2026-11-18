@@ -4,8 +4,9 @@
 use crate::application::commands::settlement::contract::{OfferSide, OfferSpec};
 use crate::application::queries::observation::{
     BuildingObservation, BuildingTypeObservation, InventoryObservation, LastTurnObservation,
-    ProjectObservation, ProjectTarget, RecipeObservation, ResourceAmounts, SettlementObservation,
-    TileObservation, TileState, TradeObservation, TradePartner, WorkforceObservation,
+    NationPolicyObservation, ProjectObservation, ProjectTarget, RecipeObservation, ResourceAmounts,
+    SettlementObservation, TileObservation, TileState, TradeObservation, TradePartner,
+    WorkforceObservation,
 };
 use crate::application::queries::observation::{KnownMarketObservation, KnownMarketOffer};
 use crate::domain::buildings::Building;
@@ -95,6 +96,23 @@ impl ObservationQuery<'_> {
             territory: self.own_tiles(settlement_id)?,
             trade_partners: self.trade_partners(settlement_id),
             building_types: self.building_types(),
+            nation: self
+                .nation_policy(settlement_id)
+                .ok_or(WorldError::MissingSettlement(settlement_id))?,
+        })
+    }
+
+    /// The owner's policy: a settlement sees its nation's policy and adapts to
+    /// it (§5.3). None only for an unknown settlement.
+    fn nation_policy(&self, settlement_id: SettlementId) -> Option<NationPolicyObservation> {
+        let nation = self
+            .world
+            .nation(self.world.settlement_owner(settlement_id)?)?;
+        Some(NationPolicyObservation {
+            nation_id: nation.id(),
+            tax_rate: nation.tax_rate(),
+            capital: nation.capital(),
+            is_capital: nation.capital() == settlement_id,
         })
     }
 
@@ -149,6 +167,7 @@ impl ObservationQuery<'_> {
                 Some(TradePartner {
                     settlement_id: id,
                     province_id: self.world.settlement_province(id)?,
+                    nation_id: self.world.settlement_owner(id)?,
                 })
             })
             .collect()
@@ -338,5 +357,6 @@ fn last_turn_observation(report: &TurnReport) -> LastTurnObservation {
         unfunded_caravan_orders: report.trade.unfunded_caravan_orders.len(),
         completed_projects: ids(true),
         failed_projects: ids(false),
+        production_tax: report.inventory.taxed.clone(),
     }
 }

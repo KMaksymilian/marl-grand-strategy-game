@@ -74,7 +74,7 @@ pub(super) fn run_turn(
             phase: TurnPhase::Preparation,
             settlement_id: id,
         });
-        prepared.push((id, world.prepare_settlement_turn(id, finder)));
+        prepared.push((id, world.prepare_settlement_turn(id, finder, turn)));
     }
 
     let mut allocated = Vec::with_capacity(prepared.len());
@@ -312,7 +312,7 @@ mod tests {
                 }],
             ))
             .unwrap();
-        simulation.current_turn = u64::MAX;
+        simulation.world.set_completed_turn(u64::MAX);
         assert_eq!(
             simulation.step().unwrap_err(),
             SimulationError::TurnOverflow

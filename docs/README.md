@@ -41,6 +41,7 @@ system overview to functional areas and implementation references.
 - [Functional modules and spatial dependencies](decisions/0003-functional-modules.md)
 - [Map-independent settlement](decisions/0004-settlement-spatial-boundary.md)
 - [World and blueprint encapsulation](decisions/0005-world-blueprint-encapsulation.md)
+- [Information scope for the thesis](decisions/0006-thesis-information-scope.md)
 
 ## Plans and proposals
 

@@ -63,7 +63,6 @@ impl std::error::Error for SimulationError {}
 
 pub struct Simulation {
     world: World,
-    current_turn: u64,
     finder: PathFinder,
     pending_decisions: BTreeMap<SettlementId, Vec<SettlementDecision>>,
     /// Nation decisions waiting for the next `step`; they run before settlement
@@ -146,7 +145,6 @@ impl Simulation {
         let finder = PathFinder::new(map.width, map.height);
         Ok(Self {
             world,
-            current_turn: 0,
             finder,
             pending_decisions: BTreeMap::new(),
             pending_nation_decisions: BTreeMap::new(),
@@ -157,6 +155,7 @@ impl Simulation {
 
     /// Advances one global turn and returns the outcomes of submitted decisions.
     pub fn step(&mut self) -> Result<SimulationTurnReport, SimulationError> {
+        let current_turn = self.current_turn();
         let report = turn_coordinator::run_turn(
             &mut self.world,
             &mut self.finder,
@@ -164,14 +163,14 @@ impl Simulation {
             &mut self.pending_nation_decisions,
             self.current_turn,
         )?;
-        self.current_turn = report.turn;
+        self.world.set_completed_turn(report.turn);
         self.last_reports = report.settlements.clone();
         self.last_nation_reports = report.nations.clone();
         Ok(report)
     }
 
     pub fn current_turn(&self) -> u64 {
-        self.current_turn
+        self.world.completed_turn()
     }
 
     pub fn world(&self) -> &World {
@@ -225,7 +224,7 @@ impl Simulation {
         observe_settlement::observe_settlement(
             &self.world,
             settlement_id,
-            self.current_turn,
+            self.current_turn(),
             self.last_reports.get(&settlement_id),
         )
     }

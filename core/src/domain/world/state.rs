@@ -86,6 +86,7 @@ pub enum WorldError {
 /// }
 /// ```
 pub struct World {
+    completed_turn: u64,
     map: Map,
     provinces: Vec<Province>,
     pub caravans: Vec<Caravan>,
@@ -98,6 +99,14 @@ pub struct World {
     nations: NationRegistry,
 }
 impl World {
+    pub(crate) fn completed_turn(&self) -> u64 {
+        self.completed_turn
+    }
+
+    pub(crate) fn set_completed_turn(&mut self, turn: u64) {
+        self.completed_turn = turn;
+    }
+
     /// The province a settlement is registered in.
     pub(crate) fn settlement_province(&self, settlement_id: SettlementId) -> Option<usize> {
         self.province_settlements
@@ -229,6 +238,7 @@ impl World {
 
     pub fn new(map: Map, provinces: Vec<Province>) -> World {
         World {
+            completed_turn: 0,
             map,
             provinces,
             caravans: Vec::new(),

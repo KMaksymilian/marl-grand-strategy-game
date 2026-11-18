@@ -30,6 +30,7 @@ system overview to functional areas and implementation references.
 - [Pathfinding](architecture/systems/pathfinding.md)
 - [Rendering and camera](architecture/systems/rendering.md)
 - [Headless execution and simulation API](architecture/implementation/simulation_commands.md)
+- [Nations: ownership, capital, treasury and decisions](architecture/implementation/nations.md)
 - [Configuration](architecture/implementation/configuration.md)
 - [Building productivity](architecture/implementation/building_productivity.md)
 

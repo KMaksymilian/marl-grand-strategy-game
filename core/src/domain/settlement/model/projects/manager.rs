@@ -79,9 +79,9 @@ impl ProjectManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::economy::ResourceType;
     use crate::domain::economy::allocation::AllocationResult;
     use crate::domain::settlement::projects::{Project, ProjectCost, ProjectResult};
+    use crate::test_support::material;
     use std::collections::HashMap;
 
     #[test]
@@ -114,7 +114,7 @@ mod tests {
                 id: ProjectId(1),
                 result: create_dummy_result(),
                 remaining_cost: ProjectCost {
-                    needed_resources: HashMap::from([(ResourceType::Wood, 0)]),
+                    needed_resources: HashMap::from([(material("wood"), 0)]),
                     turn_cost: 1,
                 },
             })
@@ -135,7 +135,7 @@ mod tests {
         );
         assert_eq!(manager.active_projects.len(), 1);
         assert_eq!(
-            manager.active_projects[0].remaining_cost.needed_resources[&ResourceType::Wood],
+            manager.active_projects[0].remaining_cost.needed_resources[&material("wood")],
             1
         );
     }
@@ -149,7 +149,7 @@ mod tests {
     fn create_test_project(id: u32, wood_cost: u32, turn_cost: u32) -> Project {
         let mut resources = HashMap::new();
         if wood_cost > 0 {
-            resources.insert(ResourceType::Wood, wood_cost);
+            resources.insert(material("wood"), wood_cost);
         }
 
         Project::new(
@@ -242,7 +242,7 @@ mod tests {
 
         // Grant 40 Wood to Project 1
         let mut p1_grants = HashMap::new();
-        p1_grants.insert(ResourceType::Wood, 40);
+        p1_grants.insert(material("wood"), 40);
         allocations.insert(AllocationRecipient::Project(ProjectId(1)), p1_grants);
 
         // Act
@@ -254,7 +254,7 @@ mod tests {
             *manager.active_projects[0]
                 .remaining_cost
                 .needed_resources
-                .get(&ResourceType::Wood)
+                .get(&material("wood"))
                 .unwrap(),
             60
         );
@@ -265,7 +265,7 @@ mod tests {
             *manager.active_projects[1]
                 .remaining_cost
                 .needed_resources
-                .get(&ResourceType::Wood)
+                .get(&material("wood"))
                 .unwrap(),
             50
         );
@@ -286,7 +286,7 @@ mod tests {
         // Project 2 gets nothing, and Project 3 (which only needs a turn) advances.
         let mut allocations: AllocationResult = HashMap::new();
         let mut p1_grants = HashMap::new();
-        p1_grants.insert(ResourceType::Wood, 10);
+        p1_grants.insert(material("wood"), 10);
         allocations.insert(AllocationRecipient::Project(ProjectId(1)), p1_grants);
 
         manager.process_allocation(&allocations);

@@ -12,16 +12,16 @@ pub struct Map {
 
 impl Map {
     pub fn deposit_at(&self, position: Position) -> Option<ResourceType> {
-        self.deposits.get(&position).copied()
+        self.deposits.get(&position).cloned()
     }
 
     pub(super) fn has_accessible_deposit(
         &self,
         province_id: usize,
         position: Position,
-        resource: ResourceType,
+        resource: &ResourceType,
     ) -> bool {
-        self.deposit_at(position) == Some(resource)
+        self.deposits.get(&position) == Some(resource)
             && self.province_at(position) == Some(province_id)
             && self.validate_building_position(position).is_ok()
     }

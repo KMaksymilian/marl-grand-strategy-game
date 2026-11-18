@@ -20,7 +20,7 @@ impl Building {
         for behavior in self.definition.behaviors() {
             if let BuildingBehavior::Production { inputs, .. } = behavior {
                 for (res, amount) in inputs {
-                    *demand.entry(*res).or_insert(0) +=
+                    *demand.entry(res.clone()).or_insert(0) +=
                         (*amount as f64 * f64::from(self.target_load)).floor() as u32;
                 }
             }
@@ -57,14 +57,14 @@ impl Building {
         // Exact fractions avoid floating-point rounding at the withdrawal boundary.
         for behavior in self.definition.behaviors() {
             if let BuildingBehavior::Production { inputs, outputs } = behavior {
-                let mut required: HashMap<ResourceType, u64> = HashMap::new();
-                for &(resource, amount) in inputs {
-                    *required.entry(resource).or_default() += u64::from(amount);
+                let mut required: HashMap<&ResourceType, u64> = HashMap::new();
+                for (resource, amount) in inputs {
+                    *required.entry(resource).or_default() += u64::from(*amount);
                 }
                 let mut numerator = u128::from(self.current_workers);
                 let mut denominator = u128::from(self.definition.max_workers());
                 for (&resource, &amount) in &required {
-                    let available = u128::from(unused.get(&resource).copied().unwrap_or(0));
+                    let available = u128::from(unused.get(resource).copied().unwrap_or(0));
                     if amount > 0 && available * denominator < u128::from(amount) * numerator {
                         numerator = available;
                         denominator = u128::from(amount);
@@ -78,7 +78,7 @@ impl Building {
                 for (resource, amount) in required {
                     let consumed = (u128::from(amount) * numerator).div_ceil(denominator);
                     if consumed > 0 {
-                        let remaining = unused.get_mut(&resource).expect("input must be granted");
+                        let remaining = unused.get_mut(resource).expect("input must be granted");
                         *remaining = remaining
                             .checked_sub(
                                 u32::try_from(consumed).expect("consumption cannot exceed grant"),
@@ -86,11 +86,11 @@ impl Building {
                             .expect("recipe cannot consume more than its remaining grant");
                     }
                 }
-                for &(resource, amount) in outputs {
+                for (resource, amount) in outputs {
                     let output =
                         self.location_productivity
-                            .scale_output(amount, numerator, denominator);
-                    let total = produced.entry(resource).or_insert(0_u32);
+                            .scale_output(*amount, numerator, denominator);
+                    let total = produced.entry(resource.clone()).or_insert(0_u32);
                     *total = total
                         .checked_add(output)
                         .expect("production exceeds u32 capacity");

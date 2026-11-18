@@ -26,15 +26,23 @@ per-capita needs still define the quantities that the simulation uses.
 
 1. Edit `name`, `tier`, `category`, or `aliases` on an existing entry. Move the
    entire entry to change its default storage priority.
-2. To add a material, add its stable `ResourceType` variant and include it in
-   `ResourceType::MATERIALS`, then register it once in `resources.toml`.
+2. To add a material, add a `[[resources]]` entry to `resources.toml`.
+   Use a unique lowercase snake-case ID. A new ID such as `rock_salt` is
+   serialized as `RockSalt`. Keep the ID stable once data uses it.
 3. Run `cargo test -p simulation_core --test resource_catalog_tests` to check
    that the catalog loads and integrates with settlement storage.
 
-`ResourceCatalog::load` reads a catalog from disk. `Settlement::with_resource_catalog`
-uses its default storage order, while `Settlement::new` uses the bundled
-catalog. An explicit storage order must list each material exactly once.
-Labour is worker capacity and has no catalog entry.
+`ResourceCatalog::load` reads a catalog from disk and `resolve` resolves a
+content ID or alias. The world uses its catalog to initialize settlements.
+`World::new` and `Settlement::new` use the bundled catalog. An explicit
+storage order must list each material in the active catalog exactly once.
+`ResourceId` identifies materials dynamically. `ResourceType::Labour` represents
+worker capacity in allocation and has no material catalog entry.
+
+Use `catalog.resolve("wood")` to obtain a material for recipes, stock or trade.
+The returned value is `ResourceType::Material(ResourceId)`. Catalog lookup also
+accepts aliases and returns `None` for an unknown identifier. Material names are
+defined in TOML and are resolved at the scenario boundary.
 
 Content, scenario APIs, and simulation calculations share one whole material
 unit. The scenario API accepts quantities as `u32`:

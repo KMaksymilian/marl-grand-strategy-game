@@ -68,6 +68,9 @@ pub enum ActionError {
     InvalidStorageOrder {
         error: StorageOrderError,
     },
+    UnknownMaterial {
+        resource: ResourceType,
+    },
     LabourIsNotTradable,
     ZeroUnits {
         resource: ResourceType,

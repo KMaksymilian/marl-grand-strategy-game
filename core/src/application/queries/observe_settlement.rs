@@ -197,14 +197,14 @@ fn materials(inventory: &ResourceInventory) -> ResourceAmounts {
 fn positive<'a>(amounts: impl Iterator<Item = (&'a ResourceType, &'a u32)>) -> ResourceAmounts {
     amounts
         .filter(|(_, amount)| **amount > 0)
-        .map(|(&resource, &amount)| (resource, amount))
+        .map(|(resource, &amount)| (resource.clone(), amount))
         .collect()
 }
 
 fn summed(entries: &[(ResourceType, u32)]) -> ResourceAmounts {
     let mut totals = ResourceAmounts::new();
-    for &(resource, amount) in entries {
-        *totals.entry(resource).or_default() += amount;
+    for (resource, amount) in entries {
+        *totals.entry(resource.clone()).or_default() += amount;
     }
     totals
 }
@@ -256,29 +256,29 @@ fn market_offers(settlement: &Settlement) -> Vec<OfferSpec> {
     let mut offers: Vec<_> = settlement
         .market_offers()
         .iter()
-        .map(|(&resource, offer)| match offer {
+        .map(|(resource, offer)| match offer {
             TradeOffer::Sell(sell) => OfferSpec {
-                resource,
+                resource: resource.clone(),
                 side: OfferSide::Sell,
                 units: sell.get_amount_to_sell(),
                 price_per_unit: sell.get_minimal_price_per_unit(),
             },
             TradeOffer::Buy(buy) => OfferSpec {
-                resource,
+                resource: resource.clone(),
                 side: OfferSide::Buy,
                 units: buy.get_remaining_amount_to_buy(),
                 price_per_unit: buy.get_maximum_price_per_unit(),
             },
         })
         .collect();
-    offers.sort_by_key(|offer| offer.resource);
+    offers.sort_by(|a, b| a.resource.cmp(&b.resource));
     offers
 }
 
 fn last_turn_observation(report: &TurnReport) -> LastTurnObservation {
     let mut lost = std::collections::BTreeMap::new();
     for loss in &report.inventory.losses {
-        *lost.entry(loss.resource).or_default() += loss.amount;
+        *lost.entry(loss.resource.clone()).or_default() += loss.amount;
     }
     let ids = |completed: bool| {
         report

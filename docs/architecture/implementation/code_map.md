@@ -208,16 +208,16 @@ Private `BuildingManager` owns instances and the optional productivity calculato
 
 ### [core/src/domain/settlement/model/economy/inventory.rs](../../../core/src/domain/settlement/model/economy/inventory.rs)
 
-Private `SettlementInventoryManager` owns main/pending inventories and storage order.
+Private `SettlementInventoryManager` owns main/pending inventories. Each inventory owns its storage order.
 
 | Method | Purpose |
 | --- | --- |
 | `new` | Create both inventories with matching capacity and default material order. |
-| `set_storage_order`, `storage_order` | Validate/write or read the admission order. |
+| `set_storage_order`, `storage_order` | Coordinate both inventory orders or read the warehouse order. |
 | `refresh_labor_capacity` | Reset available labour to population for this turn. |
 | `process_production_results` | Admit returned inputs and new products, recording overflow by stage. |
 | `commit_pending_production` | Drain the buffer into the warehouse and report transfer losses. |
-| `add_in_order` | Insert a batch according to the settlement's material priority. |
+| `report_rejections` | Attach the turn-report loss stage to inventory rejections. |
 
 ### [core/src/domain/settlement/model/economy/population.rs](../../../core/src/domain/settlement/model/economy/population.rs)
 
@@ -297,16 +297,20 @@ in transit remain separate; see [trading](../systems/trading.md).
 
 ### [core/src/domain/economy/inventory.rs](../../../core/src/domain/economy/inventory.rs)
 
-Contains capacity-aware `ResourceInventory`, `InventoryAddResult` and
+Contains capacity-aware `ResourceInventory`, `InventoryAddResult`, `InventoryRejection` and
 `CapacityError`. The types are also re-exported from `simulation_core::economy`.
 
 | Method on `ResourceInventory` | Purpose |
 | --- | --- |
 | `new` | Create empty stock with a material capacity limit. |
+| `with_resource_catalog` | Create empty stock with a catalog-specific storage order. |
+| `storage_order`, `set_storage_order`, `validate_storage_order` | Read, replace or validate the inventory's own admission order. |
+| `knows_material` | Check membership in the inventory's catalog. |
 | `resources`, `amount` | Read all counters or one resource amount. |
 | `capacity`, `set_capacity` | Read/change capacity, rejecting a limit below current stock. |
 | `total_amount` | Sum stored materials in `u64`, excluding labour. |
 | `add` | Add what fits and report accepted/rejected units. |
+| `add_batch` | Apply inventory priorities to a batch and report rejected quantities in `u64`. |
 | `consume` | Remove exactly the requested quantity if available. |
 | `consume_available` | Remove and return the entire counter for one resource. |
 | `reset_labour` | Internally reset labour without warehouse capacity constraints. |
@@ -314,8 +318,14 @@ Contains capacity-aware `ResourceInventory`, `InventoryAddResult` and
 
 ### [core/src/domain/economy/resources.rs](../../../core/src/domain/economy/resources.rs)
 
-Contains `ResourceType` and `ResourceType::MATERIALS`, the complete material
-catalogue used to validate storage orders. No explicit methods.
+Contains `ResourceId`, a stable identifier for a material, and `ResourceType`,
+which represents a material or labour capacity in the allocation engine.
+
+### [core/src/domain/economy/resource_catalog.rs](../../../core/src/domain/economy/resource_catalog.rs)
+
+`ResourceCatalog::load` and `from_toml` validate material definitions and aliases.
+`resolve` maps content identifiers to material keys. `materials` provides the
+default storage order for the active catalog.
 
 ### [core/src/domain/economy/allocation.rs](../../../core/src/domain/economy/allocation.rs)
 

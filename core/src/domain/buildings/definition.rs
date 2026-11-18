@@ -34,7 +34,7 @@ pub struct BuildingDefinition {
     required_deposit: Option<ResourceType>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DefinitionError {
     InputOverflow(ResourceType),
     OutputOverflow(ResourceType),
@@ -90,7 +90,7 @@ impl BuildingDefinition {
     }
 
     pub fn requiring_deposit(mut self, resource: ResourceType) -> Result<Self, DefinitionError> {
-        if !ResourceType::MATERIALS.contains(&resource) {
+        if resource == ResourceType::Labour {
             return Err(DefinitionError::InvalidDepositResource(resource));
         }
         self.required_deposit = Some(resource);
@@ -98,15 +98,19 @@ impl BuildingDefinition {
     }
 
     pub fn required_deposit(&self) -> Option<ResourceType> {
-        self.required_deposit
+        self.required_deposit.clone()
+    }
+
+    pub(crate) fn deposit_resource(&self) -> Option<&ResourceType> {
+        self.required_deposit.as_ref()
     }
 
     fn validate(&self) -> Result<(), DefinitionError> {
         if self.max_workers > Self::MAX_WORKERS {
             return Err(DefinitionError::TooManyWorkers);
         }
-        let mut inputs = HashMap::<ResourceType, u32>::new();
-        let mut outputs = HashMap::<ResourceType, u32>::new();
+        let mut inputs = HashMap::<&ResourceType, u32>::new();
+        let mut outputs = HashMap::<&ResourceType, u32>::new();
         for behavior in &self.behaviors {
             match behavior {
                 BuildingBehavior::Production {
@@ -117,15 +121,17 @@ impl BuildingDefinition {
                         (recipe_inputs, &mut inputs, true),
                         (recipe_outputs, &mut outputs, false),
                     ] {
-                        for &(resource, amount) in entries {
-                            if resource == ResourceType::Labour {
+                        for (resource, amount) in entries {
+                            if *resource == ResourceType::Labour {
                                 return Err(DefinitionError::LabourInRecipe);
                             }
                             let total = totals.entry(resource).or_default();
-                            *total = total.checked_add(amount).ok_or(if input {
-                                DefinitionError::InputOverflow(resource)
-                            } else {
-                                DefinitionError::OutputOverflow(resource)
+                            *total = total.checked_add(*amount).ok_or_else(|| {
+                                if input {
+                                    DefinitionError::InputOverflow(resource.clone())
+                                } else {
+                                    DefinitionError::OutputOverflow(resource.clone())
+                                }
                             })?;
                         }
                     }

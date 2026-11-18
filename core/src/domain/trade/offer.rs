@@ -154,8 +154,9 @@ impl BuyTradeOffer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::economy::{ResourceCatalog, ResourceType};
+    use crate::domain::economy::ResourceCatalog;
     use crate::domain::trade::book::TradeBook;
+    use crate::test_support::material;
     use std::collections::HashMap;
 
     #[test]
@@ -203,17 +204,17 @@ mod tests {
 
         assert_eq!(
             seller.calculate_demand(),
-            (HashMap::from([(ResourceType::Coal, 3)]), 0)
+            (HashMap::from([(material("coal"), 3)]), 0)
         );
         assert_eq!(buyer.calculate_demand(), (HashMap::new(), 10));
         buyer.trade(&mut seller);
         assert_eq!(
             buyer.return_resources(),
-            (HashMap::from([(ResourceType::Coal, 2)]), 7)
+            (HashMap::from([(material("coal"), 2)]), 7)
         );
         assert_eq!(
             seller.return_resources(),
-            (HashMap::from([(ResourceType::Coal, 1)]), 8)
+            (HashMap::from([(material("coal"), 1)]), 8)
         );
     }
 }

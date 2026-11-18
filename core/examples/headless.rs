@@ -8,7 +8,6 @@ use simulation_core::buildings::{
     Building,
     definition::{BuildingBehavior, BuildingDefinition},
 };
-use simulation_core::economy::ResourceType::Grain;
 use simulation_core::ids::BuildingId;
 use simulation_core::settlement::{NeedRegistry, NeedTier, Settlement, projects::ProjectCost};
 use simulation_core::simulation::Simulation;
@@ -32,12 +31,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Map::new(1, 1, vec![Area::new(0.5, 0.5)], vec![0]),
         vec![Province::new(0)],
     );
+    let grain = world
+        .resource_catalog()
+        .resolve("grain")
+        .expect("grain in example catalog");
     let needs = Arc::new(NeedRegistry::new(vec![NeedTier {
         min_population: 1,
-        needs_per_capita: HashMap::from([(Grain, 1)]),
+        needs_per_capita: HashMap::from([(grain.clone(), 1)]),
     }]));
     let mut settlement = Settlement::new(SettlementId(1), 100, 1, needs);
-    settlement.deposit(Grain, 1);
+    settlement.deposit(grain.clone(), 1);
     world
         .add_settlement_at(0, Position { x: 0, y: 0 }, settlement)
         .expect("valid example settlement");
@@ -49,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             1,
             vec![BuildingBehavior::Production {
                 inputs: vec![],
-                outputs: vec![(Grain, 2)],
+                outputs: vec![(grain.clone(), 2)],
             }],
             ProjectCost::default(),
         )
@@ -81,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .settlement(SettlementId(1))
             .expect("registered settlement")
             .inventory()
-            .amount(Grain)
+            .amount(grain)
     );
     Ok(())
 }

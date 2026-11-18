@@ -145,6 +145,7 @@ mod tests {
     use super::*;
     use crate::domain::buildings::definition::BuildingBehavior;
     use crate::domain::economy::ResourceType;
+    use crate::test_support::material;
     use std::collections::HashMap;
 
     #[test]
@@ -213,15 +214,15 @@ mod tests {
             "repeated",
             1,
             vec![BuildingBehavior::Production {
-                inputs: vec![(ResourceType::Wood, 1), (ResourceType::Wood, 1)],
-                outputs: vec![(ResourceType::Stone, 2)],
+                inputs: vec![(material("wood"), 1), (material("wood"), 1)],
+                outputs: vec![(material("stone"), 2)],
             }],
         );
         let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
-        let grants = HashMap::from([(ResourceType::Labour, 1), (ResourceType::Wood, 1)]);
+        let grants = HashMap::from([(ResourceType::Labour, 1), (material("wood"), 1)]);
         let result = building.resolve_allocation(Some(&grants));
-        assert_eq!(result.produced[&ResourceType::Stone], 1);
-        assert_eq!(result.unused[&ResourceType::Wood], 0);
+        assert_eq!(result.produced[&material("stone")], 1);
+        assert_eq!(result.unused[&material("wood")], 0);
     }
 
     #[test]
@@ -230,20 +231,20 @@ mod tests {
             "fractional",
             3,
             vec![BuildingBehavior::Production {
-                inputs: vec![(ResourceType::Wood, 7), (ResourceType::Grain, 3)],
-                outputs: vec![(ResourceType::Stone, 9)],
+                inputs: vec![(material("wood"), 7), (material("grain"), 3)],
+                outputs: vec![(material("stone"), 9)],
             }],
         );
         let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
         let grants = HashMap::from([
             (ResourceType::Labour, 1),
-            (ResourceType::Wood, 3),
-            (ResourceType::Grain, 1),
+            (material("wood"), 3),
+            (material("grain"), 1),
         ]);
         let result = building.resolve_allocation(Some(&grants));
-        assert_eq!(result.produced[&ResourceType::Stone], 3);
-        assert_eq!(result.unused[&ResourceType::Wood], 0);
-        assert_eq!(result.unused[&ResourceType::Grain], 0);
+        assert_eq!(result.produced[&material("stone")], 3);
+        assert_eq!(result.unused[&material("wood")], 0);
+        assert_eq!(result.unused[&material("grain")], 0);
     }
 
     #[test]
@@ -253,15 +254,15 @@ mod tests {
             "large",
             1,
             vec![BuildingBehavior::Production {
-                inputs: vec![(ResourceType::Wood, amount)],
-                outputs: vec![(ResourceType::Stone, amount)],
+                inputs: vec![(material("wood"), amount)],
+                outputs: vec![(material("stone"), amount)],
             }],
         );
         let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
-        let grants = HashMap::from([(ResourceType::Labour, 1), (ResourceType::Wood, amount)]);
+        let grants = HashMap::from([(ResourceType::Labour, 1), (material("wood"), amount)]);
         let result = building.resolve_allocation(Some(&grants));
-        assert_eq!(result.produced[&ResourceType::Stone], amount);
-        assert_eq!(result.unused[&ResourceType::Wood], 0);
+        assert_eq!(result.produced[&material("stone")], amount);
+        assert_eq!(result.unused[&material("wood")], 0);
     }
 
     fn create_test_def(
@@ -318,14 +319,14 @@ mod tests {
     fn test_resolve_allocation_no_workers_no_production() {
         let behavior = BuildingBehavior::Production {
             inputs: vec![],
-            outputs: vec![(ResourceType::Wood, 10)],
+            outputs: vec![(material("wood"), 10)],
         };
         let def = create_test_def("free_wood", 5, vec![behavior]);
         let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
 
         // We do not grant Labour, only raw materials
         let mut granted = HashMap::new();
-        granted.insert(ResourceType::Wood, 50);
+        granted.insert(material("wood"), 50);
 
         let result = building.resolve_allocation(Some(&granted));
 
@@ -334,7 +335,7 @@ mod tests {
             "Building without workers should not produce anything."
         );
         assert_eq!(
-            *result.unused.get(&ResourceType::Wood).unwrap_or(&0),
+            *result.unused.get(&material("wood")).unwrap_or(&0),
             50,
             "All granted resources should be returned as unused."
         );
@@ -345,7 +346,7 @@ mod tests {
     fn test_resolve_allocation_inactive_building() {
         let behavior = BuildingBehavior::Production {
             inputs: vec![],
-            outputs: vec![(ResourceType::Wood, 10)],
+            outputs: vec![(material("wood"), 10)],
         };
         let def = create_test_def("free_wood", 5, vec![behavior]);
         let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
@@ -353,7 +354,7 @@ mod tests {
 
         let mut granted = HashMap::new();
         granted.insert(ResourceType::Labour, 5); // Attempt to assign workers
-        granted.insert(ResourceType::Wood, 20);
+        granted.insert(material("wood"), 20);
 
         let result = building.resolve_allocation(Some(&granted));
 
@@ -362,7 +363,7 @@ mod tests {
             "Inactive building should not produce anything."
         );
         assert_eq!(
-            *result.unused.get(&ResourceType::Wood).unwrap_or(&0),
+            *result.unused.get(&material("wood")).unwrap_or(&0),
             20,
             "Inactive building should return all granted material resources."
         );
@@ -379,8 +380,8 @@ mod tests {
     #[test]
     fn test_resolve_allocation_full_efficiency() {
         let behavior = BuildingBehavior::Production {
-            inputs: vec![(ResourceType::Wood, 10)],
-            outputs: vec![(ResourceType::Stone, 20)],
+            inputs: vec![(material("wood"), 10)],
+            outputs: vec![(material("stone"), 20)],
         };
         let def = create_test_def("stone_maker", 10, vec![behavior]);
         let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
@@ -388,14 +389,14 @@ mod tests {
         // AllocationEngine provides full labor and resources
         let mut granted = HashMap::new();
         granted.insert(ResourceType::Labour, 10);
-        granted.insert(ResourceType::Wood, 10);
+        granted.insert(material("wood"), 10);
 
         let result = building.resolve_allocation(Some(&granted));
 
         assert_eq!(building.current_workers, 10);
-        assert_eq!(*result.produced.get(&ResourceType::Stone).unwrap_or(&0), 20);
+        assert_eq!(*result.produced.get(&material("stone")).unwrap_or(&0), 20);
         assert_eq!(
-            *result.unused.get(&ResourceType::Wood).unwrap_or(&0),
+            *result.unused.get(&material("wood")).unwrap_or(&0),
             0,
             "All wood should be consumed."
         );
@@ -404,8 +405,8 @@ mod tests {
     #[test]
     fn test_resolve_allocation_partial_efficiency() {
         let behavior = BuildingBehavior::Production {
-            inputs: vec![(ResourceType::Wood, 20)],
-            outputs: vec![(ResourceType::Stone, 40)],
+            inputs: vec![(material("wood"), 20)],
+            outputs: vec![(material("stone"), 40)],
         };
         let def = create_test_def("stone_maker", 10, vec![behavior]);
         let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
@@ -413,18 +414,18 @@ mod tests {
         // Grant only 50% of required workforce (5/10) and more wood than needed for 50% efficiency
         let mut granted = HashMap::new();
         granted.insert(ResourceType::Labour, 5);
-        granted.insert(ResourceType::Wood, 15);
+        granted.insert(material("wood"), 15);
 
         let result = building.resolve_allocation(Some(&granted));
 
         assert_eq!(building.current_workers, 5);
         assert_eq!(
-            *result.produced.get(&ResourceType::Stone).unwrap_or(&0),
+            *result.produced.get(&material("stone")).unwrap_or(&0),
             20,
             "Should only produce 50% of max capacity."
         );
         assert_eq!(
-            *result.unused.get(&ResourceType::Wood).unwrap_or(&0),
+            *result.unused.get(&material("wood")).unwrap_or(&0),
             5,
             "Should return 5 leftover wood out of the 15 granted."
         );
@@ -433,8 +434,8 @@ mod tests {
     #[test]
     fn test_resolve_allocation_fractional_production_with_bottleneck() {
         let behavior = BuildingBehavior::Production {
-            inputs: vec![(ResourceType::Wood, 10), (ResourceType::Grain, 5)],
-            outputs: vec![(ResourceType::Stone, 20)],
+            inputs: vec![(material("wood"), 10), (material("grain"), 5)],
+            outputs: vec![(material("stone"), 20)],
         };
 
         let def = Arc::new(
@@ -456,20 +457,20 @@ mod tests {
         // Grain = 40% (2 granted / 5 needed) -> Bottleneck is 0.4
         let mut granted = HashMap::new();
         granted.insert(ResourceType::Labour, 10);
-        granted.insert(ResourceType::Wood, 10);
-        granted.insert(ResourceType::Grain, 2);
+        granted.insert(material("wood"), 10);
+        granted.insert(material("grain"), 2);
 
         let result = building.resolve_allocation(Some(&granted));
 
         assert_eq!(building.current_workers, 10);
 
         // 1. Produced Stone should be 40% of 20 = 8.0
-        assert_eq!(*result.produced.get(&ResourceType::Stone).unwrap_or(&0), 8);
+        assert_eq!(*result.produced.get(&material("stone")).unwrap_or(&0), 8);
 
         // 2. Consumed Grain is 2.0 (100% of granted). Unused = 0.0.
-        assert_eq!(*result.unused.get(&ResourceType::Grain).unwrap_or(&0), 0);
+        assert_eq!(*result.unused.get(&material("grain")).unwrap_or(&0), 0);
 
         // 3. Consumed Wood is 4.0 (40% of needed). Unused = 10.0 - 4.0 = 6.0.
-        assert_eq!(*result.unused.get(&ResourceType::Wood).unwrap_or(&0), 6);
+        assert_eq!(*result.unused.get(&material("wood")).unwrap_or(&0), 6);
     }
 }

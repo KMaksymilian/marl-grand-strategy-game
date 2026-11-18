@@ -1,9 +1,11 @@
 //! Settlement observations: local content, own-province territory and
 //! information boundaries between settlements.
+mod common;
+use common::material;
 use simulation_core::buildings::Building;
 use simulation_core::buildings::catalog::BuildingCatalog;
 use simulation_core::buildings::definition::{BuildingBehavior, BuildingDefinition};
-use simulation_core::economy::ResourceType::{self, Grain, Stone, Wood};
+use simulation_core::economy::ResourceCatalog;
 use simulation_core::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
 use simulation_core::settlement::decision::{OfferSide, OfferSpec};
 use simulation_core::settlement::observation::{
@@ -37,10 +39,10 @@ fn farm() -> BuildingDefinition {
         2,
         vec![BuildingBehavior::Production {
             inputs: vec![],
-            outputs: vec![(Grain, 2)],
+            outputs: vec![(material("grain"), 2)],
         }],
         ProjectCost {
-            needed_resources: HashMap::from([(Wood, 2)]),
+            needed_resources: HashMap::from([(material("wood"), 2)]),
             turn_cost: 2,
         },
     )
@@ -64,22 +66,25 @@ fn world(secret: u32) -> World {
     world.set_building_catalog(catalog);
     let needs = Arc::new(NeedRegistry::new(vec![NeedTier {
         min_population: 1,
-        needs_per_capita: HashMap::from([(Grain, 1)]),
+        needs_per_capita: HashMap::from([(material("grain"), 1)]),
     }]));
 
     let mut me = Settlement::new(ME, 100, 4, needs);
-    me.deposit(Wood, 10);
+    me.deposit(material("wood"), 10);
     me.deposit_gold(15);
-    me.publish_trade_offers(HashMap::from([(Wood, TradeOffer::sell(3, 2))]))
+    me.publish_trade_offers(HashMap::from([(material("wood"), TradeOffer::sell(3, 2))]))
         .unwrap();
     world.add_settlement(10, me).unwrap();
 
     let mut neighbour = Settlement::new(NEIGHBOUR, 100, 3, Arc::default());
-    neighbour.deposit(Stone, secret);
+    neighbour.deposit(material("stone"), secret);
     neighbour.deposit_gold(secret * 10);
     if secret > 0 {
         neighbour
-            .publish_trade_offers(HashMap::from([(Stone, TradeOffer::sell(secret, 1))]))
+            .publish_trade_offers(HashMap::from([(
+                material("stone"),
+                TradeOffer::sell(secret, 1),
+            )]))
             .unwrap();
     }
     world.add_settlement_at(20, at(3, 0), neighbour).unwrap();
@@ -143,11 +148,20 @@ fn observation_describes_the_local_economy() {
     assert_eq!(observation.population, 4);
     assert_eq!(observation.gold, 15);
     assert_eq!(observation.inventory.capacity, 100);
-    assert_eq!(observation.inventory.stored, BTreeMap::from([(Wood, 10)]));
+    assert_eq!(
+        observation.inventory.stored,
+        BTreeMap::from([(material("wood"), 10)])
+    );
     assert_eq!(observation.inventory.stored_total, 10);
     assert!(observation.inventory.pending.is_empty());
-    assert_eq!(observation.inventory.storage_order, ResourceType::MATERIALS);
-    assert_eq!(observation.needs_per_turn, BTreeMap::from([(Grain, 4)]));
+    assert_eq!(
+        observation.inventory.storage_order,
+        ResourceCatalog::standard().materials()
+    );
+    assert_eq!(
+        observation.needs_per_turn,
+        BTreeMap::from([(material("grain"), 4)])
+    );
     assert_eq!(observation.workforce.available, 4);
     assert_eq!(observation.workforce.requested, 0);
 
@@ -171,14 +185,17 @@ fn observation_describes_the_local_economy() {
             position: at(1, 0)
         }
     );
-    assert_eq!(project.remaining_resources, BTreeMap::from([(Wood, 2)]));
+    assert_eq!(
+        project.remaining_resources,
+        BTreeMap::from([(material("wood"), 2)])
+    );
     assert_eq!(project.remaining_turns, 2);
     assert_eq!(observation.next_project_id, Some(ProjectId(2)));
 
     assert_eq!(
         observation.trade.market_offers,
         vec![OfferSpec {
-            resource: Wood,
+            resource: material("wood"),
             side: OfferSide::Sell,
             units: 3,
             price_per_unit: 2
@@ -201,11 +218,11 @@ fn observation_describes_the_local_economy() {
             name: "Farm".into(),
             tier: 1,
             max_workers: 2,
-            construction_resources: BTreeMap::from([(Wood, 2)]),
+            construction_resources: BTreeMap::from([(material("wood"), 2)]),
             construction_turns: 2,
             recipes: vec![RecipeObservation {
                 inputs: BTreeMap::new(),
-                outputs: BTreeMap::from([(Grain, 2)])
+                outputs: BTreeMap::from([(material("grain"), 2)])
             }]
         }]
     );
@@ -378,16 +395,19 @@ fn last_turn_summary_follows_each_step() {
     assert_eq!(observation.buildings[0].current_workers, 2);
     let last = observation.last_turn.unwrap();
     // Grain is produced after consumption, so this turn's needs were not met.
-    assert_eq!(last.missing_needs, vec![Grain]);
+    assert_eq!(last.missing_needs, vec![material("grain")]);
     assert_eq!(last.satisfaction_percent, 0.0);
-    assert_eq!(last.produced, BTreeMap::from([(Grain, 2)]));
-    assert_eq!(last.project_consumed, BTreeMap::from([(Wood, 2)]));
-    assert_eq!(last.trade_reserved, BTreeMap::from([(Wood, 3)]));
-    assert_eq!(last.trade_received, BTreeMap::from([(Wood, 3)]));
+    assert_eq!(last.produced, BTreeMap::from([(material("grain"), 2)]));
+    assert_eq!(
+        last.project_consumed,
+        BTreeMap::from([(material("wood"), 2)])
+    );
+    assert_eq!(last.trade_reserved, BTreeMap::from([(material("wood"), 3)]));
+    assert_eq!(last.trade_received, BTreeMap::from([(material("wood"), 3)]));
     assert!(last.completed_projects.is_empty());
     assert_eq!(
         observation.inventory.stored,
-        BTreeMap::from([(Grain, 2), (Wood, 8)])
+        BTreeMap::from([(material("grain"), 2), (material("wood"), 8)])
     );
 
     simulation.step().unwrap();
@@ -412,7 +432,7 @@ fn own_caravans_are_counted_but_not_their_trading_partners_books() {
         vec![SettlementAction::OrderCaravan {
             receiver_id: NEIGHBOUR,
             offers: vec![OfferSpec {
-                resource: Wood,
+                resource: material("wood"),
                 side: OfferSide::Sell,
                 units: 2,
                 price_per_unit: 1,

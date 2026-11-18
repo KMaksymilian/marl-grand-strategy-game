@@ -1,3 +1,4 @@
+use crate::test_support::material;
 use simulation_core::ids::SettlementId;
 use simulation_core::world::settlement_environment::{
     MapConstructionSpace, MapSettlementEnvironment,
@@ -6,7 +7,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use simulation_core::buildings::{Building, definition::BuildingDefinition};
-use simulation_core::economy::ResourceType;
 use simulation_core::ids::{BuildingId, ProjectId};
 use simulation_core::settlement::projects::{ProjectCompletion, ProjectCost, ProjectError};
 use simulation_core::settlement::{BuildingCommandError, Settlement};
@@ -38,7 +38,7 @@ fn world() -> World {
     );
     for (province, id, capital) in [(10, 1, NEXT_SITE), (20, 2, Position { x: 2, y: 0 })] {
         let mut settlement = Settlement::new(SettlementId(id), 100, 0, Arc::default());
-        settlement.deposit(ResourceType::Wood, 5);
+        settlement.deposit(material("wood"), 5);
         world
             .add_settlement_at(province, capital, settlement)
             .unwrap();
@@ -71,7 +71,7 @@ fn construction_reserves_a_tile_until_materials_and_time_are_paid() {
             SITE,
             definition(),
             ProjectCost {
-                needed_resources: HashMap::from([(ResourceType::Wood, 2)]),
+                needed_resources: HashMap::from([(material("wood"), 2)]),
                 turn_cost: 2,
             },
         )
@@ -85,7 +85,7 @@ fn construction_reserves_a_tile_until_materials_and_time_are_paid() {
             .settlement(SettlementId(1))
             .unwrap()
             .inventory()
-            .amount(ResourceType::Wood),
+            .amount(material("wood")),
         5
     );
 
@@ -99,7 +99,7 @@ fn construction_reserves_a_tile_until_materials_and_time_are_paid() {
             .settlement(SettlementId(1))
             .unwrap()
             .inventory()
-            .amount(ResourceType::Wood),
+            .amount(material("wood")),
         3
     );
     assert_eq!(
@@ -182,7 +182,7 @@ fn invalid_sites_do_not_create_projects_or_spend_materials() {
     );
     let settlement = world.settlement(SettlementId(1)).unwrap();
     assert!(settlement.active_projects().is_empty());
-    assert_eq!(settlement.inventory().amount(ResourceType::Wood), 5);
+    assert_eq!(settlement.inventory().amount(material("wood")), 5);
     assert_eq!(
         world.tile_at(SITE).unwrap().occupancy(),
         TileOccupancy::Empty
@@ -463,7 +463,7 @@ fn flooded_construction_is_rejected_before_spending_and_releases_its_reservation
             SITE,
             definition(),
             ProjectCost {
-                needed_resources: HashMap::from([(ResourceType::Wood, 2)]),
+                needed_resources: HashMap::from([(material("wood"), 2)]),
                 turn_cost: 1,
             },
         )
@@ -483,7 +483,7 @@ fn flooded_construction_is_rejected_before_spending_and_releases_its_reservation
             .settlement(SettlementId(1))
             .unwrap()
             .inventory()
-            .amount(ResourceType::Wood),
+            .amount(material("wood")),
         5
     );
     assert!(
@@ -510,7 +510,7 @@ fn changed_province_membership_stops_the_turn_before_spending() {
             SITE,
             definition(),
             ProjectCost {
-                needed_resources: HashMap::from([(ResourceType::Wood, 2)]),
+                needed_resources: HashMap::from([(material("wood"), 2)]),
                 turn_cost: 1,
             },
         )
@@ -527,7 +527,7 @@ fn changed_province_membership_stops_the_turn_before_spending() {
             .settlement(SettlementId(1))
             .unwrap()
             .inventory()
-            .amount(ResourceType::Wood),
+            .amount(material("wood")),
         5
     );
     assert_eq!(
@@ -551,14 +551,14 @@ fn invalid_project_cannot_release_another_settlements_reservation() {
     let map = Map::new(1, 1, vec![Area::new(0.5, 0.5)], vec![10]);
     let mut territory = TerritoryManager::default();
     let mut settlement = Settlement::new(SettlementId(1), 100, 0, Arc::default());
-    settlement.deposit(ResourceType::Wood, 5);
+    settlement.deposit(material("wood"), 5);
     settlement
         .queue_construction(
             ProjectId(7),
             SITE,
             definition(),
             ProjectCost {
-                needed_resources: HashMap::from([(ResourceType::Wood, 2)]),
+                needed_resources: HashMap::from([(material("wood"), 2)]),
                 turn_cost: 1,
             },
             &mut MapConstructionSpace::new(&map, &mut territory),
@@ -590,7 +590,7 @@ fn invalid_project_cannot_release_another_settlements_reservation() {
         ))
     ));
     assert!(settlement.active_projects().is_empty());
-    assert_eq!(settlement.inventory().amount(ResourceType::Wood), 5);
+    assert_eq!(settlement.inventory().amount(material("wood")), 5);
     assert_eq!(
         territory.tile_at(SITE).occupancy(),
         TileOccupancy::Construction(other)

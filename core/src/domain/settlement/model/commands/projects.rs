@@ -48,6 +48,7 @@ impl Settlement {
         cost: ProjectCost,
         space: &mut impl ConstructionSpace,
     ) -> Result<(), ProjectError> {
+        self.validate_project_materials(&definition, &cost)?;
         let project = Project::new(
             project_id,
             ProjectResult::ConstructBuilding {
@@ -89,6 +90,7 @@ impl Settlement {
         new_definition: Arc<BuildingDefinition>,
         cost: ProjectCost,
     ) -> Result<(), ProjectError> {
+        self.validate_project_materials(&new_definition, &cost)?;
         let result = ProjectResult::UpgradeBuilding {
             target_instance_id,
             new_definition,
@@ -99,5 +101,26 @@ impl Settlement {
         self.project_manager
             .add_project(project)
             .map_err(ProjectError::DuplicateProject)
+    }
+
+    fn validate_project_materials(
+        &self,
+        definition: &BuildingDefinition,
+        cost: &ProjectCost,
+    ) -> Result<(), ProjectError> {
+        let unknown = self
+            .first_unknown_building_material(definition)
+            .or_else(|| {
+                cost.needed_resources
+                    .iter()
+                    .filter(|(resource, amount)| **amount > 0 && !self.knows_material(resource))
+                    .map(|(resource, _)| resource)
+                    .min()
+                    .cloned()
+            });
+        match unknown {
+            Some(resource) => Err(ProjectError::UnknownMaterial(resource)),
+            None => Ok(()),
+        }
     }
 }

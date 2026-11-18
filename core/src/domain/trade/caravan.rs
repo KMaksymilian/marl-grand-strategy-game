@@ -163,7 +163,7 @@ impl Caravan {
     pub(crate) fn finish_trading(&mut self, receiver_side: Vec<TradeExecution>) {
         if self.caravan_state == CaravanState::Trading {
             self.trades
-                .extend(receiver_side.into_iter().map(TradeExecution::mirrored));
+                .extend(receiver_side.iter().map(TradeExecution::mirrored));
             self.caravan_state = CaravanState::TravelBack;
         }
     }

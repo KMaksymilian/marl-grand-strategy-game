@@ -25,8 +25,9 @@ use projects::ProjectManager;
 use std::sync::Arc;
 use trading::TradeManager;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildingCommandError {
+    UnknownMaterial(ResourceType),
     DuplicateBuilding(BuildingId),
     Territory(crate::domain::spatial::TerritoryError),
     MissingBuilding(BuildingId),
@@ -110,6 +111,15 @@ impl Settlement {
     /// Materials the population requests every turn at its current size.
     pub fn needs_per_turn(&self) -> std::collections::HashMap<ResourceType, u32> {
         self.population_manager.calculate_demand()
+    }
+
+    pub(crate) fn first_unknown_population_material(&self) -> Option<ResourceType> {
+        self.population_manager
+            .registry
+            .materials()
+            .filter(|resource| !self.knows_material(resource))
+            .min()
+            .cloned()
     }
 
     pub fn inventory(&self) -> &crate::domain::economy::ResourceInventory {

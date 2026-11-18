@@ -1,3 +1,4 @@
+use crate::test_support::material;
 use simulation_core::ids::SettlementId;
 use simulation_core::world::map as core_map;
 use simulation_core::world::pathfinding::path_finder as test_path;
@@ -24,7 +25,6 @@ use simulation_core::buildings::definition::{BuildingBehavior, BuildingDefinitio
 use simulation_core::buildings::productivity::{
     BuildingProductivityCalculator, TravelCostEfficiencyPolicy,
 };
-use simulation_core::economy::ResourceType;
 use simulation_core::ids::{BuildingId, ProjectId};
 use simulation_core::settlement::Settlement;
 use simulation_core::settlement::projects::{ProjectCompletion, ProjectCost};
@@ -39,8 +39,8 @@ fn definition(workers: u32, input: u32, output: u32) -> Arc<BuildingDefinition> 
             1,
             workers,
             vec![BuildingBehavior::Production {
-                inputs: vec![(ResourceType::Wood, input)],
-                outputs: vec![(ResourceType::Stone, output)],
+                inputs: vec![(material("wood"), input)],
+                outputs: vec![(material("stone"), output)],
             }],
             ProjectCost::default(),
         )
@@ -65,7 +65,7 @@ fn settlement_at(position: Position, territory: &mut TerritoryManager) -> Settle
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), territory),
         )
         .unwrap();
-    settlement.deposit(ResourceType::Wood, 100);
+    settlement.deposit(material("wood"), 100);
     settlement
 }
 
@@ -82,16 +82,13 @@ fn distance_reduces_output_without_discounting_materials_or_workers() {
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
-        assert_eq!(settlement.inventory().amount(ResourceType::Wood), 90);
+        assert_eq!(settlement.inventory().amount(material("wood")), 90);
         assert_eq!(
-            settlement.inventory().amount(ResourceType::Stone),
+            settlement.inventory().amount(material("stone")),
             expected_output
         );
         assert_eq!(settlement.buildings().next().unwrap().current_workers(), 10);
-        assert_eq!(
-            report.inventory.production_consumed[&ResourceType::Wood],
-            10
-        );
+        assert_eq!(report.inventory.production_consumed[&material("wood")], 10);
         assert!(report.inventory.is_balanced());
     }
 }
@@ -124,12 +121,12 @@ fn configured_calculator_applies_to_buildings_added_later() {
             .location_productivity(),
         0.5
     );
-    settlement.deposit(ResourceType::Wood, 10);
+    settlement.deposit(material("wood"), 10);
     let report = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
         &mut [],
     );
-    assert_eq!(settlement.inventory().amount(ResourceType::Stone), 10);
+    assert_eq!(settlement.inventory().amount(material("stone")), 10);
     assert!(report.inventory.is_balanced());
 }
 
@@ -192,7 +189,7 @@ fn moving_capital_changing_policy_and_disabling_calculator_refresh_cached_produc
         &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
         &mut [],
     );
-    assert_eq!(settlement.inventory().amount(ResourceType::Stone), 20);
+    assert_eq!(settlement.inventory().amount(material("stone")), 20);
     assert!(report.inventory.is_balanced());
 }
 
@@ -210,18 +207,18 @@ fn load_and_material_shortage_remain_independent_of_location_productivity() {
         &mut [],
     );
     assert_eq!(settlement.buildings().next().unwrap().current_workers(), 5);
-    assert_eq!(report.inventory.production_consumed[&ResourceType::Wood], 5);
-    assert_eq!(settlement.inventory().amount(ResourceType::Stone), 5);
+    assert_eq!(report.inventory.production_consumed[&material("wood")], 5);
+    assert_eq!(settlement.inventory().amount(material("stone")), 5);
     assert!(report.inventory.is_balanced());
 
-    settlement.withdraw(ResourceType::Wood, 93);
+    settlement.withdraw(material("wood"), 93);
     settlement.set_building_load(BuildingId(7), 1.0).unwrap();
     let report = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
         &mut [],
     );
-    assert_eq!(report.inventory.production_consumed[&ResourceType::Wood], 2);
-    assert_eq!(settlement.inventory().amount(ResourceType::Stone), 7);
+    assert_eq!(report.inventory.production_consumed[&material("wood")], 2);
+    assert_eq!(settlement.inventory().amount(material("stone")), 7);
     assert!(report.inventory.is_balanced());
 }
 
@@ -245,8 +242,8 @@ fn zero_load_and_inactive_buildings_do_not_consume_materials() {
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
             &mut [],
         );
-        assert_eq!(settlement.inventory().amount(ResourceType::Wood), 100);
-        assert_eq!(settlement.inventory().amount(ResourceType::Stone), 0);
+        assert_eq!(settlement.inventory().amount(material("wood")), 100);
+        assert_eq!(settlement.inventory().amount(material("stone")), 0);
         assert_eq!(settlement.buildings().next().unwrap().current_workers(), 0);
         assert!(report.inventory.is_balanced());
     }
@@ -281,7 +278,7 @@ fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
     assert_eq!(building.location_productivity(), 0.5);
     assert_eq!(building.target_load(), 0.0);
     settlement.set_building_load(BuildingId(0), 1.0).unwrap();
-    settlement.deposit(ResourceType::Wood, 20);
+    settlement.deposit(material("wood"), 20);
     settlement
         .queue_upgrade(
             ProjectId(3),
@@ -298,7 +295,7 @@ fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
         report.projects[0].result,
         Ok(ProjectCompletion::BuildingUpgraded(BuildingId(0)))
     );
-    assert_eq!(settlement.inventory().amount(ResourceType::Stone), 10);
+    assert_eq!(settlement.inventory().amount(material("stone")), 10);
     assert!(report.inventory.is_balanced());
     assert_eq!(
         settlement
@@ -312,7 +309,7 @@ fn completed_construction_and_upgrade_keep_the_spatial_penalty() {
         &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
         &mut [],
     );
-    assert_eq!(settlement.inventory().amount(ResourceType::Stone), 30);
+    assert_eq!(settlement.inventory().amount(material("stone")), 30);
     assert!(report.inventory.is_balanced());
 }
 
@@ -332,14 +329,14 @@ fn output_rounds_once_after_combining_staffing_and_distance() {
             &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
         )
         .unwrap();
-    settlement.deposit(ResourceType::Wood, 2);
+    settlement.deposit(material("wood"), 2);
     let report = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&test_map(), &mut test_finder(), &mut territory),
         &mut [],
     );
-    assert_eq!(settlement.inventory().amount(ResourceType::Wood), 1);
-    assert_eq!(settlement.inventory().amount(ResourceType::Stone), 1);
-    assert_eq!(report.inventory.production_consumed[&ResourceType::Wood], 1);
+    assert_eq!(settlement.inventory().amount(material("wood")), 1);
+    assert_eq!(settlement.inventory().amount(material("stone")), 1);
+    assert_eq!(report.inventory.production_consumed[&material("wood")], 1);
     assert!(report.inventory.is_balanced());
 }
 
@@ -375,8 +372,8 @@ fn two_settlements_keep_independent_productivity_configuration() {
             .inventory
             .is_balanced()
     );
-    assert_eq!(first.inventory().amount(ResourceType::Stone), 10);
-    assert_eq!(second.inventory().amount(ResourceType::Stone), 20);
+    assert_eq!(first.inventory().amount(material("stone")), 10);
+    assert_eq!(second.inventory().amount(material("stone")), 20);
 }
 
 #[test]
@@ -405,13 +402,13 @@ fn map_changes_update_output_using_the_current_astar_route_each_turn() {
             &mut MapSettlementEnvironment::new(&map, &mut finder, &mut territory),
         )
         .unwrap();
-    settlement.deposit(ResourceType::Wood, 30);
+    settlement.deposit(material("wood"), 30);
 
     let first = settlement.process_turn_for_test(
         &mut MapSettlementEnvironment::new(&map, &mut finder, &mut territory),
         &mut [],
     );
-    assert_eq!(first.inventory.produced[&ResourceType::Stone], 20);
+    assert_eq!(first.inventory.produced[&material("stone")], 20);
     assert!(first.inventory.is_balanced());
     map.terrain[4].elevation_val = 0.0;
     assert_eq!(
@@ -425,11 +422,8 @@ fn map_changes_update_output_using_the_current_astar_route_each_turn() {
         &mut MapSettlementEnvironment::new(&map, &mut finder, &mut territory),
         &mut [],
     );
-    assert_eq!(detour.inventory.produced[&ResourceType::Stone], 10);
-    assert_eq!(
-        detour.inventory.production_consumed[&ResourceType::Wood],
-        10
-    );
+    assert_eq!(detour.inventory.produced[&material("stone")], 10);
+    assert_eq!(detour.inventory.production_consumed[&material("wood")], 10);
     assert!(detour.inventory.is_balanced());
     for y in 0..3 {
         map.terrain[y * 3 + 1].elevation_val = 0.0;
@@ -446,11 +440,8 @@ fn map_changes_update_output_using_the_current_astar_route_each_turn() {
             .location_productivity(),
         0.0
     );
-    assert_eq!(settlement.inventory().amount(ResourceType::Stone), 30);
-    assert_eq!(
-        blocked.inventory.production_consumed[&ResourceType::Wood],
-        10
-    );
+    assert_eq!(settlement.inventory().amount(material("stone")), 30);
+    assert_eq!(blocked.inventory.production_consumed[&material("wood")], 10);
     assert!(blocked.inventory.is_balanced());
 }
 
@@ -523,11 +514,8 @@ fn changing_toml_thresholds_changes_production_for_the_same_route() {
             &mut MapSettlementEnvironment::new(&map, &mut finder, &mut territory),
             &mut [],
         );
-        assert_eq!(report.inventory.produced[&ResourceType::Stone], output);
-        assert_eq!(
-            report.inventory.production_consumed[&ResourceType::Wood],
-            10
-        );
+        assert_eq!(report.inventory.produced[&material("stone")], output);
+        assert_eq!(report.inventory.production_consumed[&material("wood")], 10);
         assert!(report.inventory.is_balanced());
     }
 }

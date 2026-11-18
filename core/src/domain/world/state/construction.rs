@@ -34,6 +34,7 @@ impl World {
         definition: &BuildingDefinition,
     ) -> Result<(), WorldError> {
         self.validate_construction_site(settlement_id, position)?;
+        self.validate_blueprint_materials(settlement_id, definition)?;
         self.validate_building_deposit(position, definition.required_deposit())
     }
 
@@ -44,7 +45,22 @@ impl World {
         definition: &BuildingDefinition,
     ) -> Result<(), WorldError> {
         self.validate_settlement_position(settlement_id, position)?;
+        self.validate_blueprint_materials(settlement_id, definition)?;
         self.validate_building_deposit(position, definition.required_deposit())
+    }
+
+    fn validate_blueprint_materials(
+        &self,
+        settlement_id: SettlementId,
+        definition: &BuildingDefinition,
+    ) -> Result<(), WorldError> {
+        let settlement = self
+            .settlement(settlement_id)
+            .ok_or(WorldError::MissingSettlement(settlement_id))?;
+        match settlement.first_unknown_building_material(definition) {
+            Some(resource) => Err(WorldError::Project(ProjectError::UnknownMaterial(resource))),
+            None => Ok(()),
+        }
     }
 
     /// Cancellation belongs to the settlement and also works after map edits.

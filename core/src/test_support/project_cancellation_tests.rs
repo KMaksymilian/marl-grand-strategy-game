@@ -1,10 +1,10 @@
+use crate::test_support::material;
 use simulation_core::ids::SettlementId;
 use simulation_core::world::settlement_environment::MapConstructionSpace;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use simulation_core::buildings::{Building, definition::BuildingDefinition};
-use simulation_core::economy::ResourceType::Wood;
 use simulation_core::ids::{BuildingId, ProjectId};
 use simulation_core::settlement::Settlement;
 use simulation_core::settlement::projects::{ProjectCost, ProjectError};
@@ -25,7 +25,7 @@ fn definition(tier: u8) -> Arc<BuildingDefinition> {
 
 fn cost() -> ProjectCost {
     ProjectCost {
-        needed_resources: HashMap::from([(Wood, 3)]),
+        needed_resources: HashMap::from([(material("wood"), 3)]),
         turn_cost: 2,
     }
 }
@@ -37,7 +37,7 @@ fn world() -> World {
     );
     for (province, id, x) in [(10, 1, 2), (20, 2, 1)] {
         let mut settlement = Settlement::new(SettlementId(id), 100, 0, Arc::default());
-        settlement.deposit(Wood, 10);
+        settlement.deposit(material("wood"), 10);
         world
             .add_settlement_at(province, Position { x, y: 0 }, settlement)
             .unwrap();
@@ -68,7 +68,7 @@ fn canceling_new_construction_releases_the_tile_and_allows_id_reuse() {
             .settlement(SettlementId(1))
             .unwrap()
             .inventory()
-            .amount(Wood),
+            .amount(material("wood")),
         10
     );
     world
@@ -98,7 +98,7 @@ fn cancellation_after_partial_payment_preserves_spent_materials_and_stops_work()
             .settlement(SettlementId(1))
             .unwrap()
             .inventory()
-            .amount(Wood),
+            .amount(material("wood")),
         7
     );
     world.cancel_project(SettlementId(1), ProjectId(7)).unwrap();
@@ -110,7 +110,7 @@ fn cancellation_after_partial_payment_preserves_spent_materials_and_stops_work()
             .settlement(SettlementId(1))
             .unwrap()
             .inventory()
-            .amount(Wood),
+            .amount(material("wood")),
         7
     );
     assert!(
@@ -168,7 +168,7 @@ fn canceling_an_upgrade_preserves_the_existing_building_and_occupancy() {
             building_id: BuildingId(9)
         })
     );
-    assert_eq!(settlement.inventory().amount(Wood), 7);
+    assert_eq!(settlement.inventory().amount(material("wood")), 7);
     assert!(settlement.active_projects().is_empty());
 }
 
@@ -216,7 +216,7 @@ fn missing_repeated_and_cross_settlement_cancellations_do_not_change_other_proje
             .settlement(SettlementId(1))
             .unwrap()
             .inventory()
-            .amount(Wood),
+            .amount(material("wood")),
         10
     );
 }
@@ -285,7 +285,7 @@ fn mismatched_reservation_preserves_the_project_and_other_occupant() {
     assert_eq!(
         settlement.active_projects()[0]
             .remaining_cost()
-            .needed_resources[&Wood],
+            .needed_resources[&material("wood")],
         3
     );
     assert_eq!(

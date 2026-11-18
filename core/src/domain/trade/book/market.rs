@@ -67,12 +67,12 @@ impl TradeBook {
     fn visitor_interest(&self, visitors: &[&mut TradeBook]) -> Interest {
         let mut interest = Interest::default();
         let offers: BTreeMap<_, _> = self.offers.iter().collect();
-        for (&resource, offer) in offers {
+        for (resource, offer) in offers {
             if offer.remaining_units() == 0 {
                 continue;
             }
             for (index, visitor) in visitors.iter().enumerate() {
-                let Some(other) = visitor.offers.get(&resource) else {
+                let Some(other) = visitor.offers.get(resource) else {
                     continue;
                 };
                 if other.remaining_units() == 0 {
@@ -98,7 +98,11 @@ impl TradeBook {
                 if let Some(price) = price
                     && buyer_gold >= price
                 {
-                    interest.units.entry(resource).or_default().push(index);
+                    interest
+                        .units
+                        .entry(resource.clone())
+                        .or_default()
+                        .push(index);
                     if matches!(offer, TradeOffer::Buy(_)) {
                         interest.gold.insert(index);
                     }
@@ -127,7 +131,7 @@ impl TradeBook {
                 .iter()
                 .zip(Self::split(total, visitors.len(), round))
             {
-                units[visitor].insert(*resource, share);
+                units[visitor].insert(resource.clone(), share);
             }
         }
         let mut gold = vec![0; visitor_count];
@@ -160,6 +164,7 @@ impl TradeBook {
 mod tests {
     use super::*;
     use crate::domain::trade::execution::TradeSide;
+    use crate::test_support::material;
     use std::collections::HashMap;
 
     fn units(executions: &[TradeExecution]) -> u32 {
@@ -172,22 +177,22 @@ mod tests {
 
     #[test]
     fn equal_buyers_split_scarce_stock_equally() {
-        let mut market = book(0, &[(ResourceType::Wood, TradeOffer::sell(10, 2))]);
-        let mut first = book(100, &[(ResourceType::Wood, TradeOffer::buy(10, 2))]);
-        let mut second = book(100, &[(ResourceType::Wood, TradeOffer::buy(10, 2))]);
+        let mut market = book(0, &[(material("wood"), TradeOffer::sell(10, 2))]);
+        let mut first = book(100, &[(material("wood"), TradeOffer::buy(10, 2))]);
+        let mut second = book(100, &[(material("wood"), TradeOffer::buy(10, 2))]);
         let log = market.trade_with_visitors(&mut [&mut first, &mut second]);
         assert_eq!(units(&log[0]), 5);
         assert_eq!(units(&log[1]), 5);
         assert!(log.iter().flatten().all(|e| e.side == TradeSide::Sold));
         assert_eq!(market.gold(), 20);
-        assert_eq!(first.bought_goods()[&ResourceType::Wood], 5);
+        assert_eq!(first.bought_goods()[&material("wood")], 5);
     }
 
     #[test]
     fn stock_unused_by_a_small_buyer_goes_to_the_others() {
-        let mut market = book(0, &[(ResourceType::Wood, TradeOffer::sell(10, 2))]);
-        let mut small = book(100, &[(ResourceType::Wood, TradeOffer::buy(1, 2))]);
-        let mut large = book(100, &[(ResourceType::Wood, TradeOffer::buy(100, 2))]);
+        let mut market = book(0, &[(material("wood"), TradeOffer::sell(10, 2))]);
+        let mut small = book(100, &[(material("wood"), TradeOffer::buy(1, 2))]);
+        let mut large = book(100, &[(material("wood"), TradeOffer::buy(100, 2))]);
         let log = market.trade_with_visitors(&mut [&mut small, &mut large]);
         assert_eq!(units(&log[0]), 1);
         assert_eq!(units(&log[1]), 9);
@@ -196,23 +201,23 @@ mod tests {
 
     #[test]
     fn market_gold_is_shared_between_sellers() {
-        let mut market = book(40, &[(ResourceType::Stone, TradeOffer::buy(100, 2))]);
-        let mut first = book(0, &[(ResourceType::Stone, TradeOffer::sell(50, 2))]);
-        let mut second = book(0, &[(ResourceType::Stone, TradeOffer::sell(50, 2))]);
+        let mut market = book(40, &[(material("stone"), TradeOffer::buy(100, 2))]);
+        let mut first = book(0, &[(material("stone"), TradeOffer::sell(50, 2))]);
+        let mut second = book(0, &[(material("stone"), TradeOffer::sell(50, 2))]);
         let log = market.trade_with_visitors(&mut [&mut first, &mut second]);
         assert_eq!(units(&log[0]), 10);
         assert_eq!(units(&log[1]), 10);
         assert_eq!(first.gold() + second.gold(), 40);
         assert_eq!(market.gold(), 0);
-        assert_eq!(market.bought_goods()[&ResourceType::Stone], 20);
+        assert_eq!(market.bought_goods()[&material("stone")], 20);
     }
 
     #[test]
     fn indivisible_leftovers_are_still_traded() {
         // 3 gold at price 2 cannot be split usefully between two sellers.
-        let mut market = book(3, &[(ResourceType::Grain, TradeOffer::buy(5, 2))]);
-        let mut first = book(0, &[(ResourceType::Grain, TradeOffer::sell(5, 2))]);
-        let mut second = book(0, &[(ResourceType::Grain, TradeOffer::sell(5, 2))]);
+        let mut market = book(3, &[(material("grain"), TradeOffer::buy(5, 2))]);
+        let mut first = book(0, &[(material("grain"), TradeOffer::sell(5, 2))]);
+        let mut second = book(0, &[(material("grain"), TradeOffer::sell(5, 2))]);
         let log = market.trade_with_visitors(&mut [&mut first, &mut second]);
         assert_eq!(units(&log[0]) + units(&log[1]), 1);
         assert_eq!(market.gold(), 1);

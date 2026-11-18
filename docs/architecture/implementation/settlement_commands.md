@@ -22,7 +22,7 @@ The system-level [settlement class view](../systems/settlements.md#local-class-v
 
 `Settlement::new(id: SettlementId, initial_capacity, initial_population, need_registry)` creates an empty warehouse and buffer with the requested capacity, no buildings or projects.
 
-Each settlement owns an independent ordered storage list. `set_storage_order(materials: impl AsRef<[ResourceType]>)` validates it against the material catalogue; `storage_order()` returns a read-only slice. See [economy rules](economy_rules.md).
+Each `ResourceInventory` owns its storage order and validates it against its material catalog. The settlement's `set_storage_order(materials: impl AsRef<[ResourceType]>)` command applies the selected order to its warehouse and production buffer together. `storage_order()` delegates to the warehouse. See [economy rules](economy_rules.md).
 
 Settlement fields and manager modules are private implementation details. Public reads use `id()`, `population()`, `inventory()`, `pending_inventory()`, `buildings()` and `active_projects()`. Building and project views expose immutable identity, definitions and remaining costs through accessors. There is no mutable collection getter.
 

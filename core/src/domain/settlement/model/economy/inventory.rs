@@ -1,5 +1,7 @@
-use crate::domain::economy::storage_order::{StorageOrder, StorageOrderError};
-use crate::domain::economy::{ResourceCatalog, ResourceInventory, ResourceType};
+use crate::domain::economy::storage_order::StorageOrderError;
+use crate::domain::economy::{
+    InventoryRejection, ResourceCatalog, ResourceInventory, ResourceType,
+};
 use crate::domain::settlement::turn_report::{InventoryLoss, InventoryLossStage};
 use std::collections::HashMap;
 
@@ -7,15 +9,13 @@ use std::collections::HashMap;
 pub struct SettlementInventoryManager {
     pub(in crate::domain::settlement) main: ResourceInventory,
     pub(in crate::domain::settlement) pending_production: ResourceInventory,
-    priorities: StorageOrder,
 }
 
 impl SettlementInventoryManager {
     pub fn new(capacity: u32, resources: &ResourceCatalog) -> Self {
         Self {
-            main: ResourceInventory::new(capacity),
-            pending_production: ResourceInventory::new(capacity),
-            priorities: StorageOrder::for_catalog(resources),
+            main: ResourceInventory::with_resource_catalog(capacity, resources),
+            pending_production: ResourceInventory::with_resource_catalog(capacity, resources),
         }
     }
 
@@ -23,11 +23,22 @@ impl SettlementInventoryManager {
         &mut self,
         materials: impl AsRef<[ResourceType]>,
     ) -> Result<(), StorageOrderError> {
-        self.priorities.set(materials)
+        let materials = materials.as_ref();
+        self.validate_storage_order(materials)?;
+        self.main.set_storage_order(materials)?;
+        self.pending_production.set_storage_order(materials)
     }
 
     pub fn storage_order(&self) -> &[ResourceType] {
-        self.priorities.get()
+        self.main.storage_order()
+    }
+
+    pub fn validate_storage_order(
+        &self,
+        materials: &[ResourceType],
+    ) -> Result<(), StorageOrderError> {
+        self.main.validate_storage_order(materials)?;
+        self.pending_production.validate_storage_order(materials)
     }
 
     /// Reset Labour amount at the start of turn
@@ -41,17 +52,11 @@ impl SettlementInventoryManager {
         produced: HashMap<ResourceType, u64>,
         returned: HashMap<ResourceType, u64>,
     ) -> Vec<InventoryLoss> {
-        let mut losses = Self::add_in_order(
-            &mut self.main,
-            returned,
-            InventoryLossStage::Returns,
-            &self.priorities,
-        );
-        losses.extend(Self::add_in_order(
-            &mut self.pending_production,
-            produced,
+        let mut losses =
+            Self::report_rejections(self.main.add_batch(returned), InventoryLossStage::Returns);
+        losses.extend(Self::report_rejections(
+            self.pending_production.add_batch(produced),
             InventoryLossStage::ProductionBuffer,
-            &self.priorities,
         ));
         losses
     }
@@ -64,35 +69,21 @@ impl SettlementInventoryManager {
             .into_iter()
             .map(|(resource, amount)| (resource, u64::from(amount)))
             .collect();
-        Self::add_in_order(
-            &mut self.main,
-            pending,
-            InventoryLossStage::Warehouse,
-            &self.priorities,
-        )
+        Self::report_rejections(self.main.add_batch(pending), InventoryLossStage::Warehouse)
     }
 
-    fn add_in_order(
-        inventory: &mut ResourceInventory,
-        batch: HashMap<ResourceType, u64>,
+    fn report_rejections(
+        rejections: Vec<InventoryRejection>,
         stage: InventoryLossStage,
-        priorities: &StorageOrder,
     ) -> Vec<InventoryLoss> {
-        let mut entries: Vec<_> = batch.into_iter().collect();
-        entries.sort_unstable_by(|a, b| priorities.compare(a.0, b.0));
-        let mut losses = Vec::new();
-        for (resource, amount) in entries {
-            let addition = inventory.add(resource, amount.min(u64::from(u32::MAX)) as u32);
-            let rejected = amount - u64::from(addition.accepted);
-            if rejected > 0 {
-                losses.push(InventoryLoss {
-                    resource,
-                    amount: rejected,
-                    stage,
-                });
-            }
-        }
-        losses
+        rejections
+            .into_iter()
+            .map(|rejection| InventoryLoss {
+                resource: rejection.resource,
+                amount: rejection.amount,
+                stage,
+            })
+            .collect()
     }
 }
 
@@ -100,6 +91,7 @@ impl SettlementInventoryManager {
 mod tests {
     use super::*;
     use crate::domain::economy::ResourceType;
+    use crate::test_support::material;
     use std::collections::HashMap;
 
     #[test]
@@ -108,24 +100,24 @@ mod tests {
         manager
             .set_storage_order(
                 [
-                    &[ResourceType::Grain, ResourceType::Wood, ResourceType::Stone],
-                    &ResourceType::MATERIALS[3..],
+                    &[material("grain"), material("wood"), material("stone")],
+                    &ResourceCatalog::standard().materials()[3..],
                 ]
                 .concat(),
             )
             .unwrap();
         let losses = manager.process_production_results(
-            HashMap::from([(ResourceType::Wood, 3), (ResourceType::Grain, 3)]),
+            HashMap::from([(material("wood"), 3), (material("grain"), 3)]),
             HashMap::new(),
         );
         assert_eq!(
             manager.pending_production.resources(),
-            &HashMap::from([(ResourceType::Grain, 3)])
+            &HashMap::from([(material("grain"), 3)])
         );
         assert_eq!(
             losses,
             vec![InventoryLoss {
-                resource: ResourceType::Wood,
+                resource: material("wood"),
                 amount: 3,
                 stage: InventoryLossStage::ProductionBuffer
             }]
@@ -138,24 +130,24 @@ mod tests {
         manager
             .set_storage_order(
                 [
-                    &[ResourceType::Grain, ResourceType::Wood, ResourceType::Stone],
-                    &ResourceType::MATERIALS[3..],
+                    &[material("grain"), material("wood"), material("stone")],
+                    &ResourceCatalog::standard().materials()[3..],
                 ]
                 .concat(),
             )
             .unwrap();
         let losses = manager.process_production_results(
             HashMap::new(),
-            HashMap::from([(ResourceType::Wood, 3), (ResourceType::Grain, 3)]),
+            HashMap::from([(material("wood"), 3), (material("grain"), 3)]),
         );
         assert_eq!(
             manager.main.resources(),
-            &HashMap::from([(ResourceType::Grain, 3)])
+            &HashMap::from([(material("grain"), 3)])
         );
         assert_eq!(
             losses,
             vec![InventoryLoss {
-                resource: ResourceType::Wood,
+                resource: material("wood"),
                 amount: 3,
                 stage: InventoryLossStage::Returns
             }]
@@ -169,8 +161,8 @@ mod tests {
         manager
             .set_storage_order(
                 [
-                    &[ResourceType::Grain, ResourceType::Wood, ResourceType::Stone],
-                    &ResourceType::MATERIALS[3..],
+                    &[material("grain"), material("wood"), material("stone")],
+                    &ResourceCatalog::standard().materials()[3..],
                 ]
                 .concat(),
             )
@@ -178,7 +170,7 @@ mod tests {
         assert!(
             manager
                 .process_production_results(
-                    HashMap::from([(ResourceType::Wood, 3), (ResourceType::Grain, 3)]),
+                    HashMap::from([(material("wood"), 3), (material("grain"), 3)]),
                     HashMap::new(),
                 )
                 .is_empty()
@@ -186,31 +178,36 @@ mod tests {
         assert_eq!(
             manager.commit_pending_production(),
             vec![InventoryLoss {
-                resource: ResourceType::Wood,
+                resource: material("wood"),
                 amount: 3,
                 stage: InventoryLossStage::Warehouse,
             }]
         );
         assert_eq!(
             manager.main.resources(),
-            &HashMap::from([(ResourceType::Grain, 3)])
+            &HashMap::from([(material("grain"), 3)])
         );
     }
 
     #[test]
     fn equal_priorities_use_stable_resource_order_for_all_insertions() {
-        use ResourceType::{Grain, Stone, Wood};
         for order in [
-            [Wood, Stone, Grain],
-            [Wood, Grain, Stone],
-            [Stone, Wood, Grain],
-            [Stone, Grain, Wood],
-            [Grain, Wood, Stone],
-            [Grain, Stone, Wood],
+            [material("wood"), material("stone"), material("grain")],
+            [material("wood"), material("grain"), material("stone")],
+            [material("stone"), material("wood"), material("grain")],
+            [material("stone"), material("grain"), material("wood")],
+            [material("grain"), material("wood"), material("stone")],
+            [material("grain"), material("stone"), material("wood")],
         ] {
             let mut manager = SettlementInventoryManager::new(4, ResourceCatalog::standard());
             manager
-                .set_storage_order([&[Stone, Grain, Wood], &ResourceType::MATERIALS[3..]].concat())
+                .set_storage_order(
+                    [
+                        &[material("stone"), material("grain"), material("wood")],
+                        &ResourceCatalog::standard().materials()[3..],
+                    ]
+                    .concat(),
+                )
                 .unwrap();
             let losses = manager.process_production_results(
                 order
@@ -221,18 +218,18 @@ mod tests {
             );
             assert_eq!(
                 manager.pending_production.resources(),
-                &HashMap::from([(Stone, 3), (Grain, 1)])
+                &HashMap::from([(material("stone"), 3), (material("grain"), 1)])
             );
             assert_eq!(
                 losses,
                 vec![
                     InventoryLoss {
-                        resource: Grain,
+                        resource: material("grain"),
                         amount: 2,
                         stage: InventoryLossStage::ProductionBuffer
                     },
                     InventoryLoss {
-                        resource: Wood,
+                        resource: material("wood"),
                         amount: 3,
                         stage: InventoryLossStage::ProductionBuffer
                     },
@@ -247,8 +244,8 @@ mod tests {
         manager
             .set_storage_order(
                 [
-                    &[ResourceType::Grain, ResourceType::Wood, ResourceType::Stone],
-                    &ResourceType::MATERIALS[3..],
+                    &[material("grain"), material("wood"), material("stone")],
+                    &ResourceCatalog::standard().materials()[3..],
                 ]
                 .concat(),
             )
@@ -256,35 +253,34 @@ mod tests {
         assert!(
             manager
                 .process_production_results(
-                    HashMap::from([(ResourceType::Grain, 1)]),
-                    HashMap::from([(ResourceType::Wood, 1)]),
+                    HashMap::from([(material("grain"), 1)]),
+                    HashMap::from([(material("wood"), 1)]),
                 )
                 .is_empty()
         );
         assert_eq!(
             manager.commit_pending_production(),
             vec![InventoryLoss {
-                resource: ResourceType::Grain,
+                resource: material("grain"),
                 amount: 1,
                 stage: InventoryLossStage::Warehouse,
             }]
         );
         assert_eq!(
             manager.main.resources(),
-            &HashMap::from([(ResourceType::Wood, 1)])
+            &HashMap::from([(material("wood"), 1)])
         );
     }
 
     #[test]
     fn overflow_order_is_stable_for_all_resource_insertion_orders() {
-        use ResourceType::{Grain, Stone, Wood};
         let orders = [
-            [Wood, Stone, Grain],
-            [Wood, Grain, Stone],
-            [Stone, Wood, Grain],
-            [Stone, Grain, Wood],
-            [Grain, Wood, Stone],
-            [Grain, Stone, Wood],
+            [material("wood"), material("stone"), material("grain")],
+            [material("wood"), material("grain"), material("stone")],
+            [material("stone"), material("wood"), material("grain")],
+            [material("stone"), material("grain"), material("wood")],
+            [material("grain"), material("wood"), material("stone")],
+            [material("grain"), material("stone"), material("wood")],
         ];
         for order in orders {
             let mut manager = SettlementInventoryManager::new(2, ResourceCatalog::standard());
@@ -295,68 +291,71 @@ mod tests {
             let losses = manager.process_production_results(produced, HashMap::new());
             assert_eq!(
                 manager.pending_production.resources(),
-                &HashMap::from([(Wood, 2)])
+                &HashMap::from([(material("wood"), 2)])
             );
             assert_eq!(
                 losses,
                 vec![
                     InventoryLoss {
-                        resource: Wood,
+                        resource: material("wood"),
                         amount: 1,
                         stage: InventoryLossStage::ProductionBuffer
                     },
                     InventoryLoss {
-                        resource: Stone,
+                        resource: material("stone"),
                         amount: 3,
                         stage: InventoryLossStage::ProductionBuffer
                     },
                     InventoryLoss {
-                        resource: Grain,
+                        resource: material("grain"),
                         amount: 3,
                         stage: InventoryLossStage::ProductionBuffer
                     },
                 ]
             );
             assert!(manager.commit_pending_production().is_empty());
-            assert_eq!(manager.main.resources(), &HashMap::from([(Wood, 2)]));
+            assert_eq!(
+                manager.main.resources(),
+                &HashMap::from([(material("wood"), 2)])
+            );
         }
     }
 
     #[test]
     fn returns_are_retained_before_new_products() {
         let mut manager = SettlementInventoryManager::new(2, ResourceCatalog::standard());
-        manager.main.add(ResourceType::Stone, 1);
+        manager.main.add(material("stone"), 1);
         assert!(
             manager
                 .process_production_results(
-                    HashMap::from([(ResourceType::Wood, 2)]),
-                    HashMap::from([(ResourceType::Grain, 1)]),
+                    HashMap::from([(material("wood"), 2)]),
+                    HashMap::from([(material("grain"), 1)]),
                 )
                 .is_empty()
         );
         assert_eq!(
             manager.commit_pending_production(),
             vec![InventoryLoss {
-                resource: ResourceType::Wood,
+                resource: material("wood"),
                 amount: 2,
                 stage: InventoryLossStage::Warehouse,
             }]
         );
-        assert_eq!(manager.main.resources()[&ResourceType::Grain], 1);
-        assert!(!manager.main.resources().contains_key(&ResourceType::Wood));
+        assert_eq!(manager.main.resources()[&material("grain")], 1);
+        assert!(!manager.main.resources().contains_key(&material("wood")));
     }
 
     #[test]
     fn returned_overflow_is_reported_separately() {
         let mut manager = SettlementInventoryManager::new(1, ResourceCatalog::standard());
-        manager.main.add(ResourceType::Wood, 1);
+        manager.main.add(material("wood"), 1);
         assert_eq!(
             manager.process_production_results(
                 HashMap::new(),
-                HashMap::from([(ResourceType::Stone, 2)])
+                HashMap::from([(material("stone"), 2)])
             ),
             vec![InventoryLoss {
-                resource: ResourceType::Stone,
+                resource: material("stone"),
                 amount: 2,
                 stage: InventoryLossStage::Returns
             }]
@@ -420,10 +419,10 @@ mod tests {
         let mut manager = SettlementInventoryManager::new(100, ResourceCatalog::standard());
 
         let mut produced = HashMap::new();
-        produced.insert(ResourceType::Wood, 30);
+        produced.insert(material("wood"), 30);
 
         let mut returned = HashMap::new();
-        returned.insert(ResourceType::Stone, 20);
+        returned.insert(material("stone"), 20);
 
         // Act
         manager.process_production_results(produced, returned);
@@ -432,7 +431,7 @@ mod tests {
         // Returned items go straight back to main
         assert_eq!(manager.main.total_amount(), 20);
         assert_eq!(
-            *manager.main.resources().get(&ResourceType::Stone).unwrap(),
+            *manager.main.resources().get(&material("stone")).unwrap(),
             20
         );
 
@@ -442,7 +441,7 @@ mod tests {
             *manager
                 .pending_production
                 .resources()
-                .get(&ResourceType::Wood)
+                .get(&material("wood"))
                 .unwrap(),
             30
         );
@@ -454,11 +453,11 @@ mod tests {
         let mut manager = SettlementInventoryManager::new(100, ResourceCatalog::standard());
 
         // Add some initial resources to main
-        manager.main.add(ResourceType::Stone, 10);
+        manager.main.add(material("stone"), 10);
 
         // Put resources in pending
         let mut produced = HashMap::new();
-        produced.insert(ResourceType::Wood, 40);
+        produced.insert(material("wood"), 40);
         manager.process_production_results(produced, HashMap::new());
 
         // Act
@@ -476,11 +475,11 @@ mod tests {
             "Main inventory should now contain both existing and committed resources"
         );
         assert_eq!(
-            *manager.main.resources().get(&ResourceType::Wood).unwrap(),
+            *manager.main.resources().get(&material("wood")).unwrap(),
             40
         );
         assert_eq!(
-            *manager.main.resources().get(&ResourceType::Stone).unwrap(),
+            *manager.main.resources().get(&material("stone")).unwrap(),
             10
         );
     }
@@ -491,11 +490,11 @@ mod tests {
         let mut manager = SettlementInventoryManager::new(50, ResourceCatalog::standard());
 
         // Fill main inventory almost to the brim (40/50)
-        manager.main.add(ResourceType::Stone, 40);
+        manager.main.add(material("stone"), 40);
 
         // Put 30 wood in pending
         let mut produced = HashMap::new();
-        produced.insert(ResourceType::Wood, 30);
+        produced.insert(material("wood"), 30);
         manager.process_production_results(produced, HashMap::new());
 
         // Act
@@ -515,7 +514,7 @@ mod tests {
 
         // Only 10 wood should have made it in (50 max - 40 stone = 10 space left)
         assert_eq!(
-            *manager.main.resources().get(&ResourceType::Wood).unwrap(),
+            *manager.main.resources().get(&material("wood")).unwrap(),
             10,
             "Only the amount that fits should be transferred from pending"
         );

@@ -8,12 +8,13 @@ use crate::domain::trade::caravan::{CaravanCargo, CaravanReturn};
 use crate::domain::trade::offer::TradeOffer;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TradeCommandError {
     /// Labour is a per-turn capacity, not a tradable good.
     LabourIsNotTradable,
     TradeWithSelf,
     EmptyOrder,
+    UnknownMaterial(ResourceType),
 }
 
 impl Settlement {
@@ -27,7 +28,7 @@ impl Settlement {
         &mut self,
         offers: HashMap<ResourceType, TradeOffer>,
     ) -> Result<(), TradeCommandError> {
-        Self::validate_offers(&offers)?;
+        self.validate_offers(&offers)?;
         self.trade.market_offers = Self::without_progress(offers);
         Ok(())
     }
@@ -48,7 +49,7 @@ impl Settlement {
         if offers.values().all(|offer| offer.remaining_units() == 0) {
             return Err(TradeCommandError::EmptyOrder);
         }
-        Self::validate_offers(&offers)?;
+        self.validate_offers(&offers)?;
         self.trade.orders.push(CaravanOrder {
             receiver_id,
             offers: Self::without_progress(offers),
@@ -71,10 +72,18 @@ impl Settlement {
     }
 
     fn validate_offers(
+        &self,
         offers: &HashMap<ResourceType, TradeOffer>,
     ) -> Result<(), TradeCommandError> {
         if offers.contains_key(&ResourceType::Labour) {
             return Err(TradeCommandError::LabourIsNotTradable);
+        }
+        if let Some(resource) = offers
+            .keys()
+            .filter(|resource| !self.knows_material(resource))
+            .min()
+        {
+            return Err(TradeCommandError::UnknownMaterial(resource.clone()));
         }
         Ok(())
     }

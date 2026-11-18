@@ -169,6 +169,7 @@ mod tests {
     use crate::domain::world::Map;
     use crate::domain::world::pathfinding::path_finder::PathFinder;
     use crate::domain::world::settlement_environment::AStarTravelCosts;
+    use crate::test_support::material;
 
     fn test_map() -> Map {
         Map::new(
@@ -336,8 +337,8 @@ mod tests {
 
         // Building 2 wants 10 Labour + 10 Wood (via Production behavior).
         let prod_behavior = BuildingBehavior::Production {
-            inputs: vec![(ResourceType::Wood, 10)],
-            outputs: vec![(ResourceType::Stone, 20)],
+            inputs: vec![(material("wood"), 10)],
+            outputs: vec![(material("stone"), 20)],
         };
         let def2 = create_test_definition("lumber", 10, vec![prod_behavior]);
         manager
@@ -363,7 +364,7 @@ mod tests {
             .find(|r| r.recipient == AllocationRecipient::Building(BuildingId(1)))
             .unwrap();
         assert_eq!(*req1.demand.get(&ResourceType::Labour).unwrap(), 5);
-        assert!(!req1.demand.contains_key(&ResourceType::Wood));
+        assert!(!req1.demand.contains_key(&material("wood")));
 
         // Verify Building 2 demand
         let req2 = requests
@@ -371,7 +372,7 @@ mod tests {
             .find(|r| r.recipient == AllocationRecipient::Building(BuildingId(2)))
             .unwrap();
         assert_eq!(*req2.demand.get(&ResourceType::Labour).unwrap(), 10);
-        assert_eq!(*req2.demand.get(&ResourceType::Wood).unwrap(), 10);
+        assert_eq!(*req2.demand.get(&material("wood")).unwrap(), 10);
     }
 
     #[test]
@@ -380,8 +381,8 @@ mod tests {
         let mut manager = BuildingManager::new();
 
         let behavior = BuildingBehavior::Production {
-            inputs: vec![(ResourceType::Wood, 10)],
-            outputs: vec![(ResourceType::Stone, 20)],
+            inputs: vec![(material("wood"), 10)],
+            outputs: vec![(material("stone"), 20)],
         };
 
         let def = create_test_definition("stone_maker", 10, vec![behavior]);
@@ -406,13 +407,13 @@ mod tests {
         // Building 1 gets exactly what it needs
         let mut b1_grants = HashMap::new();
         b1_grants.insert(ResourceType::Labour, 10);
-        b1_grants.insert(ResourceType::Wood, 10);
+        b1_grants.insert(material("wood"), 10);
         allocations.insert(AllocationRecipient::Building(BuildingId(1)), b1_grants);
 
         // Building 2 gets full labour, but EXTRA wood (15 instead of 10)
         let mut b2_grants = HashMap::new();
         b2_grants.insert(ResourceType::Labour, 10);
-        b2_grants.insert(ResourceType::Wood, 15);
+        b2_grants.insert(material("wood"), 15);
         allocations.insert(AllocationRecipient::Building(BuildingId(2)), b2_grants);
 
         // Act
@@ -422,7 +423,7 @@ mod tests {
         // Both buildings worked at 100% capacity (10 labour, enough wood).
         // Building 1 makes 20 stone, Building 2 makes 20 stone -> Total 40 stone.
         assert_eq!(
-            *produced.get(&ResourceType::Stone).unwrap_or(&0),
+            *produced.get(&material("stone")).unwrap_or(&0),
             40,
             "Should aggregate stone production from both buildings"
         );
@@ -430,7 +431,7 @@ mod tests {
         // Building 1 used all 10 wood (0 unused).
         // Building 2 received 15 wood, used 10, returning 5. -> Total 5 unused wood.
         assert_eq!(
-            *returned.get(&ResourceType::Wood).unwrap_or(&0),
+            *returned.get(&material("wood")).unwrap_or(&0),
             5,
             "Should aggregate the 5 leftover wood from building 2"
         );

@@ -10,12 +10,13 @@ pub use inspection::TileView;
 use super::settlement_registry::SettlementRegistry;
 use super::territory::{TerritoryManager, Tile};
 use crate::domain::buildings::catalog::BuildingCatalog;
+use crate::domain::economy::{ResourceCatalog, ResourceType};
 use crate::domain::settlement::{NeedRegistry, Settlement};
 use crate::domain::trade::caravan::Caravan;
 use crate::domain::world::{Position, coordinates::Point, map::Map, province::Province};
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorldError {
     SettlementIdExhausted,
     Project(crate::domain::settlement::projects::ProjectError),
@@ -24,6 +25,8 @@ pub enum WorldError {
     MissingSettlement(SettlementId),
     /// Importing existing structures requires spatial registration (a later stage).
     SettlementNotEmpty(SettlementId),
+    SettlementResourceCatalogMismatch(SettlementId),
+    UnknownPopulationMaterial(ResourceType),
     MissingProvince(usize),
     ProvinceOccupied {
         province_id: usize,
@@ -73,6 +76,7 @@ pub struct World {
     province_settlements: HashMap<usize, SettlementId>,
     /// Building types agents may construct or upgrade to.
     building_catalog: BuildingCatalog,
+    resource_catalog: Arc<ResourceCatalog>,
 }
 impl World {
     /// The province a settlement is registered in.
@@ -103,6 +107,10 @@ impl World {
 
     pub fn building_catalog(&self) -> &BuildingCatalog {
         &self.building_catalog
+    }
+
+    pub fn resource_catalog(&self) -> &ResourceCatalog {
+        &self.resource_catalog
     }
 
     /// Scenario setup: replaces the building types available to agents.
@@ -172,11 +180,14 @@ impl World {
             .settlements
             .next_id()
             .ok_or(WorldError::SettlementIdExhausted)?;
-        self.register_settlement(
-            province_id,
-            capital,
-            Settlement::new(id, initial_capacity, initial_population, need_registry),
-        )?;
+        let settlement = Settlement::with_resource_catalog(
+            id,
+            initial_capacity,
+            initial_population,
+            need_registry,
+            self.resource_catalog(),
+        );
+        self.register_settlement(province_id, capital, settlement)?;
         Ok(id)
     }
 
@@ -204,6 +215,18 @@ impl World {
     }
 
     pub fn new(map: Map, provinces: Vec<Province>) -> World {
+        Self::with_resource_catalog(
+            map,
+            provinces,
+            Arc::new(ResourceCatalog::standard().clone()),
+        )
+    }
+
+    pub fn with_resource_catalog(
+        map: Map,
+        provinces: Vec<Province>,
+        resource_catalog: Arc<ResourceCatalog>,
+    ) -> World {
         World {
             map,
             provinces,
@@ -212,6 +235,7 @@ impl World {
             settlements: SettlementRegistry::default(),
             province_settlements: HashMap::new(),
             building_catalog: BuildingCatalog::default(),
+            resource_catalog,
         }
     }
 
@@ -252,6 +276,17 @@ impl World {
         }
         if settlement.buildings().next().is_some() || !settlement.active_projects().is_empty() {
             return Err(WorldError::SettlementNotEmpty(id));
+        }
+        let world_materials = self.resource_catalog().materials();
+        if settlement.storage_order().len() != world_materials.len()
+            || world_materials
+                .iter()
+                .any(|material| !settlement.knows_material(material))
+        {
+            return Err(WorldError::SettlementResourceCatalogMismatch(id));
+        }
+        if let Some(resource) = settlement.first_unknown_population_material() {
+            return Err(WorldError::UnknownPopulationMaterial(resource));
         }
         let capital = match capital {
             Some(position) => {
@@ -444,6 +479,61 @@ mod tests {
             world.tile_at(Position { x: 0, y: 0 }).unwrap().occupancy(),
             TileOccupancy::Empty
         );
+    }
+
+    #[test]
+    fn registration_and_deposits_use_the_world_catalog() {
+        let wood = ResourceCatalog::standard().resolve("wood").unwrap();
+        let resources = Arc::new(
+            ResourceCatalog::from_toml(
+                r#"
+                [[resources]]
+                id = "salt"
+                name = "Salt"
+                tier = 1
+                category = "raw_food"
+                "#,
+            )
+            .unwrap(),
+        );
+        let salt = resources.resolve("salt").unwrap();
+        let position = Position { x: 0, y: 0 };
+        let mut world = World::with_resource_catalog(
+            Map::new(1, 1, vec![Area::new(0.5, 0.5)], vec![10]),
+            vec![Province::new(10)],
+            resources,
+        );
+        assert_eq!(
+            world.add_settlement(10, settlement(1)),
+            Err(WorldError::SettlementResourceCatalogMismatch(SettlementId(
+                1
+            )))
+        );
+        assert_eq!(world.province_settlement(10), Ok(None));
+        let needs = Arc::new(NeedRegistry::new(vec![
+            crate::domain::settlement::NeedTier {
+                min_population: 100,
+                needs_per_capita: HashMap::from([(wood.clone(), 1)]),
+            },
+        ]));
+        assert_eq!(
+            world.initialize_settlement(10, 100, 1, needs),
+            Err(WorldError::UnknownPopulationMaterial(wood.clone()))
+        );
+        assert_eq!(world.province_settlement(10), Ok(None));
+        let id = world
+            .initialize_settlement(10, 100, 1, Arc::default())
+            .unwrap();
+        assert_eq!(
+            world.settlement(id).unwrap().storage_order(),
+            std::slice::from_ref(&salt)
+        );
+        assert_eq!(
+            world.place_deposit(position, wood.clone()),
+            Err(WorldError::InvalidDepositResource(wood))
+        );
+        world.place_deposit(position, salt.clone()).unwrap();
+        assert_eq!(world.accessible_deposits(id), Ok(vec![(position, salt)]));
     }
 
     #[test]

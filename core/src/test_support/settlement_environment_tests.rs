@@ -1,11 +1,12 @@
 //! Domain integration without a map, terrain generator or pathfinding buffers.
+use crate::test_support::material;
 use std::sync::Arc;
 
 use simulation_core::buildings::definition::{BuildingBehavior, BuildingDefinition};
 use simulation_core::buildings::productivity::{
     BuildingProductivityCalculator, TravelCostEfficiencyPolicy, TravelCostSource,
 };
-use simulation_core::economy::{ResourceType, cost::ProjectCost};
+use simulation_core::economy::cost::ProjectCost;
 use simulation_core::ids::{ProjectId, SettlementId};
 use simulation_core::settlement::{Settlement, projects::ProjectCompletion};
 use simulation_core::spatial::{
@@ -112,8 +113,8 @@ fn workshop() -> Arc<BuildingDefinition> {
             1,
             1,
             vec![BuildingBehavior::Production {
-                inputs: vec![(ResourceType::Wood, 2)],
-                outputs: vec![(ResourceType::Stone, 10)],
+                inputs: vec![(material("wood"), 2)],
+                outputs: vec![(material("stone"), 10)],
             }],
             ProjectCost::default(),
         )
@@ -157,10 +158,10 @@ fn construction_and_economy_accept_an_environment_without_a_map() {
         })
     );
     settlement.set_building_load(building, 1.0).unwrap();
-    settlement.deposit(ResourceType::Wood, 10);
+    settlement.deposit(material("wood"), 10);
     let report = settlement.process_turn_for_test(&mut environment, &mut []);
-    assert_eq!(report.inventory.produced[&ResourceType::Stone], 5);
-    assert_eq!(settlement.inventory().amount(ResourceType::Wood), 8);
+    assert_eq!(report.inventory.produced[&material("stone")], 5);
+    assert_eq!(settlement.inventory().amount(material("wood")), 8);
     assert!(report.inventory.is_balanced());
     environment.cost = None;
     let report = settlement.process_turn_for_test(&mut environment, &mut []);
@@ -168,7 +169,7 @@ fn construction_and_economy_accept_an_environment_without_a_map() {
         report
             .inventory
             .produced
-            .get(&ResourceType::Stone)
+            .get(&material("stone"))
             .copied()
             .unwrap_or(0),
         0

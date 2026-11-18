@@ -50,6 +50,7 @@ classDiagram
     Settlement *-- TradeManager
     Settlement *-- TradeBook
     SettlementInventoryManager *-- ResourceInventory : main and production buffer
+    ResourceInventory *-- StorageOrder
     BuildingManager *-- Building
     ProjectManager *-- Project
     PopulationManager o-- NeedRegistry : shared Arc

@@ -1,6 +1,6 @@
-use super::ResourceType;
+use super::{ResourceId, ResourceType};
 use serde::Deserialize;
-use serde::de::value::{Error as DeserializeError, StrDeserializer};
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
@@ -65,10 +65,9 @@ impl ResourceDefinition {
 pub enum ResourceCatalogError {
     Read(std::io::Error),
     Parse(toml::de::Error),
-    UnknownMaterial(String),
+    InvalidIdentifier(String),
     LabourIsNotMaterial,
     DuplicateMaterial(ResourceType),
-    MissingMaterial(ResourceType),
     InvalidTier { resource: ResourceType, tier: u8 },
     EmptyName(ResourceType),
     InvalidAlias(String),
@@ -81,10 +80,9 @@ impl fmt::Display for ResourceCatalogError {
         match self {
             Self::Read(error) => write!(f, "cannot read resource catalogue: {error}"),
             Self::Parse(error) => write!(f, "invalid resource catalogue TOML: {error}"),
-            Self::UnknownMaterial(id) => write!(f, "unknown material {id:?}"),
+            Self::InvalidIdentifier(id) => write!(f, "invalid material identifier {id:?}"),
             Self::LabourIsNotMaterial => write!(f, "labour cannot be registered as a material"),
             Self::DuplicateMaterial(resource) => write!(f, "duplicate material {resource:?}"),
-            Self::MissingMaterial(resource) => write!(f, "missing material {resource:?}"),
             Self::InvalidTier { resource, tier } => {
                 write!(
                     f,
@@ -147,13 +145,12 @@ impl ResourceCatalog {
         for definition in raw.resources {
             catalog.insert(definition)?;
         }
-        for &resource in ResourceType::MATERIALS {
-            if !catalog.definitions.contains_key(&resource) {
-                return Err(ResourceCatalogError::MissingMaterial(resource));
-            }
-        }
+        let coal = ResourceType::Material(
+            ResourceId::from_content_id("coal").expect("coal is a valid content identifier"),
+        );
+        let has_coal = catalog.definitions.contains_key(&coal);
         for alias in ["charcoal", "mined_coal"] {
-            if catalog.resolve(alias) != Some(ResourceType::Coal) {
+            if catalog.resolve(alias).as_ref() != has_coal.then_some(&coal) {
                 return Err(ResourceCatalogError::InvalidCoalAlias(alias));
             }
         }
@@ -162,11 +159,11 @@ impl ResourceCatalog {
 
     /// Look up a canonical identifier or an alias written in content.
     pub fn resolve(&self, id: &str) -> Option<ResourceType> {
-        self.identifiers.get(id).copied()
+        self.identifiers.get(id).cloned()
     }
 
-    pub fn get(&self, resource: ResourceType) -> Option<&ResourceDefinition> {
-        self.definitions.get(&resource)
+    pub fn get(&self, resource: impl Borrow<ResourceType>) -> Option<&ResourceDefinition> {
+        self.definitions.get(resource.borrow())
     }
 
     /// Materials in their configured default warehouse order.
@@ -175,24 +172,12 @@ impl ResourceCatalog {
     }
 
     fn insert(&mut self, definition: ResourceDefinition) -> Result<(), ResourceCatalogError> {
-        let variant_name: String = definition
-            .id
-            .split('_')
-            .map(|word| {
-                let (first, rest) = word.split_at_checked(1)?;
-                if !word.bytes().all(|byte| byte.is_ascii_lowercase()) {
-                    return None;
-                }
-                Some(first.to_ascii_uppercase() + rest)
-            })
-            .collect::<Option<_>>()
-            .ok_or_else(|| ResourceCatalogError::UnknownMaterial(definition.id.clone()))?;
-        let resource =
-            ResourceType::deserialize(StrDeserializer::<DeserializeError>::new(&variant_name))
-                .map_err(|_| ResourceCatalogError::UnknownMaterial(definition.id.clone()))?;
-        if resource == ResourceType::Labour {
+        if definition.id == "labour" {
             return Err(ResourceCatalogError::LabourIsNotMaterial);
         }
+        let id = ResourceId::from_content_id(&definition.id)
+            .ok_or_else(|| ResourceCatalogError::InvalidIdentifier(definition.id.clone()))?;
+        let resource = ResourceType::Material(id);
         if self.definitions.contains_key(&resource) {
             return Err(ResourceCatalogError::DuplicateMaterial(resource));
         }
@@ -205,29 +190,28 @@ impl ResourceCatalog {
         if definition.name.trim().is_empty() {
             return Err(ResourceCatalogError::EmptyName(resource));
         }
-        self.register_id(&definition.id, resource)?;
+        self.register_id(&definition.id, &resource)?;
         for alias in &definition.aliases {
-            if alias.is_empty()
-                || alias == "labour"
-                || !alias
-                    .bytes()
-                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
-            {
+            if ResourceId::from_content_id(alias).is_none() {
                 return Err(ResourceCatalogError::InvalidAlias(alias.clone()));
             }
-            self.register_id(alias, resource)?;
+            self.register_id(alias, &resource)?;
         }
+        self.materials.push(resource.clone());
         self.definitions.insert(resource, definition);
-        self.materials.push(resource);
         Ok(())
     }
 
     fn register_id(
         &mut self,
         id: &str,
-        resource: ResourceType,
+        resource: &ResourceType,
     ) -> Result<(), ResourceCatalogError> {
-        if self.identifiers.insert(id.to_owned(), resource).is_some() {
+        if self
+            .identifiers
+            .insert(id.to_owned(), resource.clone())
+            .is_some()
+        {
             return Err(ResourceCatalogError::DuplicateIdentifier(id.to_owned()));
         }
         Ok(())

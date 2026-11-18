@@ -15,26 +15,29 @@ Content, scenario APIs and simulation calculations share one whole material unit
 
 ## 2. Warehouse and Production Buffer
 
-`ResourceInventory` stores a private `HashMap<ResourceType, u32>` and a private shared capacity of type `u32`. Capacity limits the sum of materials, rather than each resource separately. Read it through `capacity()` and change it through `set_capacity()`.
+`ResourceInventory` owns its stock, shared material capacity and `StorageOrder`. Capacity limits the sum of materials. Read it through `capacity()` and change it through `set_capacity()`.
 
 | Method | Behavior |
 | --- | --- |
 | `new(capacity)` | Creates an empty inventory |
+| `with_resource_catalog(capacity, catalog)` | Creates an empty inventory with that catalog's materials and initial storage order |
+| `storage_order()`, `set_storage_order(materials)` | Read or atomically replace this inventory's admission order |
+| `add_batch(batch)` | Admits a batch in this inventory's order and returns rejected quantities as `InventoryRejection` values |
 | `total_amount()` | Sums materials in `u64`, excluding `Labour` |
 | `capacity()` | Returns the current material limit |
 | `set_capacity(capacity)` | Returns `Result<(), CapacityError>`; rejects a limit below stored materials without changing capacity or stock |
 | `add(resource, amount)` | Returns `InventoryAddResult { accepted, rejected }`; material additions are limited by free space and `Labour` only by its `u32` counter |
 | `consume(resource, amount)` | Withdraws the whole quantity and returns `true`; returns `false` without a partial withdrawal if stock is insufficient |
 
-`SettlementInventoryManager` owns `main` and `pending_production`, initially with the same capacity. Unused material grants return to `main`; products enter the buffer. At the end of turn accounting, `commit_pending_production()` drains the buffer into `main` through `add`.
+`SettlementInventoryManager` owns `main` and `pending_production`, initially with the same capacity and catalog. Unused material grants return to `main`; products enter the buffer. At the end of turn accounting, `commit_pending_production()` drains the buffer into `main` through `add_batch`. The manager attaches turn-report stages to inventory rejections.
 
-### Settlement Storage Priorities
+### Inventory Storage Priorities
 
-Each settlement owns an independent `StorageOrder`: a persistent list from first admitted to last.
+Each `ResourceInventory` owns an independent `StorageOrder`, a persistent list from first admitted to last. Batch admission uses the receiving inventory's order.
 
-`set_storage_order(materials: impl AsRef<[ResourceType]>)` accepts vectors, slices and arrays. Every material from `ResourceType::MATERIALS` must occur exactly once.
+`set_storage_order(materials: impl AsRef<[ResourceType]>)` accepts vectors, slices and arrays. Every material in the inventory's catalog must occur exactly once.
 
-Warehouse, production buffer and returned batches use the same order. Changing it affects future admissions without evicting existing stock or changing demand allocation.
+The settlement command validates both inventories before applying the chosen order to the warehouse and production buffer. Each inventory then enforces its order during admission. Changing it affects future admissions and preserves existing stock and demand allocation.
 
 Products are visible in the warehouse after the turn ends, but do not participate in that turn's earlier allocation.
 

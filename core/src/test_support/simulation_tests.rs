@@ -100,6 +100,20 @@ fn decide(simulation: &mut Simulation, actions: Vec<SettlementAction>) {
         .unwrap();
 }
 
+/// The local pipeline has no nations, so it writes no taxation report. The
+/// global turn adds one; without it both reports describe the same economy.
+fn without_taxation(
+    report: &crate::domain::settlement::turn_report::TurnReport,
+) -> crate::domain::settlement::turn_report::TurnReport {
+    let mut report = report.clone();
+    assert!(
+        report.inventory.taxed.is_empty(),
+        "these scenarios produce too little to be taxed"
+    );
+    report.taxation = None;
+    report
+}
+
 fn workers(building_id: u32, workers: u32) -> SettlementAction {
     SettlementAction::SetBuildingWorkers {
         building_id: BuildingId(building_id),
@@ -138,6 +152,7 @@ fn global_phases_finish_for_all_settlements_in_stable_id_order() {
         TurnPhase::Consumption,
         TurnPhase::Construction,
         TurnPhase::Production,
+        TurnPhase::Taxation,
         TurnPhase::EconomicUpdates,
     ]
     .into_iter()
@@ -158,7 +173,17 @@ fn insertion_order_does_not_change_reports_or_world_results() {
         let b = second.step().unwrap();
         assert_eq!(a.turn, b.turn);
         assert_eq!(a.execution, b.execution);
-        assert_eq!(a.settlements, b.settlements);
+        // Nation IDs follow registration order, so only they may differ.
+        for (id, report) in &a.settlements {
+            assert_eq!(
+                without_taxation(report),
+                without_taxation(&b.settlements[id])
+            );
+            let mut taxes = report.taxation.clone().unwrap();
+            let other = b.settlements[id].taxation.clone().unwrap();
+            taxes.nation_id = other.nation_id;
+            assert_eq!(taxes, other);
+        }
         for id in [1, 2] {
             assert_eq!(
                 first
@@ -187,7 +212,7 @@ fn global_pipeline_preserves_existing_local_turn_economy() {
         let global = simulation.step().unwrap();
         for id in [1, 2] {
             assert_eq!(
-                global.settlements[&SettlementId(id)],
+                without_taxation(&global.settlements[&SettlementId(id)]),
                 local
                     .process_settlement_turn_for_test(SettlementId(id), &mut finder)
                     .unwrap()

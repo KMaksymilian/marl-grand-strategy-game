@@ -3,6 +3,7 @@ use super::super::Settlement;
 use super::super::trading::CaravanOrder;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
+use crate::domain::intelligence::{Information, InformationSnapshot};
 use crate::domain::trade::book::TradeBook;
 use crate::domain::trade::caravan::{CaravanCargo, CaravanReturn};
 use crate::domain::trade::offer::TradeOffer;
@@ -67,8 +68,19 @@ impl Settlement {
     }
 
     /// Accepts a returning caravan; it is unloaded and reported in the next turn.
-    pub fn receive_caravan(&mut self, caravan: CaravanReturn) {
+    pub(crate) fn receive_caravan(&mut self, caravan: CaravanReturn) {
         self.trade.returning.push(caravan);
+    }
+
+    pub(in crate::domain::settlement) fn remember_observation(
+        &mut self,
+        snapshot: InformationSnapshot,
+    ) {
+        match snapshot.information() {
+            Information::ForeignMarket { market, .. } => {
+                self.trade.remember_market(*market, snapshot)
+            }
+        }
     }
 
     fn validate_offers(
@@ -104,6 +116,11 @@ impl Settlement {
 impl Settlement {
     pub fn gold(&self) -> u32 {
         self.gold_inventory.amount()
+    }
+
+    /// Latest delivered snapshot for each foreign market, in ascending settlement ID.
+    pub fn known_markets(&self) -> impl Iterator<Item = &InformationSnapshot> {
+        self.trade.known_markets()
     }
 
     pub fn market_offers(&self) -> &HashMap<ResourceType, TradeOffer> {

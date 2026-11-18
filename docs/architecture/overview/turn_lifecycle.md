@@ -14,6 +14,7 @@ next phase begins. The order comes from the registry, not hash-map iteration.
 | Consumption | Evaluate population allocations and shortages. |
 | Construction | Pay project grants and decrement remaining time once. |
 | Production | Execute existing buildings using their allocated inputs and labour. |
+| Taxation | The owning nation takes its rate from each settlement's gross production (see [Nations](../implementation/nations.md)). |
 | EconomicUpdates | Collect output and trade/internal returns, admit materials, record losses and closing stock, and finalize projects. |
 
 After Decisions, `World::begin_trade_turn` moves existing caravans and queues returns.
@@ -84,7 +85,8 @@ stateDiagram-v2
     Allocation --> Consumption: all grants assigned
     Consumption --> Construction: all needs evaluated
     Construction --> Production: all projects progressed
-    Production --> EconomicUpdates: all buildings executed
+    Production --> Taxation: all buildings executed
+    Taxation --> EconomicUpdates: all taxes collected
     EconomicUpdates --> Dispatch: all settlements finished
     Dispatch --> Ready: route departures, increment turn and return report
     note right of Decisions

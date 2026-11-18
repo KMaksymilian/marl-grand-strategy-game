@@ -1,6 +1,9 @@
 //! Trade phases of the settlement turn: reservation, caravan funding,
 //! market trading with visitors and collection of returns.
 use crate::domain::economy::ResourceType;
+use crate::domain::intelligence::{
+    MarketObservation, MarketObservationSource, ObservationStrategy,
+};
 use crate::domain::settlement::Settlement;
 use crate::domain::settlement::turn_report::{
     DispatchedCaravan, MarketTrade, MaterialTotals, ReturnedCaravan, TradeTurnReport,
@@ -70,6 +73,8 @@ impl Settlement {
         &mut self,
         visitors: &mut [&mut Caravan],
         report: &mut TradeTurnReport,
+        turn: u64,
+        province_id: usize,
     ) {
         let mut guests: Vec<&mut Caravan> = visitors
             .iter_mut()
@@ -81,6 +86,14 @@ impl Settlement {
         if guests.is_empty() {
             return;
         }
+        let snapshot = MarketObservation.observe(
+            turn,
+            MarketObservationSource {
+                market: self.id,
+                province_id,
+                book: &self.book,
+            },
+        );
         let log = {
             let mut books: Vec<&mut TradeBook> = guests
                 .iter_mut()
@@ -96,7 +109,7 @@ impl Settlement {
                     caravan_sender_id,
                     execution,
                 }));
-            caravan.finish_trading(executions);
+            caravan.finish_trading(executions, snapshot.clone());
         }
     }
 
@@ -123,6 +136,9 @@ impl Settlement {
         report.gold_received += u64::from(gold);
 
         for mut caravan in std::mem::take(&mut self.trade.returning) {
+            for snapshot in caravan.observations {
+                self.remember_observation(snapshot);
+            }
             let (goods, gold) = caravan.book.return_resources();
             add(&goods);
             self.gold_inventory.add(gold);
@@ -148,7 +164,9 @@ impl Settlement {
 mod tests {
     use super::*;
     use crate::domain::ids::SettlementId;
+    use crate::domain::intelligence::{Information, InformationSnapshot};
     use crate::domain::settlement::TradeCommandError;
+    use crate::domain::trade::caravan::{CaravanOutcome, CaravanReturn};
     use crate::domain::trade::offer::TradeOffer;
     use crate::domain::world::map::Map;
     use crate::domain::world::pathfinding::path_finder::PathFinder;
@@ -166,6 +184,37 @@ mod tests {
             ),
             &mut [],
         )
+    }
+
+    #[test]
+    fn late_return_keeps_the_newer_market_observation() {
+        let mut settlement = Settlement::new(SettlementId(1), 50, 0, Arc::default());
+        let market = SettlementId(2);
+        let snapshot = |observed_turn, province_id| {
+            InformationSnapshot::new(
+                observed_turn,
+                Information::ForeignMarket {
+                    market,
+                    province_id,
+                    offers: Default::default(),
+                },
+            )
+        };
+        let latest = snapshot(5, 20);
+        for observation in [snapshot(3, 10), latest.clone(), snapshot(4, 10)] {
+            settlement.receive_caravan(CaravanReturn {
+                receiver_id: market,
+                outcome: CaravanOutcome::Traded,
+                book: TradeBook::default(),
+                trades: vec![],
+                observations: vec![observation],
+            });
+            turn(&mut settlement);
+        }
+        assert_eq!(
+            settlement.known_markets().collect::<Vec<_>>(),
+            vec![&latest]
+        );
     }
 
     #[test]

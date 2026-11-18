@@ -29,11 +29,12 @@ generation: [application/queries/observe_settlement.rs](../../../core/src/applic
 | `buildings` | Ascending ID: type, position, active, `max_workers`, `requested_workers`, `current_workers`, `location_productivity`. |
 | `projects` | Queue order: `target` (`construct` with type and position, `upgrade` with building and type), remaining materials and turns. |
 | `next_project_id` | ID the next accepted construction or upgrade receives. |
-| `trade` | Own `market_offers` as `OfferSpec`s, own `caravans_in_transit` and `caravans_returning`. |
+| `trade` | Own `market_offers`, caravan counts and `known_markets` delivered by returning caravans. Each known market includes its settlement, province, observation turn and observed offers. |
 | `last_turn` | Satisfaction, missing needs, produced, consumed by population/projects/production, lost, trade reserved/received, gold received, market trade count, caravans dispatched, unfunded caravan orders, completed and failed project IDs. |
 | `territory` | Every tile of the own province in row-major order: elevation, moisture, optional `deposit`, occupancy and `buildable`. |
-| `trade_partners` | Other settlements as `{settlement_id, province_id}`, ascending ID. |
+| `trade_partners` | Other settlements as `{settlement_id, province_id, nation_id}`, ascending ID; `nation_id` is the public owner. |
 | `building_types` | The public catalog: name, tier, `max_workers`, construction cost and turns, recipes and optional `required_deposit`. |
+| `nation` | The owner's policy: `nation_id`, `tax_rate`, `capital`, `is_capital`. Every settlement belongs to a nation. See [Nations](nations.md). |
 
 `buildable` covers province membership, land and vacancy. For a particular
 blueprint, the command also checks that the tile has its `required_deposit`,
@@ -41,9 +42,9 @@ if specified. A mismatch is returned as `required_deposit_missing`.
 
 ## Information boundaries
 
-An agent sees nothing of another settlement except its ID and province:
+An agent sees other settlements' IDs and provinces, plus dated market observations delivered by its own caravans:
 
-- no stock, gold, population, buildings, projects, offers or caravans;
+- no stock, gold, population, buildings, projects, live offers or caravans;
 - no tile outside the own province;
 - a structure of another settlement inside the own province (possible after a
   border change) appears only as `foreign`, without owner or IDs;

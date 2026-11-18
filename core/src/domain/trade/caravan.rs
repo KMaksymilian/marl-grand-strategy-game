@@ -1,4 +1,5 @@
 use crate::domain::ids::SettlementId;
+use crate::domain::intelligence::InformationSnapshot;
 use crate::domain::trade::book::TradeBook;
 use crate::domain::trade::execution::TradeExecution;
 use crate::domain::world::pathfinding::{a_star::AStar, path_finder::PathFinder};
@@ -42,6 +43,7 @@ pub struct CaravanReturn {
     pub book: TradeBook,
     /// Executions seen from the caravan (sender) side.
     pub trades: Vec<TradeExecution>,
+    pub observations: Vec<InformationSnapshot>,
 }
 
 impl CaravanReturn {
@@ -52,6 +54,7 @@ impl CaravanReturn {
             outcome,
             book: cargo.book,
             trades: Vec::new(),
+            observations: Vec::new(),
         }
     }
 }
@@ -66,6 +69,7 @@ pub struct Caravan {
     path: Vec<Point>,
     book: TradeBook,
     trades: Vec<TradeExecution>,
+    observations: Vec<InformationSnapshot>,
     receiver_missing: bool,
 }
 
@@ -119,6 +123,7 @@ impl Caravan {
             path,
             book,
             trades: Vec::new(),
+            observations: Vec::new(),
             receiver_missing: false,
         }
     }
@@ -140,6 +145,15 @@ impl Caravan {
         &self.trades
     }
 
+    pub fn observations(&self) -> &[InformationSnapshot] {
+        &self.observations
+    }
+
+    /// Keeps an observation for delivery to the sender on return.
+    pub(crate) fn record_observation(&mut self, snapshot: InformationSnapshot) {
+        self.observations.push(snapshot);
+    }
+
     pub fn travel(&mut self) {
         match self.caravan_state {
             CaravanState::TravelTo => self.travel_to(),
@@ -148,20 +162,18 @@ impl Caravan {
         }
     }
 
-    pub fn trade(&mut self, book: &mut TradeBook) {
-        if self.caravan_state == CaravanState::Trading {
-            let executed = book.trade(&mut self.book);
-            self.finish_trading(executed);
-        }
-    }
-
     pub(crate) fn book_mut(&mut self) -> &mut TradeBook {
         &mut self.book
     }
 
     /// Records executions seen from the receiver's book and starts the way home.
-    pub(crate) fn finish_trading(&mut self, receiver_side: Vec<TradeExecution>) {
+    pub(crate) fn finish_trading(
+        &mut self,
+        receiver_side: Vec<TradeExecution>,
+        market_observation: InformationSnapshot,
+    ) {
         if self.caravan_state == CaravanState::Trading {
+            self.record_observation(market_observation);
             self.trades
                 .extend(receiver_side.iter().map(TradeExecution::mirrored));
             self.caravan_state = CaravanState::TravelBack;
@@ -176,8 +188,11 @@ impl Caravan {
         }
     }
 
-    pub fn into_return(self) -> CaravanReturn {
-        CaravanReturn {
+    pub(crate) fn try_into_return(self) -> Result<CaravanReturn, Box<Self>> {
+        if self.caravan_state != CaravanState::Back {
+            return Err(Box::new(self));
+        }
+        Ok(CaravanReturn {
             receiver_id: self.receiver_id,
             outcome: if self.receiver_missing {
                 CaravanOutcome::ReceiverMissing
@@ -186,7 +201,8 @@ impl Caravan {
             },
             book: self.book,
             trades: self.trades,
-        }
+            observations: self.observations,
+        })
     }
 
     fn travel_to(&mut self) {
@@ -290,11 +306,23 @@ mod tests {
         caravan.travel();
         assert_eq!(caravan.state(), CaravanState::Trading);
         assert_eq!(caravan.position(), Point(4, 0));
-        caravan.trade(&mut TradeBook::default());
+        let observation = InformationSnapshot::new(
+            2,
+            crate::domain::intelligence::Information::ForeignMarket {
+                market: SettlementId(2),
+                province_id: 0,
+                offers: Default::default(),
+            },
+        );
+        caravan.finish_trading(Vec::new(), observation.clone());
+        assert_eq!(caravan.state(), CaravanState::TravelBack);
+        let mut caravan = *caravan.try_into_return().unwrap_err();
         assert_eq!(caravan.state(), CaravanState::TravelBack);
         caravan.travel();
         assert_eq!(caravan.state(), CaravanState::Back);
         assert_eq!(caravan.position(), Point(0, 0));
-        assert_eq!(caravan.into_return().outcome, CaravanOutcome::Traded);
+        let returned = caravan.try_into_return().unwrap();
+        assert_eq!(returned.outcome, CaravanOutcome::Traded);
+        assert_eq!(returned.observations, vec![observation]);
     }
 }

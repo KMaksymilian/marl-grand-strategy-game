@@ -109,6 +109,12 @@ impl ResourceInventory {
         self.max_capacity
     }
 
+    /// Sets a new capacity, also below the stored amount. Nothing is discarded:
+    /// stock above the capacity stays, and additions wait until it drops below.
+    pub(crate) fn resize(&mut self, capacity: u32) {
+        self.max_capacity = capacity;
+    }
+
     /// Reject shrinking below stored materials; never silently discard stock.
     pub fn set_capacity(&mut self, capacity: u32) -> Result<(), CapacityError> {
         let stored = self.total_amount();

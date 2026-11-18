@@ -1,9 +1,15 @@
 //! Executes the phases of one global turn.
 use std::collections::BTreeMap;
 
-use super::{PhaseExecution, SettlementDecision, SimulationError, SimulationTurnReport, TurnPhase};
+use super::{
+    NationDecision, PhaseExecution, SettlementDecision, SimulationError, SimulationTurnReport,
+    TurnPhase,
+};
+use crate::application::commands::nation::handler::handle_nation_decision;
 use crate::application::commands::settlement::{CommandDispatch, handler::handle_decision};
-use crate::domain::ids::SettlementId;
+use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::nation::report::NationTurnReport;
+use crate::domain::nation::taxation::{MaterialTotals, NationTaxReport};
 use crate::domain::world::{World, pathfinding::path_finder::PathFinder};
 
 /// Completes each phase for every settlement in ascending ID order.
@@ -12,6 +18,7 @@ pub(super) fn run_turn(
     world: &mut World,
     finder: &mut PathFinder,
     pending_decisions: &mut BTreeMap<SettlementId, Vec<SettlementDecision>>,
+    pending_nation_decisions: &mut BTreeMap<NationId, Vec<NationDecision>>,
     current_turn: u64,
 ) -> Result<SimulationTurnReport, SimulationError> {
     let turn = current_turn
@@ -28,6 +35,20 @@ pub(super) fn run_turn(
                 settlement_id: id,
                 error,
             })?;
+    }
+
+    // Nations decide first, so settlements decide under the new policy and with
+    // this turn's subsidies. The queue is a BTreeMap: ascending nation ID. The
+    // `expect` cannot fire: `queue_nation_decision` rejects unknown nations and
+    // `Simulation::transfer_settlement` drops the queue of an extinct nation.
+    let mut nation_decisions = Vec::new();
+    for (_, queued) in std::mem::take(pending_nation_decisions) {
+        for decision in queued {
+            nation_decisions.push(
+                handle_nation_decision(world, &decision)
+                    .expect("queued decisions belong to registered nations"),
+            );
+        }
     }
 
     let mut execution = Vec::new();
@@ -53,7 +74,7 @@ pub(super) fn run_turn(
             phase: TurnPhase::Preparation,
             settlement_id: id,
         });
-        prepared.push((id, world.prepare_settlement_turn(id, finder)));
+        prepared.push((id, world.prepare_settlement_turn(id, finder, turn)));
     }
 
     let mut allocated = Vec::with_capacity(prepared.len());
@@ -96,8 +117,28 @@ pub(super) fn run_turn(
         produced.push((id, settlement.produce_turn(state)));
     }
 
+    // Taxation: the owner's rate × this turn's gross output of every
+    // settlement, before storage. Settlements of one nation fill its stock in
+    // ascending ID, which decides who meets a full capacity.
+    let mut taxes: BTreeMap<NationId, NationTaxReport> = BTreeMap::new();
+    let mut taxed = Vec::with_capacity(produced.len());
+    for (id, mut state) in produced {
+        execution.push(PhaseExecution {
+            phase: TurnPhase::Taxation,
+            settlement_id: id,
+        });
+        let collection = world
+            .collect_taxes(id, &mut state)
+            .expect("every registered settlement has an owner");
+        let nation = taxes.entry(collection.report.nation_id).or_default();
+        add_totals(&mut nation.stock_received, &collection.stock_received);
+        add_totals(&mut nation.stock_lost, &collection.stock_lost);
+        nation.settlements.insert(id, collection.report);
+        taxed.push((id, state));
+    }
+
     let mut settlements = BTreeMap::new();
-    for (id, state) in produced {
+    for (id, state) in taxed {
         execution.push(PhaseExecution {
             phase: TurnPhase::EconomicUpdates,
             settlement_id: id,
@@ -105,16 +146,42 @@ pub(super) fn run_turn(
         let (settlement, mut environment) = world
             .settlement_turn_parts(id, finder)
             .expect("registered settlement");
-        settlements.insert(id, settlement.finish_turn(state, &mut environment));
+        let mut report = settlement.finish_turn(state, &mut environment);
+        report.taxation = taxes
+            .values()
+            .find_map(|nation| nation.settlements.get(&id))
+            .cloned();
+        settlements.insert(id, report);
     }
     let locations = world.capital_trade_locations();
     world.finish_trade_turn(&locations, finder);
+    // National timers count completed turns, so they tick once, after every
+    // phase; the nation reports show the state at the end of the turn.
+    world.advance_nations_turn();
+    let nations = world
+        .nations()
+        .iter()
+        .map(|nation| {
+            let id = nation.id();
+            let settlements = world.nations().settlements_of(id);
+            let taxes = taxes.remove(&id).unwrap_or_default();
+            (id, NationTurnReport::closing(nation, settlements, taxes))
+        })
+        .collect();
     Ok(SimulationTurnReport {
         turn,
+        nation_decisions,
+        nations,
         decisions,
         settlements,
         execution,
     })
+}
+
+fn add_totals(totals: &mut MaterialTotals, added: &MaterialTotals) {
+    for (resource, &amount) in added {
+        *totals.entry(resource.clone()).or_default() += amount;
+    }
 }
 
 #[cfg(test)]
@@ -245,7 +312,7 @@ mod tests {
                 }],
             ))
             .unwrap();
-        simulation.current_turn = u64::MAX;
+        simulation.world.set_completed_turn(u64::MAX);
         assert_eq!(
             simulation.step().unwrap_err(),
             SimulationError::TurnOverflow

@@ -13,4 +13,4 @@ pub mod territory;
 pub use coordinates::{Point, Position};
 pub use map::Map;
 pub use province::Province;
-pub use state::{TileView, World, WorldError};
+pub use state::{OwnershipChange, SubsidyTransfer, TaxCollection, TileView, World, WorldError};

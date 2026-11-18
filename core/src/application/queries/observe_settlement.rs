@@ -4,13 +4,16 @@
 use crate::application::commands::settlement::contract::{OfferSide, OfferSpec};
 use crate::application::queries::observation::{
     BuildingObservation, BuildingTypeObservation, InventoryObservation, LastTurnObservation,
-    ProjectObservation, ProjectTarget, RecipeObservation, ResourceAmounts, SettlementObservation,
-    TileObservation, TileState, TradeObservation, TradePartner, WorkforceObservation,
+    NationPolicyObservation, ProjectObservation, ProjectTarget, RecipeObservation, ResourceAmounts,
+    SettlementObservation, TileObservation, TileState, TradeObservation, TradePartner,
+    WorkforceObservation,
 };
+use crate::application::queries::observation::{KnownMarketObservation, KnownMarketOffer};
 use crate::domain::buildings::Building;
 use crate::domain::buildings::definition::BuildingBehavior;
 use crate::domain::economy::{ResourceInventory, ResourceType};
 use crate::domain::ids::{BuildingTypeId, SettlementId};
+use crate::domain::intelligence::{Information, InformationSnapshot, MarketOfferSide};
 use crate::domain::settlement::Settlement;
 use crate::domain::settlement::projects::ProjectResult;
 use crate::domain::settlement::turn_report::TurnReport;
@@ -80,6 +83,7 @@ impl ObservationQuery<'_> {
             next_project_id: settlement.next_project_id(),
             trade: TradeObservation {
                 market_offers: market_offers(settlement),
+                known_markets: settlement.known_markets().map(known_market).collect(),
                 caravans_in_transit: self
                     .world
                     .caravans
@@ -92,6 +96,23 @@ impl ObservationQuery<'_> {
             territory: self.own_tiles(settlement_id)?,
             trade_partners: self.trade_partners(settlement_id),
             building_types: self.building_types(),
+            nation: self
+                .nation_policy(settlement_id)
+                .ok_or(WorldError::MissingSettlement(settlement_id))?,
+        })
+    }
+
+    /// The owner's policy: a settlement sees its nation's policy and adapts to
+    /// it (§5.3). None only for an unknown settlement.
+    fn nation_policy(&self, settlement_id: SettlementId) -> Option<NationPolicyObservation> {
+        let nation = self
+            .world
+            .nation(self.world.settlement_owner(settlement_id)?)?;
+        Some(NationPolicyObservation {
+            nation_id: nation.id(),
+            tax_rate: nation.tax_rate(),
+            capital: nation.capital(),
+            is_capital: nation.capital() == settlement_id,
         })
     }
 
@@ -146,6 +167,7 @@ impl ObservationQuery<'_> {
                 Some(TradePartner {
                     settlement_id: id,
                     province_id: self.world.settlement_province(id)?,
+                    nation_id: self.world.settlement_owner(id)?,
                 })
             })
             .collect()
@@ -275,6 +297,37 @@ fn market_offers(settlement: &Settlement) -> Vec<OfferSpec> {
     offers
 }
 
+fn known_market(snapshot: &InformationSnapshot) -> KnownMarketObservation {
+    match snapshot.information() {
+        Information::ForeignMarket {
+            market,
+            province_id,
+            offers,
+        } => KnownMarketObservation {
+            market: *market,
+            province_id: *province_id,
+            observed_turn: snapshot.observed_turn(),
+            offers: offers
+                .iter()
+                .map(|(resource, offer)| {
+                    let side = match offer.side {
+                        MarketOfferSide::Buy => OfferSide::Buy,
+                        MarketOfferSide::Sell => OfferSide::Sell,
+                    };
+                    (
+                        resource.clone(),
+                        KnownMarketOffer {
+                            side,
+                            units: offer.units,
+                            unit_price_limit: offer.unit_price_limit,
+                        },
+                    )
+                })
+                .collect(),
+        },
+    }
+}
+
 fn last_turn_observation(report: &TurnReport) -> LastTurnObservation {
     let mut lost = std::collections::BTreeMap::new();
     for loss in &report.inventory.losses {
@@ -304,5 +357,6 @@ fn last_turn_observation(report: &TurnReport) -> LastTurnObservation {
         unfunded_caravan_orders: report.trade.unfunded_caravan_orders.len(),
         completed_projects: ids(true),
         failed_projects: ids(false),
+        production_tax: report.inventory.taxed.clone(),
     }
 }

@@ -10,8 +10,11 @@ impl World {
         &mut self,
         id: SettlementId,
         finder: &mut PathFinder,
+        turn: u64,
     ) -> crate::domain::settlement::PreparedTurn {
-        let province = self.settlement_province(id).expect("registered settlement");
+        let province_id = self
+            .settlement_province(id)
+            .expect("registered settlement province");
         let mut visitors: Vec<_> = self
             .caravans
             .iter_mut()
@@ -27,8 +30,10 @@ impl World {
                     finder,
                     &mut self.territory,
                 )
-                .with_province(province),
+                .with_province(province_id),
                 &mut visitors,
+                turn,
+                province_id,
             )
     }
 
@@ -53,7 +58,7 @@ impl World {
         self.caravans = travelling;
         for caravan in returned {
             if let Ok(sender) = self.settlement_mut(caravan.sender_id) {
-                sender.receive_caravan(caravan.into_return());
+                sender.receive_caravan(caravan.try_into_return().expect("caravan back home"));
             }
         }
         let existing: std::collections::HashSet<_> = self.settlement_ids().into_iter().collect();

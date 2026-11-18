@@ -9,6 +9,7 @@ use crate::domain::economy::ResourceType;
 use crate::domain::economy::allocation::{
     AllocationEngine, AllocationRecipient, AllocationResult, DemandRequest,
 };
+use crate::domain::nation::taxation::tax_amount;
 use crate::domain::spatial::ConstructionSpace;
 use crate::domain::trade::caravan::Caravan;
 use std::collections::HashMap;
@@ -38,6 +39,27 @@ pub(crate) struct ProducedTurn {
     returned: HashMap<ResourceType, u64>,
 }
 
+impl ProducedTurn {
+    /// Takes the production tax out of this turn's gross production, before it
+    /// enters the buffer and the warehouse, and records it in the inventory
+    /// report. Each material is taxed separately and rounded down.
+    pub(crate) fn levy_production_tax(&mut self, rate: f32) -> MaterialTotals {
+        let mut taxed = MaterialTotals::new();
+        for (resource, amount) in &mut self.produced {
+            if resource == &ResourceType::Labour {
+                continue;
+            }
+            let tax = tax_amount(rate, *amount);
+            if tax > 0 {
+                *amount -= tax;
+                taxed.insert(resource.clone(), tax);
+            }
+        }
+        self.consumed.allocated.inventory.taxed = taxed.clone();
+        taxed
+    }
+}
+
 impl Settlement {
     /// Executes the settlement phases in isolation for tests.
     #[cfg(test)]
@@ -46,7 +68,7 @@ impl Settlement {
         environment: &mut (impl ConstructionSpace + TravelCostSource),
         visitors: &mut [&mut Caravan],
     ) -> TurnReport {
-        let prepared = self.prepare_turn(environment, visitors);
+        let prepared = self.prepare_turn(environment, visitors, 1, 0);
         let allocated = self.allocate_turn(prepared);
         let consumed = self.consume_turn(allocated);
         self.progress_construction(&consumed);
@@ -58,6 +80,8 @@ impl Settlement {
         &mut self,
         environment: &mut (impl ConstructionSpace + TravelCostSource),
         visitors: &mut [&mut Caravan],
+        turn: u64,
+        province_id: usize,
     ) -> PreparedTurn {
         self.building_manager.refresh_productivity(environment);
         let opening_stock = InventoryTurnReport::snapshot(
@@ -70,7 +94,7 @@ impl Settlement {
         let mut trade = TradeTurnReport::default();
         self.reserve_market(&mut trade);
         self.fund_caravan_orders(&mut trade);
-        self.trade_with_visitors(visitors, &mut trade);
+        self.trade_with_visitors(visitors, &mut trade, turn, province_id);
         let building_requests = self.building_manager.generate_requests(|building| {
             building
                 .definition()
@@ -172,6 +196,7 @@ impl Settlement {
             consumption,
             projects,
             inventory,
+            taxation: None,
         }
     }
 }

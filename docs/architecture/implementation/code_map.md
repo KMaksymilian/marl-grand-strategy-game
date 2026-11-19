@@ -467,7 +467,7 @@ Contains `Tile`, `TileOccupancy`, settlement-qualified references and `Territory
 
 ### [core/src/domain/world/state/inspection.rs](../../../core/src/domain/world/state/inspection.rs)
 
-`World::inspect_tile` returns `TileView`: terrain, province, separate
+`World::inspect_tile` returns `TileView`: terrain, coastal-land designation, province, separate
 `province_settlement`/`occupant_settlement` references, occupancy and borrowed
 building/new-construction objects. It validates coordinates, province existence
 and structural references, returning `InconsistentOccupancy` for dangling or misplaced objects. This authoritative read does not filter agent knowledge.
@@ -508,6 +508,16 @@ diagonal and slope costs.
 | `move_cost` | Combine step length with asymmetric uphill/downhill slope costs. |
 
 ## World generation services
+
+### [core/src/domain/world/generation/deposits.rs](../../../core/src/domain/world/generation/deposits.rs)
+
+`DepositGenerationConfig` defines a seed, vein size limit and per-biome ore
+probabilities. `OreDepositRule::chance_for` reads the probability for a biome.
+`World::generate_deposits` validates configuration, samples independent focuses
+per province and ore, and grows connected land veins into the existing registry.
+It returns a `DepositGenerationReport` with focus and growth positions.
+See [world generation](../systems/world_generation.md) for biome selection,
+collision handling, water barriers and deterministic ordering.
 
 
 ### [core/src/domain/world/generation/config.rs](../../../core/src/domain/world/generation/config.rs)

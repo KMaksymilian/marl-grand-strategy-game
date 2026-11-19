@@ -32,6 +32,7 @@ pub struct BuildingDefinition {
     behaviors: Vec<BuildingBehavior>,
     construction_cost: ProjectCost,
     required_deposit: Option<ResourceType>,
+    requires_coast: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,6 +66,7 @@ impl BuildingDefinition {
             behaviors,
             construction_cost,
             required_deposit: None,
+            requires_coast: false,
         };
         definition.validate()?;
         Ok(definition)
@@ -99,6 +101,15 @@ impl BuildingDefinition {
 
     pub fn required_deposit(&self) -> Option<ResourceType> {
         self.required_deposit.clone()
+    }
+
+    pub fn requiring_coast(mut self) -> Self {
+        self.requires_coast = true;
+        self
+    }
+
+    pub fn requires_coast(&self) -> bool {
+        self.requires_coast
     }
 
     pub(crate) fn deposit_resource(&self) -> Option<&ResourceType> {

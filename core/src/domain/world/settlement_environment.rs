@@ -41,6 +41,10 @@ impl<'a> MapConstructionSpace<'a> {
 }
 
 impl ConstructionSpace for MapConstructionSpace<'_> {
+    fn is_coastal(&self, position: Position) -> bool {
+        self.map.is_coastal(position)
+    }
+
     fn reserve_construction(
         &mut self,
         position: Position,
@@ -124,6 +128,10 @@ impl TravelCostSource for MapSettlementEnvironment<'_> {
 }
 
 impl ConstructionSpace for MapSettlementEnvironment<'_> {
+    fn is_coastal(&self, position: Position) -> bool {
+        self.space.is_coastal(position)
+    }
+
     fn can_extract(&self, position: Position, resource: ResourceType) -> bool {
         self.province.is_some_and(|province| {
             self.space

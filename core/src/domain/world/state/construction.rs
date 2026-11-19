@@ -35,6 +35,7 @@ impl World {
     ) -> Result<(), WorldError> {
         self.validate_construction_site(settlement_id, position)?;
         self.validate_blueprint_materials(settlement_id, definition)?;
+        self.validate_coast_requirement(position, definition)?;
         self.validate_building_deposit(position, definition.required_deposit())
     }
 
@@ -45,7 +46,11 @@ impl World {
         definition: &BuildingDefinition,
     ) -> Result<(), WorldError> {
         self.validate_settlement_position(settlement_id, position)?;
+        self.map
+            .validate_building_position(position)
+            .map_err(|error| WorldError::Project(ProjectError::Territory(error)))?;
         self.validate_blueprint_materials(settlement_id, definition)?;
+        self.validate_coast_requirement(position, definition)?;
         self.validate_building_deposit(position, definition.required_deposit())
     }
 
@@ -61,6 +66,19 @@ impl World {
             Some(resource) => Err(WorldError::Project(ProjectError::UnknownMaterial(resource))),
             None => Ok(()),
         }
+    }
+
+    fn validate_coast_requirement(
+        &self,
+        position: Position,
+        definition: &BuildingDefinition,
+    ) -> Result<(), WorldError> {
+        if definition.requires_coast() && !self.map.is_coastal(position) {
+            return Err(WorldError::Project(ProjectError::Territory(
+                crate::domain::spatial::TerritoryError::CoastRequired(position),
+            )));
+        }
+        Ok(())
     }
 
     /// Cancellation belongs to the settlement and also works after map edits.
@@ -143,7 +161,13 @@ impl World {
         self.settlements
             .get_mut(settlement_id)
             .expect("settlement was validated")
-            .queue_upgrade(project_id, building_id, definition, cost)
+            .queue_upgrade_with_space(
+                project_id,
+                building_id,
+                definition,
+                cost,
+                &MapConstructionSpace::new(&self.map, &mut self.territory),
+            )
             .map_err(WorldError::Project)
     }
 

@@ -216,6 +216,7 @@ fn observation_describes_the_local_economy() {
         observation.building_types,
         vec![BuildingTypeObservation {
             required_deposit: None,
+            requires_coast: false,
             building_type: BuildingTypeId::new("farm"),
             name: "Farm".into(),
             tier: 1,

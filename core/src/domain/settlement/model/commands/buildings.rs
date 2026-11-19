@@ -6,9 +6,20 @@ use crate::domain::buildings::productivity::BuildingProductivityCalculator;
 use crate::domain::buildings::productivity::TravelCostSource;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::BuildingId;
-use crate::domain::spatial::{BuildingReference, ConstructionSpace};
+use crate::domain::spatial::{BuildingReference, ConstructionSpace, Position, TerritoryError};
 
 impl Settlement {
+    pub(crate) fn validate_coastal_site(
+        definition: &BuildingDefinition,
+        position: Position,
+        space: &impl ConstructionSpace,
+    ) -> Result<(), TerritoryError> {
+        if definition.requires_coast() && !space.is_coastal(position) {
+            return Err(TerritoryError::CoastRequired(position));
+        }
+        Ok(())
+    }
+
     pub fn first_unknown_building_material(
         &self,
         definition: &BuildingDefinition,
@@ -42,6 +53,8 @@ impl Settlement {
         if let Some(resource) = self.first_unknown_building_material(building.definition()) {
             return Err(BuildingCommandError::UnknownMaterial(resource));
         }
+        Self::validate_coastal_site(building.definition(), position, environment)
+            .map_err(BuildingCommandError::Territory)?;
         environment
             .register_building(
                 position,

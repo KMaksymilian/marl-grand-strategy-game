@@ -49,6 +49,8 @@ impl Settlement {
         space: &mut impl ConstructionSpace,
     ) -> Result<(), ProjectError> {
         self.validate_project_materials(&definition, &cost)?;
+        Self::validate_coastal_site(&definition, position, space)
+            .map_err(ProjectError::Territory)?;
         let project = Project::new(
             project_id,
             ProjectResult::ConstructBuilding {
@@ -91,6 +93,44 @@ impl Settlement {
         cost: ProjectCost,
     ) -> Result<(), ProjectError> {
         self.validate_project_materials(&new_definition, &cost)?;
+        if new_definition.requires_coast() {
+            let building = self
+                .building_manager
+                .get(target_instance_id)
+                .ok_or(ProjectError::MissingBuilding(target_instance_id))?;
+            return Err(ProjectError::Territory(
+                crate::domain::spatial::TerritoryError::CoastRequired(building.position()),
+            ));
+        }
+        self.queue_validated_upgrade(project_id, target_instance_id, new_definition, cost)
+    }
+
+    /// Requests an upgrade whose location requirements can be checked by the environment.
+    pub fn queue_upgrade_with_space(
+        &mut self,
+        project_id: ProjectId,
+        target_instance_id: BuildingId,
+        new_definition: Arc<BuildingDefinition>,
+        cost: ProjectCost,
+        space: &impl ConstructionSpace,
+    ) -> Result<(), ProjectError> {
+        self.validate_project_materials(&new_definition, &cost)?;
+        let building = self
+            .building_manager
+            .get(target_instance_id)
+            .ok_or(ProjectError::MissingBuilding(target_instance_id))?;
+        Self::validate_coastal_site(&new_definition, building.position(), space)
+            .map_err(ProjectError::Territory)?;
+        self.queue_validated_upgrade(project_id, target_instance_id, new_definition, cost)
+    }
+
+    fn queue_validated_upgrade(
+        &mut self,
+        project_id: ProjectId,
+        target_instance_id: BuildingId,
+        new_definition: Arc<BuildingDefinition>,
+        cost: ProjectCost,
+    ) -> Result<(), ProjectError> {
         let result = ProjectResult::UpgradeBuilding {
             target_instance_id,
             new_definition,

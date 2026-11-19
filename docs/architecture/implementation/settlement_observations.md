@@ -31,9 +31,9 @@ generation: [application/queries/observe_settlement.rs](../../../core/src/applic
 | `next_project_id` | ID the next accepted construction or upgrade receives. |
 | `trade` | Own `market_offers`, caravan counts and `known_markets` delivered by returning caravans. Each known market includes its settlement, province, observation turn and observed offers. |
 | `last_turn` | Satisfaction, missing needs, produced, consumed by population/projects/production, lost, trade reserved/received, gold received, market trade count, caravans dispatched, unfunded caravan orders, completed and failed project IDs. |
-| `territory` | Every tile of the own province in row-major order: elevation, moisture, optional `deposit`, occupancy and `buildable`. |
+| `territory` | Every tile of the own province in row-major order: elevation, moisture, optional `deposit`, `coastal`, occupancy and `buildable`. |
 | `trade_partners` | Other settlements as `{settlement_id, province_id, nation_id}`, ascending ID; `nation_id` is the public owner. |
-| `building_types` | The public catalog: name, tier, `max_workers`, construction cost and turns, recipes and optional `required_deposit`. |
+| `building_types` | The public catalog: name, tier, `max_workers`, construction cost and turns, recipes, optional `required_deposit` and `requires_coast`. |
 | `nation` | The owner's policy: `nation_id`, `tax_rate`, `capital`, `is_capital`. Every settlement belongs to a nation. See [Nations](nations.md). |
 
 `buildable` covers province membership, land and vacancy. For a particular

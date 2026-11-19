@@ -41,6 +41,7 @@ pub enum TileOccupancy {
 pub enum TerritoryError {
     InvalidMapPosition(Position),
     OceanTile(Position),
+    CoastRequired(Position),
     Occupied {
         position: Position,
         occupancy: TileOccupancy,
@@ -62,6 +63,11 @@ pub enum TerritoryError {
 /// are qualified by settlement identity. Returning `Err` must leave occupancy
 /// unchanged; successful operations must be visible to subsequent validation.
 pub trait ConstructionSpace {
+    /// Whether this land tile shares an edge with the ocean.
+    fn is_coastal(&self, _position: Position) -> bool {
+        false
+    }
+
     /// Whether this settlement can work a deposit on the specified tile.
     fn can_extract(
         &self,

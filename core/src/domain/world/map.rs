@@ -11,6 +11,30 @@ pub struct Map {
 }
 
 impl Map {
+    pub fn deposits(&self) -> impl Iterator<Item = (Position, &ResourceType)> {
+        self.deposits
+            .iter()
+            .map(|(&position, resource)| (position, resource))
+    }
+
+    /// Coastal tiles are land sharing an edge with an in-map ocean tile.
+    pub fn is_coastal(&self, position: Position) -> bool {
+        use super::terrain::elevation::Elevation;
+        if self.validate_building_position(position).is_err() {
+            return false;
+        }
+        [(1, 0), (-1, 0), (0, 1), (0, -1)]
+            .into_iter()
+            .filter_map(|(dx, dy)| {
+                Some(Position {
+                    x: position.x.checked_add(dx)?,
+                    y: position.y.checked_add(dy)?,
+                })
+            })
+            .filter_map(|neighbor| self.tile_index(neighbor))
+            .any(|index| self.terrain[index].determine_elevation() == Elevation::Ocean)
+    }
+
     pub fn deposit_at(&self, position: Position) -> Option<ResourceType> {
         self.deposits.get(&position).cloned()
     }

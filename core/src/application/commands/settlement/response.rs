@@ -35,6 +35,9 @@ pub enum ActionError {
     OceanTile {
         position: Position,
     },
+    CoastRequired {
+        position: Position,
+    },
     RequiredDepositMissing {
         position: Position,
         resource: ResourceType,

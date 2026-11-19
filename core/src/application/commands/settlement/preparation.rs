@@ -512,6 +512,9 @@ impl<'a> DecisionPreparation<'a> {
             WorldError::Project(ProjectError::Territory(TerritoryError::OceanTile(_))) => {
                 ActionError::OceanTile { position }
             }
+            WorldError::Project(ProjectError::Territory(TerritoryError::CoastRequired(_))) => {
+                ActionError::CoastRequired { position }
+            }
             WorldError::Project(ProjectError::Territory(TerritoryError::Occupied { .. })) => {
                 ActionError::TileOccupied { position }
             }

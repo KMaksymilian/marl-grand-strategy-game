@@ -60,9 +60,9 @@ pub(crate) fn observe_nation(
             slots: world.decree_slots(nation_id)?,
             used_slots: nation.decrees().used_slots(),
             states: nation.decrees().states().clone(),
-            costs: Decree::ALL
+            upkeep: Decree::ALL
                 .into_iter()
-                .map(|decree| Ok((decree, world.decree_cost(nation_id, decree)?)))
+                .map(|decree| Ok((decree, world.decree_upkeep(nation_id, decree)?)))
                 .collect::<Result<_, WorldError>>()?,
             relocation_cost: world.capital_relocation_cost(nation_id)?,
             pending_relocation: nation.decrees().relocation(),

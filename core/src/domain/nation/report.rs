@@ -1,7 +1,7 @@
 //! One nation's turn, written for the nation agent. Later systems (diplomacy)
 //! add their parts here.
 use super::Nation;
-use super::decree::{Decree, DecreeState, RelocationOutcome};
+use super::decree::{Decree, DecreeState, DecreeUpkeepReport, RelocationOutcome};
 use super::taxation::NationTaxReport;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
@@ -23,6 +23,9 @@ pub struct NationTurnReport {
     pub taxes: NationTaxReport,
     /// Decrees at the end of the turn: pending, active or cooling down (§7).
     pub decrees: BTreeMap<Decree, DecreeState>,
+    /// Decree upkeep paid this turn, and decrees revoked because the treasury
+    /// could not pay them.
+    pub decree_upkeep: DecreeUpkeepReport,
     /// A relocation ordered last turn, resolved at the start of this one.
     pub capital_relocation: Option<RelocationOutcome>,
 }
@@ -44,6 +47,7 @@ impl NationTurnReport {
             closing_stock: nation.stock_amounts(),
             taxes,
             decrees: nation.decrees().states().clone(),
+            decree_upkeep: DecreeUpkeepReport::default(),
             capital_relocation: None,
         }
     }

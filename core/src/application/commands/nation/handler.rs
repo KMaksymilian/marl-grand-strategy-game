@@ -77,8 +77,8 @@ fn execute(
             })
         }
         NationCommand::EnactDecree(decree) => {
-            let cost = world.enact_decree(nation_id, decree)?;
-            Ok(NationActionEffect::DecreeEnacted { decree, cost })
+            let upkeep = world.enact_decree(nation_id, decree)?;
+            Ok(NationActionEffect::DecreeEnacted { decree, upkeep })
         }
         NationCommand::RevokeDecree(decree) => {
             world.revoke_decree(nation_id, decree)?;

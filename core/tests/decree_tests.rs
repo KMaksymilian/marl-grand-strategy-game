@@ -1,4 +1,5 @@
-//! Decrees (gameplay specification §7): the one-time cost, delayed start,
+//! Decrees (gameplay specification §7): the upkeep paid every active turn,
+//! automatic revocation when unpaid, delayed start,
 //! minimum duration, cooldown, slots, effects as data for the systems that
 //! apply them, and the one-shot capital relocation with its refund.
 use simulation_core::ids::{NationId, SettlementId};
@@ -105,10 +106,10 @@ fn state(simulation: &Simulation, decree: Decree) -> Option<DecreeState> {
         .state(decree)
 }
 
-// ---------------------------------------------------------------- cost and timing
+// ---------------------------------------------------------------- upkeep and timing
 
 #[test]
-fn a_decree_is_paid_once_when_enacted_and_works_from_the_next_turn() {
+fn a_decree_works_from_the_next_turn_and_costs_its_upkeep_every_active_turn() {
     let mut simulation = simulation(1_000);
     queue(&mut simulation, vec![enact(Decree::AgriculturalDecree)]);
     // Before the turn: nothing enacted, nothing in effect.
@@ -120,15 +121,16 @@ fn a_decree_is_paid_once_when_enacted_and_works_from_the_next_turn() {
     assert_eq!(
         outcomes(&report)[0],
         NationActionOutcome::Applied {
-            // 10 gold × 2 settlements × 1.
+            // 10 gold × 2 settlements × 1 per active turn.
             effect: NationActionEffect::DecreeEnacted {
                 decree: Decree::AgriculturalDecree,
-                cost: 20
+                upkeep: 20
             }
         }
     );
-    assert_eq!(treasury(&simulation), 980);
-    // Pending in turn 1, active from turn 2: the end-of-turn state is active.
+    // Turn 1: pending, nothing paid. The end-of-turn state is active.
+    assert_eq!(treasury(&simulation), 1_000);
+    assert!(report.nations[&FIRST].decree_upkeep.paid.is_empty());
     assert_eq!(
         report.nations[&FIRST].decrees,
         BTreeMap::from([(
@@ -142,15 +144,50 @@ fn a_decree_is_paid_once_when_enacted_and_works_from_the_next_turn() {
         effects.production[&ProductionScope::BuildingMaterialTier1],
         -0.1
     );
-    // No further payments while it lasts.
-    for _ in 0..5 {
-        simulation.step().unwrap();
+    // Turns 2..=6: 20 gold every turn.
+    for turn in 1..=5 {
+        let report = simulation.step().unwrap();
+        let upkeep = &report.nations[&FIRST].decree_upkeep;
+        assert_eq!(upkeep.paid, vec![Decree::AgriculturalDecree]);
+        assert_eq!(upkeep.gold_paid, 20);
+        assert_eq!(treasury(&simulation), 1_000 - 20 * turn);
     }
-    assert_eq!(treasury(&simulation), 980);
+}
+
+#[test]
+fn a_decree_the_treasury_cannot_pay_is_revoked_like_any_other() {
+    // Games cost 10 × 2 × 4 = 80 per turn; the treasury holds 100.
+    let mut simulation = simulation(100);
+    let report = act(&mut simulation, vec![enact(Decree::Games)]);
+    assert!(applied(&outcomes(&report)[0]), "enacting needs no gold");
+    let report = simulation.step().unwrap();
+    assert_eq!(report.nations[&FIRST].decree_upkeep.gold_paid, 80);
+    assert_eq!(treasury(&simulation), 20);
+    let report = simulation.step().unwrap();
+    let upkeep = &report.nations[&FIRST].decree_upkeep;
+    assert_eq!(upkeep.revoked_unpaid, vec![Decree::Games]);
+    assert!(upkeep.paid.is_empty());
+    assert_eq!(treasury(&simulation), 20, "an unpaid decree takes nothing");
     assert_eq!(
-        state(&simulation, Decree::AgriculturalDecree),
-        Some(DecreeState::Active { turns_active: 5 })
+        state(&simulation, Decree::Games),
+        Some(DecreeState::Cooldown { turns_left: 4 })
     );
+    assert_eq!(
+        simulation.world().decree_effects(A),
+        DecreeEffects::default()
+    );
+}
+
+#[test]
+fn upkeep_scales_with_the_settlements_owned_at_payment() {
+    let mut simulation = simulation(1_000);
+    act(&mut simulation, vec![enact(Decree::GreatConstruction)]);
+    let report = simulation.step().unwrap();
+    // 10 × 2 settlements × 2.
+    assert_eq!(report.nations[&FIRST].decree_upkeep.gold_paid, 40);
+    simulation.transfer_settlement(C, FIRST).unwrap();
+    let report = simulation.step().unwrap();
+    assert_eq!(report.nations[&FIRST].decree_upkeep.gold_paid, 60);
 }
 
 #[test]
@@ -167,36 +204,6 @@ fn effects_belong_to_the_owners_settlements_only() {
         simulation.world().decree_effects(SettlementId(9)),
         DecreeEffects::default()
     );
-}
-
-#[test]
-fn the_cost_scales_with_settlements_and_the_multiplier_and_needs_the_gold() {
-    let mut simulation = simulation(100);
-    // Games: 10 × 2 × 4 = 80; agricultural decree: 20. Together 100 of 100.
-    let report = act(
-        &mut simulation,
-        vec![
-            NationAction::Subsidize {
-                settlement_id: B,
-                gold: 30,
-                resources: BTreeMap::new(),
-            },
-            enact(Decree::Games),
-            enact(Decree::AgriculturalDecree),
-        ],
-    );
-    let results = outcomes(&report);
-    assert!(applied(&results[0]));
-    assert_eq!(
-        error(&results[1]),
-        NationActionError::InsufficientTreasury {
-            requested: 80,
-            available: 70
-        }
-    );
-    assert!(applied(&results[2]), "a rejected decree reserves nothing");
-    assert_eq!(treasury(&simulation), 50);
-    assert_eq!(state(&simulation, Decree::Games), None);
 }
 
 // ---------------------------------------------------------------- duration and cooldown
@@ -229,7 +236,8 @@ fn a_decree_can_be_revoked_only_after_five_active_turns() {
         simulation.world().decree_effects(A),
         DecreeEffects::default()
     );
-    assert_eq!(treasury(&simulation), 1_000 - 80, "nothing is refunded");
+    // Paid for active turns 2..=6; the turn of the revocation costs nothing.
+    assert_eq!(treasury(&simulation), 1_000 - 5 * 80);
 }
 
 #[test]
@@ -263,7 +271,8 @@ fn a_revoked_decree_can_be_enacted_again_after_five_turns() {
     assert_eq!(state(&simulation, Decree::FreeTrade), None);
     let report = act(&mut simulation, vec![enact(Decree::FreeTrade)]);
     assert!(applied(&outcomes(&report)[0]));
-    assert_eq!(treasury(&simulation), 1_000 - 2 * 20, "paid again");
+    // Five paid active turns before the revocation; the new one is pending.
+    assert_eq!(treasury(&simulation), 1_000 - 5 * 20);
 }
 
 // ---------------------------------------------------------------- slots
@@ -441,7 +450,8 @@ fn relocation_orders_are_checked_and_use_no_decree_slot() {
         error(&results[3]),
         NationActionError::Conflict { with_index: 2 }
     );
-    assert_eq!(treasury(&simulation), 1_000 - 20 - 20 - 200);
+    // Decrees cost nothing while pending; the relocation is paid now.
+    assert_eq!(treasury(&simulation), 1_000 - 200);
 }
 
 // ---------------------------------------------------------------- observation
@@ -463,8 +473,8 @@ fn nations_and_settlements_observe_decrees() {
             DecreeState::Active { turns_active: 0 }
         )])
     );
-    assert_eq!(decrees.costs.len(), Decree::ALL.len());
-    assert_eq!(decrees.costs[&Decree::Games], 80);
+    assert_eq!(decrees.upkeep.len(), Decree::ALL.len());
+    assert_eq!(decrees.upkeep[&Decree::Games], 80);
     assert_eq!(decrees.relocation_cost, 200);
     assert_eq!(decrees.effects.production[&ProductionScope::FoodTier1], 0.2);
     assert_eq!(
@@ -503,7 +513,7 @@ fn decree_actions_and_results_serialize_in_snake_case() {
     let json = serde_json::to_value(&report.nation_decisions[0].results).unwrap();
     assert_eq!(
         json[0]["outcome"]["effect"],
-        serde_json::json!({"effect": "decree_enacted", "decree": "great_construction", "cost": 40})
+        serde_json::json!({"effect": "decree_enacted", "decree": "great_construction", "upkeep": 40})
     );
     assert_eq!(
         json[1]["outcome"]["effect"],

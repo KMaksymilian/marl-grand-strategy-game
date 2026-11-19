@@ -1,8 +1,8 @@
 //! Read-only validation of nation decisions against the authoritative world.
 //!
 //! Policy (the same as for settlements): actions are checked in submission order
-//! and each one is accepted or rejected on its own. Subsidies, decree costs and a
-//! relocation of one decision share the treasury, and decrees share the slots,
+//! and each one is accepted or rejected on its own. Subsidies and a relocation
+//! of one decision share the treasury, and decrees share the slots,
 //! so each action is checked against what earlier accepted actions left. One
 //! decision sets the rate once, touches each decree once and orders at most one
 //! relocation. Validation never changes the world.
@@ -63,7 +63,7 @@ struct Batch {
     /// the enactments and revocations accepted so far.
     slots: usize,
     used_slots: usize,
-    /// Treasury not yet promised to earlier subsidies, decrees and relocations.
+    /// Treasury not yet promised to earlier subsidies and relocations.
     gold_left: u32,
     /// National stock not yet promised to earlier subsidies.
     stock_left: BTreeMap<ResourceType, u32>,
@@ -166,10 +166,8 @@ fn check_action(
             if batch.used_slots >= batch.slots {
                 return Err(NationActionError::NoFreeDecreeSlot { slots: batch.slots });
             }
-            let cost = world
-                .decree_cost(nation_id, decree)
-                .expect("the nation exists");
-            batch.spend(cost)?;
+            // No gold needed now: the upkeep is paid every turn from the next
+            // one, when the decree is active.
             batch.claim(Target::Decree(decree), index)?;
             batch.used_slots += 1;
             Ok(NationCommand::EnactDecree(decree))

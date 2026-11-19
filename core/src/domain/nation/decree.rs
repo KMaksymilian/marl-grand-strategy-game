@@ -1,14 +1,14 @@
-//! Decrees (gameplay specification §7): nation-wide policies with a one-time
-//! cost, a delayed start, a minimum duration and a cooldown, plus the one-shot
-//! capital relocation.
+//! Decrees (gameplay specification §7): nation-wide policies with an upkeep
+//! paid every turn, a delayed start, a minimum duration and a cooldown, plus
+//! the one-shot capital relocation.
 //!
 //! Lifecycle of one decree enacted in turn T:
 //!
-//! | When | State | Effects |
-//! | --- | --- | --- |
-//! | turn T (cost paid) | `Pending` | no |
-//! | from turn T+1 | `Active` | yes |
-//! | revoked after ≥ 5 active turns | `Cooldown` (5 turns) | no |
+//! | When | State | Effects | Upkeep |
+//! | --- | --- | --- | --- |
+//! | turn T | `Pending` | no | no |
+//! | from turn T+1 | `Active` | yes | every turn |
+//! | revoked by the nation after ≥ 5 active turns, or automatically when the upkeep cannot be paid | `Cooldown` (5 turns) | no | no |
 //!
 //! Pending and active decrees use slots; a decree on cooldown does not.
 //!
@@ -181,14 +181,14 @@ impl Decree {
         Self::NationalFortification,
     ];
 
-    /// Gold per owned settlement of the base cost.
-    pub const BASE_COST_PER_SETTLEMENT: u32 = 10;
+    /// Gold per owned settlement per turn of the base upkeep.
+    pub const BASE_UPKEEP_PER_SETTLEMENT: u32 = 10;
     /// Turns a decree must be active before it can be revoked.
     pub const MINIMUM_ACTIVE_TURNS: u32 = 5;
     /// Turns after revocation before the same decree can be enacted again.
     pub const COOLDOWN_TURNS: u32 = 5;
 
-    /// Multiplier of the base cost (§7 table).
+    /// Multiplier of the base upkeep (§7 table).
     pub fn cost_multiplier(self) -> u32 {
         match self {
             Self::GreatConstruction => 2,
@@ -198,10 +198,10 @@ impl Decree {
         }
     }
 
-    /// The one-time cost of enacting the decree for a nation with
-    /// `settlements` settlements, paid when it is enacted.
-    pub fn cost(self, settlements: usize) -> u64 {
-        u64::from(Self::BASE_COST_PER_SETTLEMENT)
+    /// Gold per active turn for a nation with `settlements` settlements:
+    /// `10 × settlements × multiplier`.
+    pub fn upkeep(self, settlements: usize) -> u64 {
+        u64::from(Self::BASE_UPKEEP_PER_SETTLEMENT)
             * u64::try_from(settlements).unwrap_or(u64::MAX)
             * u64::from(self.cost_multiplier())
     }
@@ -265,7 +265,8 @@ pub enum DecreeState {
     Pending,
     /// In effect; `turns_active` counts completed active turns.
     Active { turns_active: u32 },
-    /// Revoked; can be enacted again when `turns_left` reaches zero.
+    /// Revoked (by the nation, or automatically for unpaid upkeep); can be
+    /// enacted again when `turns_left` reaches zero.
     Cooldown { turns_left: u32 },
 }
 
@@ -311,6 +312,20 @@ pub enum RelocationOutcome {
         reason: RelocationFailure,
         refund: u32,
     },
+}
+
+/// Upkeep of one nation's decrees in one turn, for the nation's report.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecreeUpkeepReport {
+    /// Active decrees whose upkeep was paid: they are in effect this turn.
+    pub paid: Vec<Decree>,
+    /// Gold paid this turn.
+    pub gold_paid: u64,
+    /// Active decrees the treasury could not pay: revoked automatically,
+    /// exactly like a revocation (5-turn cooldown), so they have no effect
+    /// this turn. Listed so the agent sees that the gold ran out.
+    pub revoked_unpaid: Vec<Decree>,
 }
 
 /// A nation's decrees and pending relocation. Decrees missing from `states`
@@ -378,7 +393,8 @@ impl DecreeBook {
         self.states.insert(decree, DecreeState::Pending);
     }
 
-    /// Ends a decree; its cooldown starts and its slot is free.
+    /// Ends a decree (revoked, or its upkeep unpaid); its cooldown starts and
+    /// its slot is free.
     pub(crate) fn revoke(&mut self, decree: Decree) {
         self.states.insert(
             decree,
@@ -418,12 +434,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn costs_follow_the_table_and_scale_with_settlements() {
-        assert_eq!(Decree::AgriculturalDecree.cost(3), 30);
-        assert_eq!(Decree::GreatConstruction.cost(3), 60);
-        assert_eq!(Decree::ArtPatronage.cost(3), 90);
-        assert_eq!(Decree::Games.cost(3), 120);
-        assert_eq!(Decree::NationalFortification.cost(1), 40);
+    fn upkeep_follows_the_table_and_scales_with_settlements() {
+        assert_eq!(Decree::AgriculturalDecree.upkeep(3), 30);
+        assert_eq!(Decree::GreatConstruction.upkeep(3), 60);
+        assert_eq!(Decree::ArtPatronage.upkeep(3), 90);
+        assert_eq!(Decree::Games.upkeep(3), 120);
+        assert_eq!(Decree::NationalFortification.upkeep(1), 40);
         assert_eq!(CapitalRelocation::cost(4), 400);
     }
 

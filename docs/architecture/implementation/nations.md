@@ -133,11 +133,12 @@ enough. Nation and settlement observations already show them.
 
 | Rule | Value |
 | --- | --- |
-| Cost | **One-time**, paid when enacted: `10 × owned settlements × multiplier` gold. Not enough gold: `insufficient_treasury`. Revoking refunds nothing. (The specification's "per turn" was replaced by a one-time payment.) |
+| Upkeep | `10 × owned settlements × multiplier` gold **every turn the decree is active**, paid right after nation decisions (`World::pay_decree_upkeep`). The pending turn is free, and so is the turn of a revocation. Enacting needs no gold. |
+| Unpaid upkeep | The decree is **revoked automatically**, exactly like a revocation: it has no effect that turn and starts its 5-turn cooldown. The nation report (and `last_turn` in the observation) lists it in `decree_upkeep.revoked_unpaid`. |
 | Slots | 2. `DecreeBook::slots` adds one at average settlement happiness 70 and one per further 10 points (6 at 100); without happiness every nation has 2. Pending and active decrees use slots; cooling-down ones do not. |
 | Activation | Enacted in turn T (`pending`), in effect from turn T+1 (`active`). |
 | Minimum duration | Revocable after 5 active turns; a pending decree cannot be revoked. |
-| Cooldown | 5 turns after revocation before the same decree can be enacted again. |
+| Cooldown | 5 turns after any revocation before the same decree can be enacted again. |
 
 **Effects are data.** `DecreeEffects` combines the owner's active decrees
 (fractions add up, multipliers multiply, flags combine) and
@@ -170,13 +171,13 @@ expires and the cost is refunded (`not_owned`, `under_attack`).
 | --- | --- | --- |
 | `set_tax_rate` | `tax_rate_set` | `invalid_tax_rate` outside 0.0..=1.0, `conflict` for a second rate in the same decision |
 | `subsidize` | `subsidy_delivered` with `gold`, `delivered` and `returned` | `unknown_settlement`, `settlement_not_owned`, `empty_subsidy`, `labour_is_not_transferable`, `insufficient_treasury`, `insufficient_stock`, `settlement_treasury_full` |
-| `enact_decree` | `decree_enacted` with the `cost` paid | `decree_already_enacted`, `decree_on_cooldown`, `no_free_decree_slot`, `insufficient_treasury`, `conflict` |
+| `enact_decree` | `decree_enacted` with the `upkeep` it will cost per active turn | `decree_already_enacted`, `decree_on_cooldown`, `no_free_decree_slot`, `conflict` |
 | `revoke_decree` | `decree_revoked` with `cooldown_turns` | `decree_not_active`, `decree_minimum_duration`, `conflict` |
 | `relocate_capital` | `capital_relocation_ordered` with the `cost` paid | `unknown_settlement`, `settlement_not_owned`, `already_capital`, `settlement_under_attack`, `relocation_pending`, `insufficient_treasury`, `conflict` |
 
 Actions are checked in order and each one is accepted or rejected on its own; a
-rejected action changes and claims nothing. Subsidies, decree costs and a
-relocation of one decision share the treasury, and decrees share the slots (a
+rejected action changes and claims nothing. Subsidies and a relocation of one
+decision share the treasury, and decrees share the slots (a
 revocation frees its slot for a later enactment), so `available` in an error is
 what earlier accepted actions left. One decision sets the rate once, touches
 each decree once and orders at most one relocation. Materials that do not fit the settlement's warehouse stay in the national
@@ -185,7 +186,7 @@ stock (`returned`): a subsidy neither creates nor destroys goods.
 ## Global turn
 
 ```
-capital relocations -> nation decisions -> settlement decisions -> Preparation -> Allocation ->
+capital relocations -> nation decisions -> decree upkeep -> settlement decisions -> Preparation -> Allocation ->
 Consumption -> Construction -> Production -> Taxation -> EconomicUpdates ->
 trade dispatch -> national timers and decree states -> nation reports
 ```
@@ -196,7 +197,8 @@ decide under the new policy and can use this turn's subsidies.
 `SimulationTurnReport::nation_decisions` holds the outcomes and
 `SimulationTurnReport::nations` each nation's own `NationTurnReport` (tax rate,
 capital, capital-loss turns, settlements, closing treasury and stock, taxes,
-decree states, the capital relocation resolved this turn). Settlement
+decree states, decree upkeep paid and decrees revoked for unpaid upkeep, the capital relocation resolved
+this turn). Settlement
 decisions stay independent: a nation never builds, staffs or trades for its
 settlements.
 
@@ -206,7 +208,7 @@ settlements.
 `NationObservation`: capital, capital-loss turns, tax rate, treasury, stock,
 stored total and shared capacity, a summary of each own settlement (province,
 population, gold, conquest turns, under attack, free warehouse capacity), the IDs
-of other nations, `decrees` (slots, used slots, states, the one-time cost of
+of other nations, `decrees` (slots, used slots, states, the current upkeep of
 every decree, relocation cost, pending relocation, combined effects) and
 `last_turn`. Another
 nation's treasury, stock and policy are not visible.

@@ -29,7 +29,7 @@ pub struct NationObservation {
     pub settlements: Vec<OwnedSettlementObservation>,
     /// Other nations still in the game, ascending ID.
     pub other_nations: Vec<NationId>,
-    /// Decrees, slots, costs and a pending capital relocation.
+    /// Decrees, slots, upkeep and a pending capital relocation.
     pub decrees: DecreesObservation,
     /// The nation's report of the latest completed turn; None before the first.
     pub last_turn: Option<NationTurnReport>,
@@ -59,8 +59,9 @@ pub struct DecreesObservation {
     pub used_slots: usize,
     /// Every decree that is pending, active or cooling down; others are free.
     pub states: BTreeMap<Decree, DecreeState>,
-    /// One-time cost of every decree now, for the current number of settlements.
-    pub costs: BTreeMap<Decree, u64>,
+    /// Upkeep per active turn of every decree, for the current number of
+    /// settlements.
+    pub upkeep: BTreeMap<Decree, u64>,
     /// Cost of a capital relocation now.
     pub relocation_cost: u64,
     /// A paid relocation that resolves at the start of the next turn.

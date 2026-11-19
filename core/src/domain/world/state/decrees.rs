@@ -1,7 +1,7 @@
 //! Decree lifecycle, effects lookup and capital relocation (gameplay
 //! specification §7).
 //!
-//! World owns these operations because they need both aggregates: costs scale
+//! World owns these operations because they need both aggregates: upkeep scales
 //! with the number of owned settlements, slots follow the settlements'
 //! happiness, and a relocation checks the target's ownership and siege state.
 //! Every method checks first and changes nothing on an error; the application
@@ -9,8 +9,8 @@
 use super::{World, WorldError};
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::decree::{
-    CapitalRelocation, Decree, DecreeBook, DecreeEffects, DecreeState, RelocationFailure,
-    RelocationOutcome,
+    CapitalRelocation, Decree, DecreeBook, DecreeEffects, DecreeState, DecreeUpkeepReport,
+    RelocationFailure, RelocationOutcome,
 };
 use std::collections::BTreeMap;
 
@@ -37,9 +37,9 @@ impl World {
         Ok(DecreeBook::slots(average_happiness))
     }
 
-    /// One-time cost of enacting a decree for this nation now.
-    pub fn decree_cost(&self, nation_id: NationId, decree: Decree) -> Result<u64, WorldError> {
-        Ok(decree.cost(self.nation_settlements(nation_id)?.len()))
+    /// Gold per turn of one decree for this nation now.
+    pub fn decree_upkeep(&self, nation_id: NationId, decree: Decree) -> Result<u64, WorldError> {
+        Ok(decree.upkeep(self.nation_settlements(nation_id)?.len()))
     }
 
     /// Cost of a capital relocation for this nation now.
@@ -49,27 +49,55 @@ impl World {
         ))
     }
 
-    /// Pays the one-time cost and starts a decree: pending this turn, active
-    /// from the next. Needs a free slot, a decree that is neither pending,
-    /// active nor cooling down, and the gold. Returns the cost paid.
+    /// Starts a decree: pending this turn, active (and paid) from the next.
+    /// Needs a free slot and a decree that is neither pending, active nor
+    /// cooling down. Costs nothing now; returns the upkeep per turn.
     pub(crate) fn enact_decree(
         &mut self,
         nation_id: NationId,
         decree: Decree,
-    ) -> Result<u32, WorldError> {
+    ) -> Result<u64, WorldError> {
         let slots = self.decree_slots(nation_id)?;
-        let cost = u32::try_from(self.decree_cost(nation_id, decree)?)
-            .map_err(|_| WorldError::InsufficientNationalFunds(nation_id))?;
-        let nation = self.nation_mut(nation_id)?;
-        let book = nation.decrees();
+        let upkeep = self.decree_upkeep(nation_id, decree)?;
+        let book = self.nation_mut(nation_id)?.decrees_mut();
         if book.state(decree).is_some() || book.used_slots() >= slots {
             return Err(WorldError::DecreeUnavailable { nation_id, decree });
         }
-        if !nation.withdraw_gold(cost) {
-            return Err(WorldError::InsufficientNationalFunds(nation_id));
+        book.enact(decree);
+        Ok(upkeep)
+    }
+
+    /// Every turn, right after nation decisions: each active decree costs its
+    /// upkeep, in `Decree` order. A decree the treasury cannot pay is revoked,
+    /// exactly as if the nation had revoked it: its cooldown starts and it has
+    /// no effect this turn.
+    pub(crate) fn pay_decree_upkeep(&mut self) -> BTreeMap<NationId, DecreeUpkeepReport> {
+        let nations: Vec<_> = self
+            .nations
+            .iter()
+            .map(|nation| (nation.id(), self.nations.settlements_of(nation.id()).len()))
+            .collect();
+        let mut reports = BTreeMap::new();
+        for (nation_id, settlements) in nations {
+            let nation = self.nation_mut(nation_id).expect("listed above");
+            let mut report = DecreeUpkeepReport::default();
+            let active: Vec<_> = nation.decrees().active().collect();
+            for decree in active {
+                let upkeep = decree.upkeep(settlements);
+                let paid = u32::try_from(upkeep)
+                    .ok()
+                    .is_some_and(|upkeep| nation.withdraw_gold(upkeep));
+                if paid {
+                    report.gold_paid += upkeep;
+                    report.paid.push(decree);
+                } else {
+                    nation.decrees_mut().revoke(decree);
+                    report.revoked_unpaid.push(decree);
+                }
+            }
+            reports.insert(nation_id, report);
         }
-        nation.decrees_mut().enact(decree);
-        Ok(cost)
+        reports
     }
 
     /// Ends a decree that has been active for the minimum duration; its

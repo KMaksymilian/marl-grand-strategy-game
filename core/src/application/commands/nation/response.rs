@@ -20,7 +20,7 @@ pub enum NationActionError {
     EmptySubsidy,
     /// Labour is a per-turn capacity of a population, not a stored good.
     LabourIsNotTransferable,
-    /// `available` is the treasury left after earlier subsidies, decrees and
+    /// `available` is the treasury left after earlier subsidies and
     /// relocations of the decision.
     InsufficientTreasury { requested: u64, available: u32 },
     /// `available` is the national stock left after earlier subsidies of the decision.
@@ -70,10 +70,11 @@ pub enum NationActionEffect {
         /// Materials that did not fit and stayed in the national stock.
         returned: BTreeMap<ResourceType, u32>,
     },
-    /// Paid now; pending this turn, active from the next.
+    /// Pending this turn, active from the next; `upkeep` is the gold it will
+    /// cost every active turn (for the current number of settlements).
     DecreeEnacted {
         decree: Decree,
-        cost: u32,
+        upkeep: u64,
     },
     /// Ended now; it can be enacted again after `cooldown_turns` turns.
     DecreeRevoked {

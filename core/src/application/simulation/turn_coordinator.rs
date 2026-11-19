@@ -37,6 +37,10 @@ pub(super) fn run_turn(
             })?;
     }
 
+    // Capital relocations ordered last turn take effect (or are refunded)
+    // before anyone decides, so this turn's decisions see the new capital.
+    let mut relocations = world.resolve_capital_relocations();
+
     // Nations decide first, so settlements decide under the new policy and with
     // this turn's subsidies. The queue is a BTreeMap: ascending nation ID. The
     // `expect` cannot fire: `queue_nation_decision` rejects unknown nations and
@@ -165,7 +169,9 @@ pub(super) fn run_turn(
             let id = nation.id();
             let settlements = world.nations().settlements_of(id);
             let taxes = taxes.remove(&id).unwrap_or_default();
-            (id, NationTurnReport::closing(nation, settlements, taxes))
+            let mut report = NationTurnReport::closing(nation, settlements, taxes);
+            report.capital_relocation = relocations.remove(&id);
+            (id, report)
         })
         .collect();
     Ok(SimulationTurnReport {

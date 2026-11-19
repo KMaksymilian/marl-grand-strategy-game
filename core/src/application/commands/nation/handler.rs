@@ -5,6 +5,7 @@ use super::contract::{
 };
 use super::preparation::{NationCommand, validate_nation_decision};
 use crate::domain::ids::NationId;
+use crate::domain::nation::decree::Decree;
 use crate::domain::world::{World, WorldError};
 
 /// Validates the decision, then executes the accepted actions in submission
@@ -73,6 +74,24 @@ fn execute(
                 gold: transfer.gold,
                 delivered: transfer.delivered,
                 returned: transfer.returned,
+            })
+        }
+        NationCommand::EnactDecree(decree) => {
+            let cost = world.enact_decree(nation_id, decree)?;
+            Ok(NationActionEffect::DecreeEnacted { decree, cost })
+        }
+        NationCommand::RevokeDecree(decree) => {
+            world.revoke_decree(nation_id, decree)?;
+            Ok(NationActionEffect::DecreeRevoked {
+                decree,
+                cooldown_turns: Decree::COOLDOWN_TURNS,
+            })
+        }
+        NationCommand::RelocateCapital(settlement_id) => {
+            let cost = world.order_capital_relocation(nation_id, settlement_id)?;
+            Ok(NationActionEffect::CapitalRelocationOrdered {
+                settlement_id,
+                cost,
             })
         }
     }

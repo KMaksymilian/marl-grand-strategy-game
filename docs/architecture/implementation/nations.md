@@ -5,10 +5,11 @@ produces and trades nothing itself. It holds a treasury, a national stock and a
 policy, and submits decisions through the same CQRS flow as settlements.
 
 Status: ownership, capital, treasury, stock, extinction, subsidies, the tax
-rate, the production tax, nation decisions, the nation's turn report and nation
-observations are implemented. The gold tax waits for settlement income and
-happiness (see [For the economy](#for-the-economy-happiness-and-income)).
-Decrees and diplomacy extend this contract.
+rate, the production tax, decrees with capital relocation, nation decisions,
+the nation's turn report and nation observations are implemented. The gold tax
+and the decree effects on the settlement economy wait for the economy (see
+[For the economy](#for-the-economy-happiness-and-income)). Diplomacy extends
+this contract.
 
 | Part | Source |
 | --- | --- |
@@ -18,11 +19,13 @@ Decrees and diplomacy extend this contract.
 | `Ownership` (owner, conquest turns, under attack) | [domain/nation/registry.rs](../../../core/src/domain/nation/registry.rs) |
 | `tax_amount`, `TaxStatus`, tax reports | [domain/nation/taxation.rs](../../../core/src/domain/nation/taxation.rs) |
 | Tax collection | [domain/world/state/taxation.rs](../../../core/src/domain/world/state/taxation.rs) |
+| `Decree`, `DecreeEffects`, `DecreeBook`, relocation types | [domain/nation/decree.rs](../../../core/src/domain/nation/decree.rs) |
+| Decree lifecycle, effects lookup, relocation | [domain/world/state/decrees.rs](../../../core/src/domain/world/state/decrees.rs) |
 | Ownership changes, capital succession, extinction, subsidies | [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) |
 | Decision contract and results | [application/commands/nation/contract.rs](../../../core/src/application/commands/nation/contract.rs), [response.rs](../../../core/src/application/commands/nation/response.rs) |
 | Validation and execution | [preparation.rs](../../../core/src/application/commands/nation/preparation.rs), [handler.rs](../../../core/src/application/commands/nation/handler.rs) |
 | Observation | [queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [queries/observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) |
-| Tests | [nation_tests.rs](../../../core/tests/nation_tests.rs), [taxation_tests.rs](../../../core/tests/taxation_tests.rs) |
+| Tests | [nation_tests.rs](../../../core/tests/nation_tests.rs), [taxation_tests.rs](../../../core/tests/taxation_tests.rs), [decree_tests.rs](../../../core/tests/decree_tests.rs) |
 
 ## Ownership
 
@@ -99,16 +102,67 @@ economy. The nation layer only provides what they need; places are marked
 | Conquest penalty | `Ownership::conquest_turns` ([nation/registry.rs](../../../core/src/domain/nation/registry.rs)) | `−5 × conquest_turns` happiness (−20, −15, −10, −5) |
 | Gold tax | `World::collect_taxes` ([world/state/taxation.rs](../../../core/src/domain/world/state/taxation.rs)) | take `income × effective_rate`, deposit with `Nation::deposit_gold` |
 | Gold tax in reports | `SettlementTaxReport` ([nation/taxation.rs](../../../core/src/domain/nation/taxation.rs)) | add `gold_income` and `gold_tax` |
+| Decree slots | `World::decree_slots` ([world/state/decrees.rs](../../../core/src/domain/world/state/decrees.rs)) | pass the average happiness of the nation's settlements to `DecreeBook::slots` |
+| Decree effects | `World::decree_effects(settlement)` ([world/state/decrees.rs](../../../core/src/domain/world/state/decrees.rs)) | apply the `DecreeEffects` fields marked `ECONOMY` |
+| Production scopes | `ProductionScope` ([nation/decree.rs](../../../core/src/domain/nation/decree.rs)) | map each scope to resources of the catalogue (tier, group) |
+
+`DecreeEffects` fields for the economy: `production` (fraction per scope),
+`construction_cost`, `caravan_speed`, `happiness` (points),
+`monument_happiness_multiplier`, `food_consumption`.
 
 All three penalty counters count down at the end of every turn; reading them is
 enough. Nation and settlement observations already show them.
+
+## Decrees (§7)
+
+| Decree (`decree`) | Advantage | Drawback | Cost × |
+| --- | --- | --- | --- |
+| Dekret rolny (`agricultural_decree`) | +20% raw food | −10% raw building materials | 1 |
+| Reforma rzemiosła (`craft_reform`) | +20% tier 2 and 3 | −10% tier 1 | 1 |
+| Górnictwo państwowe (`state_mining`) | +30% ores | −5 happiness | 1 |
+| Wielka budowa (`great_construction`) | −20% construction materials | | 2 |
+| Wolny handel (`free_trade`) | tariffs ×0.5, caravans +25% faster | less customs income | 1 |
+| Protekcjonizm (`protectionism`) | tariffs ×2 | | 1 |
+| Kontyngent wojskowy (`military_levy`) | production tax on planks, steel, bronze, cattle ×2 | −5 happiness | 1 |
+| Mobilizacja (`mobilization`) | conscription pool ×2, instant recruitment | −15% production, −10 happiness | 1 |
+| Dyscyplina (`discipline`) | morale losses ×0.5 | army upkeep ×1.25 | 1 |
+| Racjonowanie jedzenia (`food_rationing`) | −25% food consumption | −15 happiness | 1 |
+| Igrzyska (`games`) | +15 happiness | | 4 |
+| Mecenat sztuki (`art_patronage`) | monument happiness ×2 | | 3 |
+| Fortyfikacja kraju (`national_fortification`) | wall bonus +10 points, walls −30% cost | | 4 |
+
+| Rule | Value |
+| --- | --- |
+| Cost | **One-time**, paid when enacted: `10 × owned settlements × multiplier` gold. Not enough gold: `insufficient_treasury`. Revoking refunds nothing. (The specification's "per turn" was replaced by a one-time payment.) |
+| Slots | 2. `DecreeBook::slots` adds one at average settlement happiness 70 and one per further 10 points (6 at 100); without happiness every nation has 2. Pending and active decrees use slots; cooling-down ones do not. |
+| Activation | Enacted in turn T (`pending`), in effect from turn T+1 (`active`). |
+| Minimum duration | Revocable after 5 active turns; a pending decree cannot be revoked. |
+| Cooldown | 5 turns after revocation before the same decree can be enacted again. |
+
+**Effects are data.** `DecreeEffects` combines the owner's active decrees
+(fractions add up, multipliers multiply, flags combine) and
+`World::decree_effects(settlement)` returns them. The nation layer applies none
+of them itself; every field names the system that applies it: the economy
+(production, construction cost, caravan speed, happiness, monuments, food
+consumption), customs (tariffs), taxation (the military levy, once its resources
+exist), the army and walls.
+
+**Capital relocation** is a one-shot decree without a slot. It costs
+`100 × owned settlements`, paid when ordered. The target must be an own
+settlement that is not the capital and not under attack, and only one relocation
+may be pending. At the start of the next turn the capital moves if the target is
+still owned and not under attack (no capital-loss penalty); otherwise the order
+expires and the cost is refunded (`not_owned`, `under_attack`).
 
 ## Decisions
 
 ```json
 {"nation_id": 0, "actions": [
   {"type": "set_tax_rate", "rate": 0.15},
-  {"type": "subsidize", "settlement_id": 2, "gold": 50, "resources": {"Wood": 20}}
+  {"type": "subsidize", "settlement_id": 2, "gold": 50, "resources": {"Wood": 20}},
+  {"type": "enact_decree", "decree": "agricultural_decree"},
+  {"type": "revoke_decree", "decree": "games"},
+  {"type": "relocate_capital", "settlement_id": 3}
 ]}
 ```
 
@@ -116,19 +170,24 @@ enough. Nation and settlement observations already show them.
 | --- | --- | --- |
 | `set_tax_rate` | `tax_rate_set` | `invalid_tax_rate` outside 0.0..=1.0, `conflict` for a second rate in the same decision |
 | `subsidize` | `subsidy_delivered` with `gold`, `delivered` and `returned` | `unknown_settlement`, `settlement_not_owned`, `empty_subsidy`, `labour_is_not_transferable`, `insufficient_treasury`, `insufficient_stock`, `settlement_treasury_full` |
+| `enact_decree` | `decree_enacted` with the `cost` paid | `decree_already_enacted`, `decree_on_cooldown`, `no_free_decree_slot`, `insufficient_treasury`, `conflict` |
+| `revoke_decree` | `decree_revoked` with `cooldown_turns` | `decree_not_active`, `decree_minimum_duration`, `conflict` |
+| `relocate_capital` | `capital_relocation_ordered` with the `cost` paid | `unknown_settlement`, `settlement_not_owned`, `already_capital`, `settlement_under_attack`, `relocation_pending`, `insufficient_treasury`, `conflict` |
 
 Actions are checked in order and each one is accepted or rejected on its own; a
-rejected action changes and claims nothing. Subsidies of one decision share the
-treasury and stock, so `available` in an error is what earlier accepted subsidies
-left. Materials that do not fit the settlement's warehouse stay in the national
+rejected action changes and claims nothing. Subsidies, decree costs and a
+relocation of one decision share the treasury, and decrees share the slots (a
+revocation frees its slot for a later enactment), so `available` in an error is
+what earlier accepted actions left. One decision sets the rate once, touches
+each decree once and orders at most one relocation. Materials that do not fit the settlement's warehouse stay in the national
 stock (`returned`): a subsidy neither creates nor destroys goods.
 
 ## Global turn
 
 ```
-nation decisions -> settlement decisions -> Preparation -> Allocation ->
+capital relocations -> nation decisions -> settlement decisions -> Preparation -> Allocation ->
 Consumption -> Construction -> Production -> Taxation -> EconomicUpdates ->
-trade dispatch -> national timers -> nation reports
+trade dispatch -> national timers and decree states -> nation reports
 ```
 
 `Simulation::queue_nation_decision` accepts decisions of existing nations. Nation
@@ -136,7 +195,8 @@ decisions run first (ascending nation ID, then submission order), so settlements
 decide under the new policy and can use this turn's subsidies.
 `SimulationTurnReport::nation_decisions` holds the outcomes and
 `SimulationTurnReport::nations` each nation's own `NationTurnReport` (tax rate,
-capital, capital-loss turns, settlements, closing treasury and stock, taxes). Settlement
+capital, capital-loss turns, settlements, closing treasury and stock, taxes,
+decree states, the capital relocation resolved this turn). Settlement
 decisions stay independent: a nation never builds, staffs or trades for its
 settlements.
 
@@ -145,9 +205,12 @@ settlements.
 `Simulation::observe_nation(id)` / `observe_all_nations()` return a
 `NationObservation`: capital, capital-loss turns, tax rate, treasury, stock,
 stored total and shared capacity, a summary of each own settlement (province,
-population, gold, conquest turns, under attack, free warehouse capacity), the IDs of other nations and `last_turn`. Another
+population, gold, conquest turns, under attack, free warehouse capacity), the IDs
+of other nations, `decrees` (slots, used slots, states, the one-time cost of
+every decree, relocation cost, pending relocation, combined effects) and
+`last_turn`. Another
 nation's treasury, stock and policy are not visible.
 
 A settlement's `SettlementObservation::nation` shows its owner's policy (nation,
-tax rate, capital, whether it is the capital). Each `TradePartner` carries the
+tax rate, capital, whether it is the capital, active decrees). Each `TradePartner` carries the
 partner's `nation_id`.

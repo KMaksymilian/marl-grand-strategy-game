@@ -1,6 +1,7 @@
-//! One nation's turn, written for the nation agent. Later systems (decrees,
-//! diplomacy) add their parts here.
+//! One nation's turn, written for the nation agent. Later systems (diplomacy)
+//! add their parts here.
 use super::Nation;
+use super::decree::{Decree, DecreeState, RelocationOutcome};
 use super::taxation::NationTaxReport;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
@@ -20,6 +21,10 @@ pub struct NationTurnReport {
     pub closing_stock: BTreeMap<ResourceType, u32>,
     /// What the nation's settlements paid this turn (§6).
     pub taxes: NationTaxReport,
+    /// Decrees at the end of the turn: pending, active or cooling down (§7).
+    pub decrees: BTreeMap<Decree, DecreeState>,
+    /// A relocation ordered last turn, resolved at the start of this one.
+    pub capital_relocation: Option<RelocationOutcome>,
 }
 
 impl NationTurnReport {
@@ -38,6 +43,8 @@ impl NationTurnReport {
             closing_treasury: nation.treasury(),
             closing_stock: nation.stock_amounts(),
             taxes,
+            decrees: nation.decrees().states().clone(),
+            capital_relocation: None,
         }
     }
 }

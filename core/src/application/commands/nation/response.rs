@@ -2,6 +2,7 @@
 use super::contract::NationActionKind;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::nation::decree::Decree;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -19,7 +20,8 @@ pub enum NationActionError {
     EmptySubsidy,
     /// Labour is a per-turn capacity of a population, not a stored good.
     LabourIsNotTransferable,
-    /// `available` is the treasury left after earlier subsidies of the decision.
+    /// `available` is the treasury left after earlier subsidies, decrees and
+    /// relocations of the decision.
     InsufficientTreasury { requested: u64, available: u32 },
     /// `available` is the national stock left after earlier subsidies of the decision.
     InsufficientStock {
@@ -29,7 +31,25 @@ pub enum NationActionError {
     },
     /// The settlement's gold counter cannot hold the subsidy.
     SettlementTreasuryFull { settlement_id: SettlementId },
-    /// An earlier action of the same decision already sets the same policy.
+    /// The decree is already pending or active.
+    DecreeAlreadyEnacted { decree: Decree },
+    /// The decree was revoked recently; it can be enacted again after
+    /// `turns_left` more turns.
+    DecreeOnCooldown { decree: Decree, turns_left: u32 },
+    /// Every decree slot is taken by a pending or active decree.
+    NoFreeDecreeSlot { slots: usize },
+    /// Only an active decree can be revoked (not a pending one).
+    DecreeNotActive { decree: Decree },
+    /// The decree must stay active for `turns_left` more turns.
+    DecreeMinimumDuration { decree: Decree, turns_left: u32 },
+    /// The target settlement is already the capital.
+    AlreadyCapital { settlement_id: SettlementId },
+    /// An enemy army stands in the target settlement's province.
+    SettlementUnderAttack { settlement_id: SettlementId },
+    /// A relocation ordered earlier waits for the next turn.
+    RelocationPending { target: SettlementId },
+    /// An earlier action of the same decision already sets the same policy or
+    /// targets the same decree or relocation.
     Conflict { with_index: usize },
     /// The engine refused an action that passed validation; the state is unchanged.
     ExecutionFailed,
@@ -49,6 +69,21 @@ pub enum NationActionEffect {
         delivered: BTreeMap<ResourceType, u32>,
         /// Materials that did not fit and stayed in the national stock.
         returned: BTreeMap<ResourceType, u32>,
+    },
+    /// Paid now; pending this turn, active from the next.
+    DecreeEnacted {
+        decree: Decree,
+        cost: u32,
+    },
+    /// Ended now; it can be enacted again after `cooldown_turns` turns.
+    DecreeRevoked {
+        decree: Decree,
+        cooldown_turns: u32,
+    },
+    /// Paid now; resolved at the start of the next turn.
+    CapitalRelocationOrdered {
+        settlement_id: SettlementId,
+        cost: u32,
     },
 }
 

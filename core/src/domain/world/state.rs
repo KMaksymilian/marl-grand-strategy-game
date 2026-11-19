@@ -2,6 +2,7 @@ use crate::domain::ids::SettlementId;
 use std::collections::HashMap;
 mod construction;
 mod decrees;
+mod diplomacy;
 mod inspection;
 mod map_commands;
 mod nations;
@@ -16,6 +17,7 @@ use super::settlement_registry::SettlementRegistry;
 use super::territory::{TerritoryManager, Tile};
 use crate::domain::buildings::catalog::BuildingCatalog;
 use crate::domain::ids::NationId;
+use crate::domain::nation::diplomacy::Diplomacy;
 use crate::domain::nation::registry::NationRegistry;
 use crate::domain::settlement::{NeedRegistry, Settlement};
 use crate::domain::trade::caravan::Caravan;
@@ -109,6 +111,8 @@ pub struct World {
     building_catalog: BuildingCatalog,
     /// Nations and the single record of which nation owns which settlement.
     nations: NationRegistry,
+    /// Relations, proposals and reputation of the nations (§8).
+    diplomacy: Diplomacy,
 }
 impl World {
     pub(crate) fn completed_turn(&self) -> u64 {
@@ -259,6 +263,7 @@ impl World {
             province_settlements: HashMap::new(),
             building_catalog: BuildingCatalog::default(),
             nations: NationRegistry::default(),
+            diplomacy: Diplomacy::default(),
         }
     }
 

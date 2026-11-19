@@ -2,6 +2,7 @@
 //! add their parts here.
 use super::Nation;
 use super::decree::{Decree, DecreeState, DecreeUpkeepReport, RelocationOutcome};
+use super::diplomacy::DiplomaticEvent;
 use super::taxation::NationTaxReport;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
@@ -28,6 +29,10 @@ pub struct NationTurnReport {
     pub decree_upkeep: DecreeUpkeepReport,
     /// A relocation ordered last turn, resolved at the start of this one.
     pub capital_relocation: Option<RelocationOutcome>,
+    /// Diplomatic events concerning this nation this turn, in order: wars
+    /// declared on it, allies joining, proposals received and answered,
+    /// broken treaties, embargoes, expired proposals, ended truces (§8).
+    pub diplomacy: Vec<DiplomaticEvent>,
 }
 
 impl NationTurnReport {
@@ -49,6 +54,7 @@ impl NationTurnReport {
             decrees: nation.decrees().states().clone(),
             decree_upkeep: DecreeUpkeepReport::default(),
             capital_relocation: None,
+            diplomacy: Vec::new(),
         }
     }
 }

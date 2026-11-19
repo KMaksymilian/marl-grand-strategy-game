@@ -20,7 +20,12 @@ next phase begins. The order comes from the registry, not hash-map iteration.
 After Decisions, `World::begin_trade_turn` moves existing caravans and queues returns.
 After EconomicUpdates, `World::finish_trade_turn` routes funded departures. These
 transport boundaries are not separate `TurnPhase` entries. New caravans first
-move next turn. See [trading](../systems/trading.md).
+move next turn. Caravans between nations at war or under an embargo do not
+leave, or turn back without trading.
+
+Before the settlement phases, nations resolve last turn's capital relocations,
+apply their decisions (including diplomacy) and pay decree upkeep. After the
+turn, national timers, decree states, truces and proposals advance. See [trading](../systems/trading.md).
 
 ## Global sequence
 

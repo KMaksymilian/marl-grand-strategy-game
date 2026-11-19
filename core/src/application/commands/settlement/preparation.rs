@@ -529,6 +529,9 @@ impl<'a> DecisionPreparation<'a> {
                 settlement_id: receiver_id,
             });
         }
+        if !self.world.trade_allowed(settlement.id(), receiver_id) {
+            return Err(ActionError::TradeBlocked { receiver_id });
+        }
         Ok(())
     }
 

@@ -25,6 +25,9 @@ pub enum CaravanOutcome {
     ReceiverMissing,
     /// No route between sender and receiver; the caravan never left.
     NoRoute,
+    /// The two nations are at war or under an embargo (§8.1): the caravan did
+    /// not leave, or turned back at the receiver without trading.
+    TradeBlocked,
 }
 
 /// Funded book leaving a settlement, before a route is assigned.
@@ -70,7 +73,8 @@ pub struct Caravan {
     book: TradeBook,
     trades: Vec<TradeExecution>,
     observations: Vec<InformationSnapshot>,
-    receiver_missing: bool,
+    /// Why the caravan turned back without trading; None when it traded.
+    aborted: Option<CaravanOutcome>,
 }
 
 impl Caravan {
@@ -124,7 +128,7 @@ impl Caravan {
             book,
             trades: Vec::new(),
             observations: Vec::new(),
-            receiver_missing: false,
+            aborted: None,
         }
     }
 
@@ -180,10 +184,11 @@ impl Caravan {
         }
     }
 
-    /// Turns back without trading because the receiver does not exist.
-    pub(crate) fn abort_trading(&mut self) {
+    /// Turns back without trading: the receiver does not exist
+    /// (`ReceiverMissing`) or the nations block trade (`TradeBlocked`).
+    pub(crate) fn abort_trading(&mut self, outcome: CaravanOutcome) {
         if self.caravan_state == CaravanState::Trading {
-            self.receiver_missing = true;
+            self.aborted = Some(outcome);
             self.caravan_state = CaravanState::TravelBack;
         }
     }
@@ -194,11 +199,7 @@ impl Caravan {
         }
         Ok(CaravanReturn {
             receiver_id: self.receiver_id,
-            outcome: if self.receiver_missing {
-                CaravanOutcome::ReceiverMissing
-            } else {
-                CaravanOutcome::Traded
-            },
+            outcome: self.aborted.unwrap_or(CaravanOutcome::Traded),
             book: self.book,
             trades: self.trades,
             observations: self.observations,

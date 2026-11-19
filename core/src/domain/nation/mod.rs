@@ -6,6 +6,7 @@
 //! [`registry::NationRegistry`]. Rules that need settlements as well (capital
 //! succession, extinction, subsidies) are coordinated by World.
 pub mod decree;
+pub mod diplomacy;
 pub mod registry;
 pub mod report;
 pub mod taxation;

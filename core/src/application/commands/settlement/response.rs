@@ -84,6 +84,11 @@ pub enum ActionError {
     /// purchases at price 0); the engine would skip it.
     NothingToCarry,
     TradeWithSelf,
+    /// The receiver's nation is at war with this settlement's nation or under
+    /// an embargo with it (§8.1).
+    TradeBlocked {
+        receiver_id: SettlementId,
+    },
     /// Not enough stock for this action at funding time: `available` is what is
     /// left after the market (funded first) and earlier caravan orders.
     InsufficientStock {

@@ -3,8 +3,10 @@
 //! see the owner of each trade partner.
 use super::observation::ResourceAmounts;
 use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::nation::diplomacy::{Proposal, Relation};
 use crate::domain::nation::report::NationTurnReport;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -27,6 +29,8 @@ pub struct NationObservation {
     pub settlements: Vec<OwnedSettlementObservation>,
     /// Other nations still in the game, ascending ID.
     pub other_nations: Vec<NationId>,
+    /// Relations, own proposals and the public reputation of all nations.
+    pub diplomacy: DiplomacyObservation,
     /// The nation's report of the latest completed turn; None before the first.
     pub last_turn: Option<NationTurnReport>,
 }
@@ -44,6 +48,22 @@ pub struct OwnedSettlementObservation {
     pub under_attack: bool,
     /// Free warehouse space, the limit for material subsidies.
     pub free_capacity: u64,
+}
+
+/// What a nation agent needs for diplomacy (§8).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DiplomacyObservation {
+    /// The relation with every other nation.
+    pub relations: BTreeMap<NationId, Relation>,
+    /// Nations with which a treaty was broken this turn: no war until the next turn.
+    pub warning_period: Vec<NationId>,
+    /// Proposals to this nation; `answerable` ones can be answered now.
+    pub incoming_proposals: Vec<Proposal>,
+    /// This nation's proposals still waiting for an answer.
+    pub outgoing_proposals: Vec<Proposal>,
+    /// Broken treaties of every nation, this one included (public, §8.4).
+    pub reputation: BTreeMap<NationId, u32>,
 }
 
 impl NationObservation {

@@ -80,7 +80,7 @@ load from `Building::load_for_workers`; offers become fresh `TradeOffer`s.
 | Workers | `WorkersAboveCapacity` (`workers > max_workers`), `InsufficientWorkers` (all buildings would request more staff than the population; reductions are always allowed), `UnsupportedWorkerCount` (count no `f32` load expresses; unreachable because definitions reject `max_workers` above `BuildingDefinition::MAX_WORKERS` = 2^24) |
 | Storage order | `InvalidStorageOrder` with the engine's `StorageOrderError` (`StorageOrder::validate`) |
 | Offers (market and caravans) | `LabourIsNotTradable`, `ZeroUnits`, `DuplicateOffer` |
-| Caravans | `EmptyOrder`, `TradeWithSelf`, `UnknownSettlement`, `NothingToCarry` (no goods and a zero purchase budget; the engine would skip it), `InsufficientStock`, `InsufficientGold` (see funding order) |
+| Caravans | `EmptyOrder`, `TradeWithSelf`, `TradeBlocked` (the nations are at war or under an embargo), `UnknownSettlement`, `NothingToCarry` (no goods and a zero purchase budget; the engine would skip it), `InsufficientStock`, `InsufficientGold` (see funding order) |
 | Market after caravans | `InsufficientStock`, `InsufficientGold`: a `PublishMarketOffers` may not reserve goods or gold already committed to caravans of this turn |
 | Same target twice | `Conflict { with_index }`: the earlier accepted action wins |
 | Exhausted IDs | `ProjectIdsExhausted` |

@@ -3,11 +3,14 @@
 //! Policy (the same as for settlements): actions are checked in submission order
 //! and each one is accepted or rejected on its own. Subsidies of one decision
 //! share the treasury and stock they draw from, so each one is checked against
-//! what earlier accepted subsidies left. Validation never changes the world.
+//! what earlier accepted subsidies left. One decision sets the rate once and
+//! takes at most one diplomatic action towards each other nation. Validation
+//! never changes the world.
 use super::contract::{NationAction, NationActionError, NationActionKind, NationDecision};
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::Nation;
+use crate::domain::nation::diplomacy::DiplomaticAction;
 use crate::domain::world::{World, WorldError};
 use std::collections::BTreeMap;
 
@@ -21,6 +24,17 @@ pub(crate) enum NationCommand {
         /// Only non-zero amounts.
         resources: BTreeMap<ResourceType, u32>,
     },
+    /// Checked again when it runs: an earlier action of the same decision
+    /// (e.g. a war that draws in allies) may have changed the relations.
+    Diplomacy(DiplomaticAction),
+}
+
+/// Policies and objects that at most one action of a decision may change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Target {
+    TaxRate,
+    /// At most one diplomatic action towards each other nation per decision.
+    Nation(NationId),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,8 +56,9 @@ pub(crate) struct ValidatedNationDecision {
 /// instead of the world, so it stays read-only and later actions see what
 /// earlier accepted ones will use.
 struct Batch {
-    /// Index of the accepted `SetTaxRate`, to reject a second one as a conflict.
-    tax_rate_index: Option<usize>,
+    /// Index of the accepted action for each target, to reject a second one
+    /// as a conflict.
+    claimed: BTreeMap<Target, usize>,
     /// Treasury not yet promised to earlier subsidies.
     gold_left: u32,
     /// National stock not yet promised to earlier subsidies.
@@ -62,7 +77,7 @@ pub(crate) fn validate_nation_decision(
         .nation(nation_id)
         .ok_or(WorldError::MissingNation(nation_id))?;
     let mut batch = Batch {
-        tax_rate_index: None,
+        claimed: BTreeMap::new(),
         gold_left: nation.treasury(),
         stock_left: nation.stock_amounts(),
         gold_sent: BTreeMap::new(),
@@ -85,6 +100,22 @@ pub(crate) fn validate_nation_decision(
     Ok(validated)
 }
 
+impl Batch {
+    fn ensure_free(&self, target: Target) -> Result<(), NationActionError> {
+        match self.claimed.get(&target) {
+            Some(&with_index) => Err(NationActionError::Conflict { with_index }),
+            None => Ok(()),
+        }
+    }
+
+    /// Records the target of an accepted action.
+    fn claim(&mut self, target: Target, index: usize) -> Result<(), NationActionError> {
+        self.ensure_free(target)?;
+        self.claimed.insert(target, index);
+        Ok(())
+    }
+}
+
 /// Checks one action and, when it is accepted, records what it claims.
 fn check_action(
     world: &World,
@@ -93,15 +124,21 @@ fn check_action(
     index: usize,
     action: &NationAction,
 ) -> Result<NationCommand, NationActionError> {
+    if let Some(diplomatic) = action.diplomatic() {
+        let target = Target::Nation(diplomatic.other());
+        batch.ensure_free(target)?;
+        world
+            .check_diplomatic_action(nation_id, diplomatic)
+            .map_err(|error| NationActionError::Diplomacy { error })?;
+        batch.claim(target, index)?;
+        return Ok(NationCommand::Diplomacy(diplomatic));
+    }
     match action {
         NationAction::SetTaxRate { rate } => {
             if !Nation::is_valid_tax_rate(*rate) {
                 return Err(NationActionError::InvalidTaxRate { rate: *rate });
             }
-            if let Some(with_index) = batch.tax_rate_index {
-                return Err(NationActionError::Conflict { with_index });
-            }
-            batch.tax_rate_index = Some(index);
+            batch.claim(Target::TaxRate, index)?;
             Ok(NationCommand::SetTaxRate(*rate))
         }
         NationAction::Subsidize {
@@ -165,5 +202,6 @@ fn check_action(
                 resources,
             })
         }
+        _ => unreachable!("diplomatic actions are handled above"),
     }
 }

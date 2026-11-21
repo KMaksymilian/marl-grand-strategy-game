@@ -140,6 +140,8 @@ impl World {
             change.extinct = true;
             change.gold_lost = nation.take_treasury();
             change.stock_lost = nation.take_stock();
+            // Its relations, proposals and reputation leave the game with it.
+            self.diplomacy.remove_nation(from);
             return Ok(change);
         }
         // 4. The previous owner survives.
@@ -279,6 +281,7 @@ impl World {
     /// the end of a global turn.
     pub(crate) fn advance_nations_turn(&mut self) {
         self.nations.advance_turn();
+        self.diplomacy.advance_turn();
     }
 
     pub(super) fn nation_mut(&mut self, nation_id: NationId) -> Result<&mut Nation, WorldError> {

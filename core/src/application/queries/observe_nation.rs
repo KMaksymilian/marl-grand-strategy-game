@@ -3,7 +3,9 @@
 //! Information boundary: only the observed nation, its own settlements (a short
 //! summary, not their full observations) and the IDs of other nations are read.
 //! Another nation's treasury, stock and policy never enter the result.
-use super::nation_observation::{NationObservation, OwnedSettlementObservation};
+use super::nation_observation::{
+    DiplomacyObservation, NationObservation, OwnedSettlementObservation,
+};
 use crate::domain::ids::NationId;
 use crate::domain::nation::report::NationTurnReport;
 use crate::domain::world::{World, WorldError};
@@ -53,6 +55,46 @@ pub(crate) fn observe_nation(
             .map(|other| other.id())
             .filter(|&id| id != nation_id)
             .collect(),
+        diplomacy: diplomacy(world, nation_id),
         last_turn: last_turn.cloned(),
     })
+}
+
+/// Only proposals this nation sent or received; others' negotiations stay hidden.
+fn diplomacy(world: &World, nation_id: NationId) -> DiplomacyObservation {
+    let others: Vec<_> = world
+        .nations()
+        .iter()
+        .map(|nation| nation.id())
+        .filter(|&id| id != nation_id)
+        .collect();
+    let diplomacy = world.diplomacy();
+    DiplomacyObservation {
+        relations: others
+            .iter()
+            .map(|&other| (other, diplomacy.relation(nation_id, other)))
+            .collect(),
+        warning_period: others
+            .iter()
+            .copied()
+            .filter(|&other| diplomacy.in_warning_period(nation_id, other))
+            .collect(),
+        incoming_proposals: diplomacy
+            .proposals()
+            .iter()
+            .filter(|proposal| proposal.to == nation_id)
+            .copied()
+            .collect(),
+        outgoing_proposals: diplomacy
+            .proposals()
+            .iter()
+            .filter(|proposal| proposal.from == nation_id)
+            .copied()
+            .collect(),
+        reputation: world
+            .nations()
+            .iter()
+            .map(|nation| (nation.id(), diplomacy.reputation(nation.id())))
+            .collect(),
+    }
 }

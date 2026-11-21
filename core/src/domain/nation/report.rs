@@ -1,6 +1,7 @@
-//! One nation's turn, written for the nation agent. Later systems (decrees,
-//! diplomacy) add their parts here.
+//! One nation's turn, written for the nation agent. Later systems (decrees)
+//! add their parts here.
 use super::Nation;
+use super::diplomacy::DiplomaticEvent;
 use super::taxation::NationTaxReport;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
@@ -20,6 +21,10 @@ pub struct NationTurnReport {
     pub closing_stock: BTreeMap<ResourceType, u32>,
     /// What the nation's settlements paid this turn (§6).
     pub taxes: NationTaxReport,
+    /// Diplomatic events concerning this nation this turn, in order: wars
+    /// declared on it, allies joining, proposals received and answered,
+    /// broken treaties, embargoes, expired proposals, ended truces (§8).
+    pub diplomacy: Vec<DiplomaticEvent>,
 }
 
 impl NationTurnReport {
@@ -38,6 +43,7 @@ impl NationTurnReport {
             closing_treasury: nation.treasury(),
             closing_stock: nation.stock_amounts(),
             taxes,
+            diplomacy: Vec::new(),
         }
     }
 }

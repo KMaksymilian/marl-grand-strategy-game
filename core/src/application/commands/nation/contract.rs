@@ -1,7 +1,7 @@
 //! Serializable decisions submitted by nation agents (gameplay specification §5.2).
 //!
-//! The contract holds the policy and orders implemented so far; decrees,
-//! diplomacy, recruitment and army orders are added as new action variants.
+//! The contract holds the policy, subsidies and diplomacy implemented so far;
+//! decrees, recruitment and army orders are added as new action variants.
 //! Values are checked against the world before execution; deserialization checks
 //! only the shape and the numeric types.
 //!
@@ -11,7 +11,10 @@
 //!   "nation_id": 0,
 //!   "actions": [
 //!     { "type": "set_tax_rate", "rate": 0.15 },
-//!     { "type": "subsidize", "settlement_id": 2, "gold": 50, "resources": { "Wood": 20 } }
+//!     { "type": "subsidize", "settlement_id": 2, "gold": 50, "resources": { "Wood": 20 } },
+//!     { "type": "declare_war", "target": 1 },
+//!     { "type": "propose_treaty", "target": 2, "treaty": "trade_agreement" },
+//!     { "type": "respond_to_proposal", "proposer": 2, "treaty": "peace", "accept": true }
 //!   ]
 //! }
 //! ```
@@ -21,6 +24,7 @@ pub use super::response::{
 };
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::nation::diplomacy::{DiplomaticAction, Treaty};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -65,6 +69,27 @@ pub enum NationAction {
         #[serde(default)]
         resources: BTreeMap<ResourceType, u32>,
     },
+    /// Start a war: only from neutrality or an embargo, not during a truce and
+    /// not in the turn a treaty with the target was broken. Both alliances go
+    /// to war: the actor's allies and the target's allies join (§8.3).
+    DeclareWar { target: NationId },
+    /// Block trade without war; only from neutrality.
+    DeclareEmbargo { target: NationId },
+    /// End an own embargo; back to neutrality.
+    LiftEmbargo { target: NationId },
+    /// Back to neutrality; counts against the reputation (§8.4).
+    BreakTradeAgreement { target: NationId },
+    /// Back to neutrality; counts against the reputation (§8.4).
+    BreakAlliance { target: NationId },
+    /// Offer a trade agreement, an alliance or peace; the target answers in
+    /// the next turn, otherwise the proposal expires.
+    ProposeTreaty { target: NationId, treaty: Treaty },
+    /// Answer a proposal made in the previous turn.
+    RespondToProposal {
+        proposer: NationId,
+        treaty: Treaty,
+        accept: bool,
+    },
 }
 
 impl NationAction {
@@ -72,7 +97,38 @@ impl NationAction {
         match self {
             Self::SetTaxRate { .. } => NationActionKind::SetTaxRate,
             Self::Subsidize { .. } => NationActionKind::Subsidize,
+            Self::DeclareWar { .. } => NationActionKind::DeclareWar,
+            Self::DeclareEmbargo { .. } => NationActionKind::DeclareEmbargo,
+            Self::LiftEmbargo { .. } => NationActionKind::LiftEmbargo,
+            Self::BreakTradeAgreement { .. } => NationActionKind::BreakTradeAgreement,
+            Self::BreakAlliance { .. } => NationActionKind::BreakAlliance,
+            Self::ProposeTreaty { .. } => NationActionKind::ProposeTreaty,
+            Self::RespondToProposal { .. } => NationActionKind::RespondToProposal,
         }
+    }
+
+    /// The domain action of a diplomatic variant; None for other actions.
+    pub fn diplomatic(&self) -> Option<DiplomaticAction> {
+        Some(match *self {
+            Self::DeclareWar { target } => DiplomaticAction::DeclareWar { target },
+            Self::DeclareEmbargo { target } => DiplomaticAction::DeclareEmbargo { target },
+            Self::LiftEmbargo { target } => DiplomaticAction::LiftEmbargo { target },
+            Self::BreakTradeAgreement { target } => {
+                DiplomaticAction::BreakTradeAgreement { target }
+            }
+            Self::BreakAlliance { target } => DiplomaticAction::BreakAlliance { target },
+            Self::ProposeTreaty { target, treaty } => DiplomaticAction::Propose { target, treaty },
+            Self::RespondToProposal {
+                proposer,
+                treaty,
+                accept,
+            } => DiplomaticAction::Respond {
+                proposer,
+                treaty,
+                accept,
+            },
+            _ => return None,
+        })
     }
 }
 
@@ -82,11 +138,28 @@ impl NationAction {
 pub enum NationActionKind {
     SetTaxRate,
     Subsidize,
+    DeclareWar,
+    DeclareEmbargo,
+    LiftEmbargo,
+    BreakTradeAgreement,
+    BreakAlliance,
+    ProposeTreaty,
+    RespondToProposal,
 }
 
 impl NationActionKind {
     /// Every kind in a fixed order, e.g. for a fixed-size mask vector.
-    pub const ALL: [Self; 2] = [Self::SetTaxRate, Self::Subsidize];
+    pub const ALL: [Self; 9] = [
+        Self::SetTaxRate,
+        Self::Subsidize,
+        Self::DeclareWar,
+        Self::DeclareEmbargo,
+        Self::LiftEmbargo,
+        Self::BreakTradeAgreement,
+        Self::BreakAlliance,
+        Self::ProposeTreaty,
+        Self::RespondToProposal,
+    ];
 }
 
 /// The JSON text is malformed or does not match the nation decision contract.
@@ -120,6 +193,30 @@ mod tests {
                     (crate::test_support::material("stone"), 5),
                 ]),
             },
+            NationAction::DeclareWar {
+                target: NationId(1),
+            },
+            NationAction::DeclareEmbargo {
+                target: NationId(1),
+            },
+            NationAction::LiftEmbargo {
+                target: NationId(1),
+            },
+            NationAction::BreakTradeAgreement {
+                target: NationId(1),
+            },
+            NationAction::BreakAlliance {
+                target: NationId(1),
+            },
+            NationAction::ProposeTreaty {
+                target: NationId(2),
+                treaty: Treaty::TradeAgreement,
+            },
+            NationAction::RespondToProposal {
+                proposer: NationId(2),
+                treaty: Treaty::Peace,
+                accept: true,
+            },
         ]
     }
 
@@ -147,7 +244,14 @@ mod tests {
             "actions": [
                 {"type": "set_tax_rate", "rate": 0.15},
                 {"type": "subsidize", "settlement_id": 2, "gold": 50,
-                 "resources": {"Stone": 5, "Wood": 20}}
+                 "resources": {"Stone": 5, "Wood": 20}},
+                {"type": "declare_war", "target": 1},
+                {"type": "declare_embargo", "target": 1},
+                {"type": "lift_embargo", "target": 1},
+                {"type": "break_trade_agreement", "target": 1},
+                {"type": "break_alliance", "target": 1},
+                {"type": "propose_treaty", "target": 2, "treaty": "trade_agreement"},
+                {"type": "respond_to_proposal", "proposer": 2, "treaty": "peace", "accept": true}
             ]
         });
         // Compared as the text an agent receives: `to_value` would widen the f32
@@ -190,7 +294,9 @@ mod tests {
             wrap(r#"{"type": "subsidize", "settlement_id": 1, "gold": -1}"#),
             wrap(r#"{"type": "subsidize", "settlement_id": 1, "resources": {"Gold": 1}}"#),
             wrap(r#"{"type": "subsidize", "settlement_id": 1, "army": 3}"#),
-            wrap(r#"{"type": "declare_war", "target": 2}"#),
+            wrap(r#"{"type": "declare_war", "nation": 2}"#),
+            wrap(r#"{"type": "propose_treaty", "target": 2, "treaty": "marriage"}"#),
+            wrap(r#"{"type": "respond_to_proposal", "proposer": 2, "treaty": "peace"}"#),
             r#"{"nation_id": -1}"#.to_owned(),
             r#"{"nation_id": 1, "turn": 2}"#.to_owned(),
             r#"{"actions": []}"#.to_owned(),

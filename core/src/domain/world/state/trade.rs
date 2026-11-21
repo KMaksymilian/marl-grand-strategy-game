@@ -62,10 +62,21 @@ impl World {
             }
         }
         let existing: std::collections::HashSet<_> = self.settlement_ids().into_iter().collect();
-        for caravan in &mut self.caravans {
-            if caravan.state() == CaravanState::Trading && !existing.contains(&caravan.receiver_id)
-            {
-                caravan.abort_trading();
+        // Decided before borrowing the caravans mutably: a war or embargo
+        // declared since departure stops the trade at the receiver (§8.1).
+        let blocked: Vec<bool> = self
+            .caravans
+            .iter()
+            .map(|caravan| !self.trade_allowed(caravan.sender_id, caravan.receiver_id))
+            .collect();
+        for (caravan, blocked) in self.caravans.iter_mut().zip(blocked) {
+            if caravan.state() != CaravanState::Trading {
+                continue;
+            }
+            if !existing.contains(&caravan.receiver_id) {
+                caravan.abort_trading(CaravanOutcome::ReceiverMissing);
+            } else if blocked {
+                caravan.abort_trading(CaravanOutcome::TradeBlocked);
             }
         }
     }
@@ -83,6 +94,9 @@ impl World {
             for cargo in departures {
                 let outcome = if self.settlement(cargo.receiver_id).is_none() {
                     Some(CaravanOutcome::ReceiverMissing)
+                } else if !self.trade_allowed(cargo.sender_id, cargo.receiver_id) {
+                    // Ordered before a war or embargo of this turn: it never leaves.
+                    Some(CaravanOutcome::TradeBlocked)
                 } else {
                     None
                 };

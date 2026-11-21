@@ -14,6 +14,7 @@ use crate::domain::buildings::definition::BuildingBehavior;
 use crate::domain::economy::{ResourceInventory, ResourceType};
 use crate::domain::ids::{BuildingTypeId, SettlementId};
 use crate::domain::intelligence::{Information, InformationSnapshot, MarketOfferSide};
+use crate::domain::nation::diplomacy::Relation;
 use crate::domain::settlement::Settlement;
 use crate::domain::settlement::projects::ProjectResult;
 use crate::domain::settlement::turn_report::TurnReport;
@@ -113,6 +114,19 @@ impl ObservationQuery<'_> {
             tax_rate: nation.tax_rate(),
             capital: nation.capital(),
             is_capital: nation.capital() == settlement_id,
+            at_war_with: self
+                .world
+                .nations()
+                .iter()
+                .map(|other| other.id())
+                .filter(|&other| {
+                    other != nation.id()
+                        && matches!(
+                            self.world.diplomacy().relation(nation.id(), other),
+                            Relation::War { .. }
+                        )
+                })
+                .collect(),
         })
     }
 
@@ -168,6 +182,7 @@ impl ObservationQuery<'_> {
                     settlement_id: id,
                     province_id: self.world.settlement_province(id)?,
                     nation_id: self.world.settlement_owner(id)?,
+                    trade_allowed: self.world.trade_allowed(settlement_id, id),
                 })
             })
             .collect()

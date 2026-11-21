@@ -158,6 +158,12 @@ pub(super) fn run_turn(
     // National timers count completed turns, so they tick once, after every
     // phase; the nation reports show the state at the end of the turn.
     world.advance_nations_turn();
+    // Diplomatic events of this turn: from decisions and from the end of the
+    // turn (expired proposals, ended truces), per recipient.
+    let mut events: BTreeMap<NationId, Vec<_>> = BTreeMap::new();
+    for (nation_id, event) in world.take_diplomatic_events() {
+        events.entry(nation_id).or_default().push(event);
+    }
     let nations = world
         .nations()
         .iter()
@@ -165,7 +171,9 @@ pub(super) fn run_turn(
             let id = nation.id();
             let settlements = world.nations().settlements_of(id);
             let taxes = taxes.remove(&id).unwrap_or_default();
-            (id, NationTurnReport::closing(nation, settlements, taxes))
+            let mut report = NationTurnReport::closing(nation, settlements, taxes);
+            report.diplomacy = events.remove(&id).unwrap_or_default();
+            (id, report)
         })
         .collect();
     Ok(SimulationTurnReport {

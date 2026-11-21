@@ -2,6 +2,7 @@
 use super::contract::NationActionKind;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::nation::diplomacy::{DiplomacyError, DiplomaticOutcome};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -29,7 +30,10 @@ pub enum NationActionError {
     },
     /// The settlement's gold counter cannot hold the subsidy.
     SettlementTreasuryFull { settlement_id: SettlementId },
-    /// An earlier action of the same decision already sets the same policy.
+    /// A diplomatic action that is not possible now (§8), with the reason.
+    Diplomacy { error: DiplomacyError },
+    /// An earlier action of the same decision already sets the same policy or
+    /// targets the same nation.
     Conflict { with_index: usize },
     /// The engine refused an action that passed validation; the state is unchanged.
     ExecutionFailed,
@@ -49,6 +53,10 @@ pub enum NationActionEffect {
         delivered: BTreeMap<ResourceType, u32>,
         /// Materials that did not fit and stayed in the national stock.
         returned: BTreeMap<ResourceType, u32>,
+    },
+    /// A diplomatic action took effect (§8).
+    Diplomacy {
+        outcome: DiplomaticOutcome,
     },
 }
 

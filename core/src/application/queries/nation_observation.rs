@@ -3,8 +3,10 @@
 //! see the owner of each trade partner.
 use super::observation::ResourceAmounts;
 use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::nation::decree::{DecreeEffects, DecreeId, DecreeState};
 use crate::domain::nation::report::NationTurnReport;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -27,6 +29,8 @@ pub struct NationObservation {
     pub settlements: Vec<OwnedSettlementObservation>,
     /// Other nations still in the game, ascending ID.
     pub other_nations: Vec<NationId>,
+    /// Decree slots, states, upkeep and effects (§7).
+    pub decrees: DecreesObservation,
     /// The nation's report of the latest completed turn; None before the first.
     pub last_turn: Option<NationTurnReport>,
 }
@@ -44,6 +48,25 @@ pub struct OwnedSettlementObservation {
     pub under_attack: bool,
     /// Free warehouse space, the limit for material subsidies.
     pub free_capacity: u64,
+}
+
+/// What a nation agent needs to choose decrees (§7).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecreesObservation {
+    pub slots: usize,
+    /// Slots used by pending and active decrees.
+    pub used_slots: usize,
+    /// Active turns before a decree can be revoked, and the cooldown after.
+    pub minimum_active_turns: u32,
+    pub cooldown_turns: u32,
+    /// Every decree that is pending, active or cooling down; others are free.
+    pub states: BTreeMap<DecreeId, DecreeState>,
+    /// Upkeep per active turn of every decree of the catalogue, for the
+    /// current number of settlements. Its keys are every decree that exists.
+    pub upkeep: BTreeMap<DecreeId, u64>,
+    /// Combined effects of the active decrees.
+    pub effects: DecreeEffects,
 }
 
 impl NationObservation {

@@ -3,7 +3,9 @@
 //! Information boundary: only the observed nation, its own settlements (a short
 //! summary, not their full observations) and the IDs of other nations are read.
 //! Another nation's treasury, stock and policy never enter the result.
-use super::nation_observation::{NationObservation, OwnedSettlementObservation};
+use super::nation_observation::{
+    DecreesObservation, NationObservation, OwnedSettlementObservation,
+};
 use crate::domain::ids::NationId;
 use crate::domain::nation::report::NationTurnReport;
 use crate::domain::world::{World, WorldError};
@@ -53,6 +55,31 @@ pub(crate) fn observe_nation(
             .map(|other| other.id())
             .filter(|&id| id != nation_id)
             .collect(),
+        decrees: observe_decrees(world, nation_id)?,
         last_turn: last_turn.cloned(),
+    })
+}
+
+fn observe_decrees(world: &World, nation_id: NationId) -> Result<DecreesObservation, WorldError> {
+    let nation = world
+        .nation(nation_id)
+        .ok_or(WorldError::MissingNation(nation_id))?;
+    let catalog = world.decree_catalog();
+    Ok(DecreesObservation {
+        slots: world.decree_slots(nation_id)?,
+        used_slots: nation.decrees().used_slots(),
+        minimum_active_turns: catalog.rules().minimum_active_turns,
+        cooldown_turns: catalog.rules().cooldown_turns,
+        states: nation.decrees().states().clone(),
+        upkeep: catalog
+            .definitions()
+            .iter()
+            .map(|definition| {
+                let decree = definition.id().clone();
+                let upkeep = world.decree_upkeep(nation_id, &decree)?;
+                Ok((decree, upkeep))
+            })
+            .collect::<Result<_, WorldError>>()?,
+        effects: world.nation_decree_effects(nation_id)?,
     })
 }

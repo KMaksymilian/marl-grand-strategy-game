@@ -364,14 +364,17 @@ See [Nations](nations.md) for rules and the decision contract.
 
 | File | Contents |
 | --- | --- |
-| [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) | `Nation`: treasury, stock (`ResourceInventory` with one shared capacity), `f32` tax rate (`is_valid_tax_rate`), capital; `deposit_resource`, `withdraw_resource`, `take_stock`, `set_stock_capacity`, `replace_lost_capital`, `advance_turn`. |
+| [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) | `Nation`: treasury, stock (`ResourceInventory` with one shared capacity), `f32` tax rate (`is_valid_tax_rate`), capital; `deposit_resource`, `withdraw_resource`, `take_stock`, `set_stock_capacity`, `replace_lost_capital`, `decrees`, `advance_turn`. |
+| [domain/nation/decree.rs](../../../core/src/domain/nation/decree.rs) | `DecreeId`, `ProductionChange`, `DecreeEffects` (`production_change`), `DecreeState`, `DecreeUpkeepReport`, `DecreeBook` (one nation's decree lifecycle). |
+| [domain/nation/decree_catalog.rs](../../../core/src/domain/nation/decree_catalog.rs) | `DecreeCatalog` loaded from `decrees.toml` (`standard`, `load`, `from_toml`, `get`, `upkeep`, `effects_of`), `DecreeRules` (`upkeep`, `slots`), `DecreeDefinition`, `DecreeCatalogError`. |
+| [domain/world/state/decrees.rs](../../../core/src/domain/world/state/decrees.rs) | `World::decree_catalog`, `set_decree_catalog`, `decree_effects`, `nation_decree_effects`, `decree_slots`, `decree_upkeep`, `enact_decree`, `revoke_decree`, `pay_decree_upkeep`. |
 | [domain/nation/registry.rs](../../../core/src/domain/nation/registry.rs) | `Ownership` (nation, conquest turns, under attack) and `NationRegistry`: nations and the single ownership record; `owner_of`, `ownership`, `settlements_of`, `stock_capacity`, `can_found`, `found`, `add_member`, `capture` (all update stock capacities), `set_under_attack`, `remove`, `advance_turn`. |
 | [domain/nation/report.rs](../../../core/src/domain/nation/report.rs) | `NationTurnReport` (`closing`). |
 | [domain/nation/taxation.rs](../../../core/src/domain/nation/taxation.rs) | `tax_amount` (rounded-down share of an amount), `TaxStatus` (`effective_rate`), `SettlementTaxReport`, `NationTaxReport`. |
 | [domain/world/state/taxation.rs](../../../core/src/domain/world/state/taxation.rs) | `World::collect_taxes` (status, production tax, shared capacity); `TaxCollection`. |
 | [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) | `World::nations`, `nation`, `settlement_owner`, `province_owner`, `nation_settlements`, `nation_stock_capacity`, `transfer_settlement` (capital succession, extinction), `deposit_nation_gold`, `deposit_nation_resource`, `set_tax_rate`, `subsidize`, `set_settlement_under_attack`, `advance_nations_turn`; `OwnershipChange`, `SubsidyTransfer`. Registration in `state.rs` founds or joins a nation (`add_settlement_to_nation`). |
-| [application/commands/nation/](../../../core/src/application/commands/nation/) | `contract.rs` (`NationDecision`, `NationAction`, `NationActionKind`), `response.rs` (errors, effects, outcomes), `preparation.rs` (read-only validation with a shared subsidy budget), `handler.rs` (execution). |
-| [application/queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) | `NationObservation`, `OwnedSettlementObservation` and their builder. |
+| [application/commands/nation/](../../../core/src/application/commands/nation/) | `contract.rs` (`NationDecision`, `NationAction`, `NationActionKind`), `response.rs` (errors, effects, outcomes), `preparation.rs` (read-only validation with a shared subsidy budget and decree slots), `handler.rs` (execution). |
+| [application/queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) | `NationObservation`, `OwnedSettlementObservation`, `DecreesObservation` and their builder. |
 
 ## Trade and transport
 

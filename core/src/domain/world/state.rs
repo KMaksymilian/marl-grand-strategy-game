@@ -1,6 +1,7 @@
 use crate::domain::ids::SettlementId;
 use std::collections::HashMap;
 mod construction;
+mod decrees;
 mod inspection;
 mod map_commands;
 mod nations;
@@ -16,6 +17,8 @@ use super::territory::{TerritoryManager, Tile};
 use crate::domain::buildings::catalog::BuildingCatalog;
 use crate::domain::economy::{ResourceCatalog, ResourceType};
 use crate::domain::ids::NationId;
+use crate::domain::nation::decree::DecreeId;
+use crate::domain::nation::decree_catalog::DecreeCatalog;
 use crate::domain::nation::registry::NationRegistry;
 use crate::domain::settlement::{NeedRegistry, Settlement};
 use crate::domain::trade::caravan::Caravan;
@@ -79,6 +82,16 @@ pub enum WorldError {
     /// The national treasury or stock holds less than requested, or the
     /// settlement's gold counter cannot hold it.
     InsufficientNationalFunds(NationId),
+    /// No decree with this ID in the world's decree catalogue.
+    UnknownDecree(DecreeId),
+    /// The decree cannot be enacted or revoked now (slot, state or duration).
+    DecreeUnavailable {
+        nation_id: NationId,
+        decree: DecreeId,
+    },
+    /// The decree catalogue cannot be replaced while a nation has a decree
+    /// that is pending, active or cooling down.
+    DecreeCatalogInUse,
 }
 
 /// World layers are read-only outside the aggregate.
@@ -99,6 +112,8 @@ pub struct World {
     /// Building types agents may construct or upgrade to.
     building_catalog: BuildingCatalog,
     resource_catalog: Arc<ResourceCatalog>,
+    /// Decrees nations may enact and their common rules (`decrees.toml`).
+    decree_catalog: Arc<DecreeCatalog>,
     /// Nations and the single record of which nation owns which settlement.
     nations: NationRegistry,
 }
@@ -269,6 +284,7 @@ impl World {
             province_settlements: HashMap::new(),
             building_catalog: BuildingCatalog::default(),
             resource_catalog,
+            decree_catalog: Arc::new(DecreeCatalog::standard().clone()),
             nations: NationRegistry::default(),
         }
     }

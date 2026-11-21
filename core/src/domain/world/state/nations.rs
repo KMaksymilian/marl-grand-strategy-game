@@ -177,7 +177,7 @@ impl World {
     ) -> Result<InventoryAddResult, WorldError> {
         Ok(self
             .nation_mut(nation_id)?
-            .deposit_resource(resource, amount))
+            .deposit_resource(resource.clone(), amount))
     }
 
     /// `rate` must be a valid fraction (`Nation::is_valid_tax_rate`).
@@ -216,8 +216,9 @@ impl World {
             .nation(nation_id)
             .ok_or(WorldError::MissingNation(nation_id))?;
         let affordable = nation.treasury() >= gold
-            && resources.iter().all(|(&resource, &amount)| {
-                resource != ResourceType::Labour && nation.stock().amount(resource) >= amount
+            && resources.iter().all(|(resource, &amount)| {
+                resource != &ResourceType::Labour
+                    && nation.stock().amount(resource.clone()) >= amount
             });
         // The settlement's gold counter is a u32: refuse rather than overflow.
         if !affordable || gold > u32::MAX - settlement_gold {
@@ -227,8 +228,8 @@ impl World {
         // Phase 2: move everything. The asserts cannot fire after phase 1.
         let nation = self.nations.get_mut(nation_id).expect("checked above");
         assert!(nation.withdraw_gold(gold));
-        for (&resource, &amount) in resources {
-            assert!(nation.withdraw_resource(resource, amount));
+        for (resource, &amount) in resources {
+            assert!(nation.withdraw_resource(resource.clone(), amount));
         }
         let settlement = self
             .settlements
@@ -240,19 +241,20 @@ impl World {
             delivered: BTreeMap::new(),
             returned: BTreeMap::new(),
         };
-        for (&resource, &amount) in resources.iter().filter(|(_, amount)| **amount > 0) {
-            let InventoryAddResult { accepted, rejected } = settlement.deposit(resource, amount);
+        for (resource, &amount) in resources.iter().filter(|(_, amount)| **amount > 0) {
+            let InventoryAddResult { accepted, rejected } =
+                settlement.deposit(resource.clone(), amount);
             if accepted > 0 {
-                transfer.delivered.insert(resource, accepted);
+                transfer.delivered.insert(resource.clone(), accepted);
             }
             if rejected > 0 {
-                transfer.returned.insert(resource, rejected);
+                transfer.returned.insert(resource.clone(), rejected);
             }
         }
         // What the warehouse rejected goes back; it just left this stock, so it fits.
         let nation = self.nations.get_mut(nation_id).expect("checked above");
-        for (&resource, &amount) in &transfer.returned {
-            let back = nation.deposit_resource(resource, amount);
+        for (resource, &amount) in &transfer.returned {
+            let back = nation.deposit_resource(resource.clone(), amount);
             debug_assert_eq!(back.rejected, 0);
         }
         Ok(transfer)

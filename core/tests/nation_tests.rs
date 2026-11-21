@@ -1,8 +1,10 @@
-//! Nations (gameplay specification §5): every settlement belongs to a nation,
-//! ownership authority, transfer, capital succession, extinction, national
-//! stock capacity, subsidies, the nation decision contract, the nation's own
-//! report and its observations.
-use simulation_core::economy::ResourceType::{self, Grain, Labour, Stone, Wood};
+mod common;
+
+// Nations (gameplay specification §5): every settlement belongs to a nation,
+// ownership authority, transfer, capital succession, extinction, national
+// stock capacity, subsidies, the nation decision contract, the nation's own
+// report and its observations.
+use simulation_core::economy::ResourceType;
 use simulation_core::ids::{NationId, SettlementId};
 use simulation_core::nation::Nation;
 use simulation_core::settlement::Settlement;
@@ -57,7 +59,7 @@ fn subsidy(
     NationAction::Subsidize {
         settlement_id,
         gold,
-        resources: resources.iter().copied().collect(),
+        resources: resources.iter().cloned().collect(),
     }
 }
 
@@ -77,7 +79,9 @@ fn error_of(outcome: &NationActionOutcome) -> &NationActionError {
 fn simulation_with_funds(gold: u32, wood: u32) -> Simulation {
     let mut world = two_nations();
     world.deposit_nation_gold(FIRST, gold).unwrap();
-    world.deposit_nation_resource(FIRST, Wood, wood).unwrap();
+    world
+        .deposit_nation_resource(FIRST, common::material("wood"), wood)
+        .unwrap();
     Simulation::new(world).unwrap()
 }
 
@@ -241,16 +245,18 @@ fn the_stock_shares_one_capacity_that_follows_the_settlements() {
     assert_eq!(world.nation(FIRST).unwrap().stock().capacity(), 1_500);
     assert_eq!(
         world
-            .deposit_nation_resource(FIRST, Wood, 1_000)
+            .deposit_nation_resource(FIRST, common::material("wood"), 1_000)
             .unwrap()
             .accepted,
         1_000
     );
-    let stone = world.deposit_nation_resource(FIRST, Stone, 700).unwrap();
+    let stone = world
+        .deposit_nation_resource(FIRST, common::material("stone"), 700)
+        .unwrap();
     assert_eq!((stone.accepted, stone.rejected), (500, 200));
     assert_eq!(
         world
-            .deposit_nation_resource(FIRST, Labour, 5)
+            .deposit_nation_resource(FIRST, ResourceType::Labour, 5)
             .unwrap()
             .rejected,
         5,
@@ -262,11 +268,17 @@ fn the_stock_shares_one_capacity_that_follows_the_settlements() {
     assert!(change.stock_lost.is_empty());
     let stock = world.nation(FIRST).unwrap().stock();
     assert_eq!((stock.capacity(), stock.total_amount()), (1_000, 1_500));
-    assert_eq!((stock.amount(Wood), stock.amount(Stone)), (1_000, 500));
+    assert_eq!(
+        (
+            stock.amount(common::material("wood")),
+            stock.amount(common::material("stone"))
+        ),
+        (1_000, 500)
+    );
     // Above the capacity the stock accepts nothing more.
     assert_eq!(
         world
-            .deposit_nation_resource(FIRST, Grain, 1)
+            .deposit_nation_resource(FIRST, common::material("grain"), 1)
             .unwrap()
             .rejected,
         1
@@ -307,12 +319,17 @@ fn invalid_tax_rates_are_rejected_by_validation() {
 fn a_nation_without_settlements_is_removed_with_its_treasury_and_stock() {
     let mut world = two_nations();
     world.deposit_nation_gold(SECOND, 70).unwrap();
-    world.deposit_nation_resource(SECOND, Grain, 30).unwrap();
+    world
+        .deposit_nation_resource(SECOND, common::material("grain"), 30)
+        .unwrap();
 
     let change = world.transfer_settlement(D, FIRST).unwrap();
     assert!(change.extinct);
     assert_eq!(change.gold_lost, 70);
-    assert_eq!(change.stock_lost, BTreeMap::from([(Grain, 30)]));
+    assert_eq!(
+        change.stock_lost,
+        BTreeMap::from([(common::material("grain"), 30)])
+    );
     assert!(world.nation(SECOND).is_none());
     assert_eq!(world.nations().len(), 1);
     assert_eq!(
@@ -370,7 +387,7 @@ fn subsidies_move_gold_and_materials_without_creating_or_destroying_any() {
     simulation
         .queue_nation_decision(NationDecision::new(
             FIRST,
-            vec![subsidy(B, 60, &[(Wood, 50)])],
+            vec![subsidy(B, 60, &[(common::material("wood"), 50)])],
         ))
         .unwrap();
     let report = simulation.step().unwrap();
@@ -380,7 +397,7 @@ fn subsidies_move_gold_and_materials_without_creating_or_destroying_any() {
             effect: NationActionEffect::SubsidyDelivered {
                 settlement_id: B,
                 gold: 60,
-                delivered: BTreeMap::from([(Wood, 50)]),
+                delivered: BTreeMap::from([(common::material("wood"), 50)]),
                 returned: BTreeMap::new(),
             }
         }
@@ -389,10 +406,17 @@ fn subsidies_move_gold_and_materials_without_creating_or_destroying_any() {
     let settlement = simulation.settlement(B).unwrap();
     assert_eq!(nation.treasury() + settlement.gold(), 100 + gold_before);
     assert_eq!(
-        nation.stock().amount(Wood) + settlement.inventory().amount(Wood),
+        nation.stock().amount(common::material("wood"))
+            + settlement.inventory().amount(common::material("wood")),
         80
     );
-    assert_eq!((nation.treasury(), nation.stock().amount(Wood)), (40, 30));
+    assert_eq!(
+        (
+            nation.treasury(),
+            nation.stock().amount(common::material("wood"))
+        ),
+        (40, 30)
+    );
 }
 
 #[test]
@@ -402,7 +426,7 @@ fn materials_that_do_not_fit_the_warehouse_stay_in_the_national_stock() {
     simulation
         .queue_nation_decision(NationDecision::new(
             FIRST,
-            vec![subsidy(C, 0, &[(Wood, 130)])],
+            vec![subsidy(C, 0, &[(common::material("wood"), 130)])],
         ))
         .unwrap();
     let report = simulation.step().unwrap();
@@ -412,8 +436,8 @@ fn materials_that_do_not_fit_the_warehouse_stay_in_the_national_stock() {
             effect: NationActionEffect::SubsidyDelivered {
                 settlement_id: C,
                 gold: 0,
-                delivered: BTreeMap::from([(Wood, 100)]),
-                returned: BTreeMap::from([(Wood, 30)]),
+                delivered: BTreeMap::from([(common::material("wood"), 100)]),
+                returned: BTreeMap::from([(common::material("wood"), 30)]),
             }
         }
     );
@@ -423,11 +447,15 @@ fn materials_that_do_not_fit_the_warehouse_stay_in_the_national_stock() {
             .nation(FIRST)
             .unwrap()
             .stock()
-            .amount(Wood),
+            .amount(common::material("wood")),
         200
     );
     assert_eq!(
-        simulation.settlement(C).unwrap().inventory().amount(Wood),
+        simulation
+            .settlement(C)
+            .unwrap()
+            .inventory()
+            .amount(common::material("wood")),
         100
     );
 }
@@ -439,10 +467,10 @@ fn subsidies_of_one_decision_share_the_treasury_and_stock() {
         .queue_nation_decision(NationDecision::new(
             FIRST,
             vec![
-                subsidy(A, 70, &[(Wood, 30)]),
+                subsidy(A, 70, &[(common::material("wood"), 30)]),
                 subsidy(B, 40, &[]),
-                subsidy(B, 0, &[(Wood, 25)]),
-                subsidy(C, 30, &[(Wood, 20)]),
+                subsidy(B, 0, &[(common::material("wood"), 25)]),
+                subsidy(C, 30, &[(common::material("wood"), 20)]),
             ],
         ))
         .unwrap();
@@ -458,14 +486,20 @@ fn subsidies_of_one_decision_share_the_treasury_and_stock() {
     assert_eq!(
         error_of(&results[2].outcome),
         &NationActionError::InsufficientStock {
-            resource: Wood,
+            resource: common::material("wood"),
             requested: 25,
             available: 20
         }
     );
     assert!(results[3].is_applied(), "rejected actions claim nothing");
     let nation = simulation.world().nation(FIRST).unwrap();
-    assert_eq!((nation.treasury(), nation.stock().amount(Wood)), (0, 0));
+    assert_eq!(
+        (
+            nation.treasury(),
+            nation.stock().amount(common::material("wood"))
+        ),
+        (0, 0)
+    );
 }
 
 #[test]
@@ -478,9 +512,13 @@ fn subsidies_go_only_to_own_settlements_and_must_carry_something() {
                 subsidy(D, 5, &[]),
                 subsidy(SettlementId(9), 5, &[]),
                 subsidy(A, 0, &[]),
-                subsidy(A, 0, &[(Wood, 0)]),
-                subsidy(A, 0, &[(Labour, 1)]),
-                subsidy(A, 0, &[(Labour, 0), (Wood, 1)]),
+                subsidy(A, 0, &[(common::material("wood"), 0)]),
+                subsidy(A, 0, &[(ResourceType::Labour, 1)]),
+                subsidy(
+                    A,
+                    0,
+                    &[(ResourceType::Labour, 0), (common::material("wood"), 1)],
+                ),
             ],
         ))
         .unwrap();
@@ -503,7 +541,13 @@ fn subsidies_go_only_to_own_settlements_and_must_carry_something() {
         ]
     );
     let nation = simulation.world().nation(FIRST).unwrap();
-    assert_eq!((nation.treasury(), nation.stock().amount(Wood)), (10, 10));
+    assert_eq!(
+        (
+            nation.treasury(),
+            nation.stock().amount(common::material("wood"))
+        ),
+        (10, 10)
+    );
 }
 
 #[test]
@@ -577,7 +621,7 @@ fn the_tax_rate_is_policy_set_once_per_decision_and_seen_by_own_settlements() {
 
 #[test]
 fn nation_decisions_run_before_settlement_decisions_in_the_same_turn() {
-    // B has no gold; its caravan to D buys Wood for 20 gold. The nation's subsidy
+    // B has no gold; its caravan to D buys common::material("wood") for 20 gold. The nation's subsidy
     // of the same turn funds it, because nations decide first.
     let mut simulation = simulation_with_funds(20, 0);
     assert_eq!(simulation.settlement(B).unwrap().gold(), 0);
@@ -587,7 +631,7 @@ fn nation_decisions_run_before_settlement_decisions_in_the_same_turn() {
             vec![SettlementAction::OrderCaravan {
                 receiver_id: D,
                 offers: vec![OfferSpec {
-                    resource: Wood,
+                    resource: common::material("wood"),
                     side: OfferSide::Buy,
                     units: 4,
                     price_per_unit: 5,
@@ -663,7 +707,10 @@ fn every_nation_gets_its_own_end_of_turn_report() {
     assert_eq!(first.capital, A);
     assert_eq!(first.settlements, vec![A, B, C]);
     assert_eq!(first.closing_treasury, 20);
-    assert_eq!(first.closing_stock, BTreeMap::from([(Wood, 40)]));
+    assert_eq!(
+        first.closing_stock,
+        BTreeMap::from([(common::material("wood"), 40)])
+    );
     assert_eq!(
         simulation.observe_nation(FIRST).unwrap().last_turn.as_ref(),
         Some(first)
@@ -677,13 +724,18 @@ fn every_nation_gets_its_own_end_of_turn_report() {
 fn a_nation_observes_its_own_state_and_only_ids_of_other_nations() {
     let mut world = two_nations();
     world.deposit_nation_gold(FIRST, 12).unwrap();
-    world.deposit_nation_resource(FIRST, Stone, 7).unwrap();
+    world
+        .deposit_nation_resource(FIRST, common::material("stone"), 7)
+        .unwrap();
     let simulation = Simulation::new(world).unwrap();
     let observation = simulation.observe_nation(FIRST).unwrap();
     assert_eq!(observation.turn, 0);
     assert_eq!((observation.nation_id, observation.capital), (FIRST, A));
     assert_eq!(observation.treasury, 12);
-    assert_eq!(observation.stock, BTreeMap::from([(Stone, 7)]));
+    assert_eq!(
+        observation.stock,
+        BTreeMap::from([(common::material("stone"), 7)])
+    );
     assert_eq!(
         (observation.stock_total, observation.stock_capacity),
         (7, 1_500)
@@ -715,7 +767,9 @@ fn another_nations_treasury_and_stock_do_not_change_an_observation() {
     let observe = |gold: u32, stone: u32| {
         let mut world = two_nations();
         world.deposit_nation_gold(SECOND, gold).unwrap();
-        world.deposit_nation_resource(SECOND, Stone, stone).unwrap();
+        world
+            .deposit_nation_resource(SECOND, common::material("stone"), stone)
+            .unwrap();
         let simulation = Simulation::new(world).unwrap();
         (
             simulation.observe_nation(FIRST).unwrap(),
@@ -745,5 +799,11 @@ fn turns_without_decisions_leave_national_funds_unchanged() {
         simulation.step().unwrap();
     }
     let nation = simulation.world().nation(FIRST).unwrap();
-    assert_eq!((nation.treasury(), nation.stock().amount(Wood)), (30, 40));
+    assert_eq!(
+        (
+            nation.treasury(),
+            nation.stock().amount(common::material("wood"))
+        ),
+        (30, 40)
+    );
 }

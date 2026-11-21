@@ -13,7 +13,6 @@ use crate::application::commands::settlement::prepared::SettlementCommand;
 use crate::domain::buildings::Building;
 use crate::domain::buildings::definition::BuildingDefinition;
 use crate::domain::economy::ResourceType;
-use crate::domain::economy::storage_order::StorageOrder;
 use crate::domain::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
 use crate::domain::settlement::Settlement;
 use crate::domain::settlement::projects::{ProjectError, ProjectResult};
@@ -137,15 +136,15 @@ impl Batch {
 
     /// Units of `resource` a new caravan can still be funded with: current stock
     /// minus what the market reserves first and what earlier caravans take.
-    fn caravan_room(&self, settlement: &Settlement, resource: ResourceType) -> u64 {
-        let stock = u64::from(settlement.inventory().amount(resource));
+    fn caravan_room(&self, settlement: &Settlement, resource: &ResourceType) -> u64 {
+        let stock = u64::from(settlement.inventory().amount(resource.clone()));
         let market = self
             .market_goods
-            .get(&resource)
+            .get(resource)
             .copied()
             .unwrap_or(0)
             .min(stock);
-        (stock - market).saturating_sub(self.caravan_goods.get(&resource).copied().unwrap_or(0))
+        (stock - market).saturating_sub(self.caravan_goods.get(resource).copied().unwrap_or(0))
     }
 
     /// Gold a new caravan can still commit to purchases, after the market and
@@ -163,19 +162,19 @@ impl Batch {
         goods: &BTreeMap<ResourceType, u64>,
         gold: u64,
     ) -> Result<(), ActionError> {
-        for (&resource, &committed) in &self.caravan_goods {
-            let stock = u64::from(settlement.inventory().amount(resource));
-            let requested = goods.get(&resource).copied().unwrap_or(0);
+        for (resource, &committed) in &self.caravan_goods {
+            let stock = u64::from(settlement.inventory().amount(resource.clone()));
+            let requested = goods.get(resource).copied().unwrap_or(0);
             if committed > 0 && requested + committed > stock {
                 return Err(ActionError::InsufficientStock {
-                    resource,
+                    resource: resource.clone(),
                     requested,
                     available: room_u32(stock.saturating_sub(committed)),
                 });
             }
         }
         let treasury = u64::from(settlement.gold());
-        if self.caravan_gold > 0 && gold + self.caravan_gold > treasury {
+        if self.caravan_gold > 0 && gold.saturating_add(self.caravan_gold) > treasury {
             return Err(ActionError::InsufficientGold {
                 requested: gold,
                 available: room_u32(treasury.saturating_sub(self.caravan_gold)),
@@ -224,8 +223,8 @@ impl Batch {
             self.total_staff =
                 self.total_staff - u64::from(self.staff_before[&building_id]) + u64::from(workers);
         }
-        for (&resource, &amount) in &checked.caravan_goods {
-            *self.caravan_goods.entry(resource).or_default() += amount;
+        for (resource, &amount) in &checked.caravan_goods {
+            *self.caravan_goods.entry(resource.clone()).or_default() += amount;
         }
         self.caravan_gold += checked.caravan_gold;
         if let Some((goods, gold)) = &checked.market {
@@ -240,15 +239,16 @@ fn offer_demand<'a>(
     offers: impl IntoIterator<Item = (&'a ResourceType, &'a TradeOffer)>,
 ) -> (BTreeMap<ResourceType, u64>, u64) {
     let mut goods = BTreeMap::new();
-    let mut gold = 0;
-    for (&resource, offer) in offers {
+    let mut gold = 0_u64;
+    for (resource, offer) in offers {
         match offer {
             TradeOffer::Sell(sell) => {
-                *goods.entry(resource).or_default() += u64::from(sell.get_amount_to_sell())
+                *goods.entry(resource.clone()).or_default() += u64::from(sell.get_amount_to_sell())
             }
             TradeOffer::Buy(buy) => {
-                gold += u64::from(buy.get_remaining_amount_to_buy())
-                    * u64::from(buy.get_maximum_price_per_unit())
+                let cost = u64::from(buy.get_remaining_amount_to_buy())
+                    * u64::from(buy.get_maximum_price_per_unit());
+                gold = gold.saturating_add(cost);
             }
         }
     }
@@ -445,7 +445,8 @@ impl<'a> DecisionPreparation<'a> {
                 Ok(checked)
             }
             SettlementAction::SetStorageOrder { order } => {
-                StorageOrder::validate(order)
+                settlement
+                    .validate_storage_order(order)
                     .map_err(|error| ActionError::InvalidStorageOrder { error })?;
                 batch.ensure_free(Target::StorageOrder)?;
                 Ok(Checked::new(
@@ -455,7 +456,7 @@ impl<'a> DecisionPreparation<'a> {
                 .target(Target::StorageOrder))
             }
             SettlementAction::PublishMarketOffers { offers } => {
-                let offers = resolve_offers(offers);
+                let offers = resolve_offers(settlement, offers)?;
                 batch.ensure_free(Target::Market)?;
                 let (goods, gold) = offer_demand(&offers);
                 batch.check_market(settlement, &goods, gold)?;
@@ -498,6 +499,9 @@ impl<'a> DecisionPreparation<'a> {
 
     fn site_error(position: Position, error: WorldError) -> ActionError {
         match error {
+            WorldError::Project(ProjectError::UnknownMaterial(resource)) => {
+                ActionError::UnknownMaterial { resource }
+            }
             WorldError::RequiredDepositMissing { position, resource } => {
                 ActionError::RequiredDepositMissing { position, resource }
             }
@@ -539,18 +543,18 @@ impl<'a> DecisionPreparation<'a> {
         offers: &[OfferSpec],
         batch: &Batch,
     ) -> Result<Checked, ActionError> {
-        let resolved = resolve_offers(offers);
+        let resolved = resolve_offers(settlement, offers)?;
         self.check_caravan_receiver(settlement, receiver_id)?;
         let (goods, gold) = offer_demand(&resolved);
         // The engine skips orders that carry neither goods nor gold.
         if goods.is_empty() && gold == 0 {
             return Err(ActionError::NothingToCarry);
         }
-        for (&resource, &requested) in &goods {
+        for (resource, &requested) in &goods {
             let available = batch.caravan_room(settlement, resource);
             if requested > available {
                 return Err(ActionError::InsufficientStock {
-                    resource,
+                    resource: resource.clone(),
                     requested,
                     available: room_u32(available),
                 });
@@ -586,9 +590,20 @@ fn own_building(
         .ok_or(ActionError::UnknownBuilding { building_id })
 }
 
-fn resolve_offers(offers: &[OfferSpec]) -> HashMap<ResourceType, TradeOffer> {
+fn resolve_offers(
+    settlement: &Settlement,
+    offers: &[OfferSpec],
+) -> Result<HashMap<ResourceType, TradeOffer>, ActionError> {
     offers
         .iter()
-        .map(|offer| (offer.resource, offer.to_offer()))
+        .map(|offer| {
+            if settlement.knows_material(&offer.resource) {
+                Ok((offer.resource.clone(), offer.to_offer()))
+            } else {
+                Err(ActionError::UnknownMaterial {
+                    resource: offer.resource.clone(),
+                })
+            }
+        })
         .collect()
 }

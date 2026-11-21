@@ -14,8 +14,8 @@ pub(crate) use turn::{PreparedTurn, ProducedTurn};
 
 use crate::domain::buildings::Building;
 use crate::domain::buildings::productivity::BuildingProductivityCalculator;
-use crate::domain::economy::ResourceType;
 use crate::domain::economy::gold_inventory::GoldInventory;
+use crate::domain::economy::{ResourceCatalog, ResourceType};
 use crate::domain::ids::{BuildingId, SettlementId};
 use crate::domain::spatial::Position;
 use crate::domain::trade::book::TradeBook;
@@ -25,8 +25,9 @@ use projects::ProjectManager;
 use std::sync::Arc;
 use trading::TradeManager;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildingCommandError {
+    UnknownMaterial(ResourceType),
     DuplicateBuilding(BuildingId),
     Territory(crate::domain::spatial::TerritoryError),
     MissingBuilding(BuildingId),
@@ -59,11 +60,27 @@ impl Settlement {
         initial_population: u32,
         need_registry: Arc<NeedRegistry>,
     ) -> Self {
+        Self::with_resource_catalog(
+            id,
+            initial_capacity,
+            initial_population,
+            need_registry,
+            ResourceCatalog::standard(),
+        )
+    }
+
+    pub fn with_resource_catalog(
+        id: SettlementId,
+        initial_capacity: u32,
+        initial_population: u32,
+        need_registry: Arc<NeedRegistry>,
+        resources: &ResourceCatalog,
+    ) -> Self {
         Self {
             id,
             capital: None,
             gold_inventory: GoldInventory::default(),
-            inventory_manager: SettlementInventoryManager::new(initial_capacity),
+            inventory_manager: SettlementInventoryManager::new(initial_capacity, resources),
             book: TradeBook::default(),
             trade: TradeManager::default(),
             building_manager: BuildingManager::new(),
@@ -94,6 +111,15 @@ impl Settlement {
     /// Materials the population requests every turn at its current size.
     pub fn needs_per_turn(&self) -> std::collections::HashMap<ResourceType, u32> {
         self.population_manager.calculate_demand()
+    }
+
+    pub(crate) fn first_unknown_population_material(&self) -> Option<ResourceType> {
+        self.population_manager
+            .registry
+            .materials()
+            .filter(|resource| !self.knows_material(resource))
+            .min()
+            .cloned()
     }
 
     pub fn inventory(&self) -> &crate::domain::economy::ResourceInventory {

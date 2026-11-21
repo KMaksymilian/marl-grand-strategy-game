@@ -126,7 +126,7 @@ fn check_action(
             let resources: BTreeMap<_, _> = resources
                 .iter()
                 .filter(|(_, amount)| **amount > 0)
-                .map(|(&resource, &amount)| (resource, amount))
+                .map(|(resource, &amount)| (resource.clone(), amount))
                 .collect();
             if *gold == 0 && resources.is_empty() {
                 return Err(NationActionError::EmptySubsidy);
@@ -137,11 +137,11 @@ fn check_action(
                     available: batch.gold_left,
                 });
             }
-            for (&resource, &amount) in &resources {
-                let available = batch.stock_left.get(&resource).copied().unwrap_or(0);
+            for (resource, &amount) in &resources {
+                let available = batch.stock_left.get(resource).copied().unwrap_or(0);
                 if amount > available {
                     return Err(NationActionError::InsufficientStock {
-                        resource,
+                        resource: resource.clone(),
                         requested: u64::from(amount),
                         available,
                     });
@@ -155,8 +155,8 @@ fn check_action(
             // Accepted: claim the budget. Rejected actions never get here, so
             // they claim nothing.
             batch.gold_left -= gold;
-            for (&resource, &amount) in &resources {
-                *batch.stock_left.get_mut(&resource).expect("checked above") -= amount;
+            for (resource, &amount) in &resources {
+                *batch.stock_left.get_mut(resource).expect("checked above") -= amount;
             }
             *batch.gold_sent.entry(settlement_id).or_insert(0) += u64::from(*gold);
             Ok(NationCommand::Subsidize {

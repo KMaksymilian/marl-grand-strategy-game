@@ -31,7 +31,7 @@ use crate::domain::world::settlement_registry::SettlementRegistry;
 use crate::domain::world::{Position, World, WorldError, pathfinding::path_finder::PathFinder};
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SimulationError {
     InvalidMap,
     TurnOverflow,

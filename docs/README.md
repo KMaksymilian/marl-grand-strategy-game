@@ -50,6 +50,7 @@ system overview to functional areas and implementation references.
 ## Thesis requirements
 
 - [Thesis MoSCoW priorities](thesis/moscow.md)
+- [Specyfikacja wymagań i zakres projektu](thesis/specyfikacja-wymagan-i-zakres-projektu.md)
 
 ## Historical reviews
 

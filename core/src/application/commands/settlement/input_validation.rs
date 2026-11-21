@@ -29,12 +29,12 @@ fn validate_offers(offers: &[OfferSpec]) -> Result<(), ActionError> {
         }
         if offer.units == 0 {
             return Err(ActionError::ZeroUnits {
-                resource: offer.resource,
+                resource: offer.resource.clone(),
             });
         }
-        if !resources.insert(offer.resource) {
+        if !resources.insert(&offer.resource) {
             return Err(ActionError::DuplicateOffer {
-                resource: offer.resource,
+                resource: offer.resource.clone(),
             });
         }
     }

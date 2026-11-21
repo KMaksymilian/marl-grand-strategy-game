@@ -18,7 +18,7 @@ pub enum InventoryLossStage {
     Warehouse,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InventoryLoss {
     pub resource: ResourceType,
     pub amount: u64,
@@ -51,9 +51,9 @@ impl InventoryTurnReport {
         pending: &ResourceInventory,
     ) -> MaterialTotals {
         let mut stock = MaterialTotals::new();
-        for (&resource, &amount) in main.resources().iter().chain(pending.resources()) {
-            if resource != ResourceType::Labour && amount > 0 {
-                *stock.entry(resource).or_default() += u64::from(amount);
+        for (resource, &amount) in main.resources().iter().chain(pending.resources()) {
+            if *resource != ResourceType::Labour && amount > 0 {
+                *stock.entry(resource.clone()).or_default() += u64::from(amount);
             }
         }
         stock
@@ -73,9 +73,9 @@ impl InventoryTurnReport {
                 AllocationRecipient::Project(_) => &mut report.project_consumed,
                 AllocationRecipient::Building(_) => &mut report.production_consumed,
             };
-            for (&resource, &amount) in grants {
-                if resource != ResourceType::Labour && amount > 0 {
-                    *consumed.entry(resource).or_default() += u64::from(amount);
+            for (resource, &amount) in grants {
+                if *resource != ResourceType::Labour && amount > 0 {
+                    *consumed.entry(resource.clone()).or_default() += u64::from(amount);
                 }
             }
         }
@@ -90,15 +90,18 @@ impl InventoryTurnReport {
         self.produced = produced
             .iter()
             .filter(|(res, amount)| **res != ResourceType::Labour && **amount > 0)
-            .map(|(&res, &amount)| (res, amount))
+            .map(|(res, &amount)| (res.clone(), amount))
             .collect();
         self.returned = returned
             .iter()
             .filter(|(res, amount)| **res != ResourceType::Labour && **amount > 0)
-            .map(|(&res, &amount)| (res, amount))
+            .map(|(res, &amount)| (res.clone(), amount))
             .collect();
-        for (&resource, &amount) in &self.returned {
-            let granted = self.production_consumed.entry(resource).or_default();
+        for (resource, &amount) in &self.returned {
+            let granted = self
+                .production_consumed
+                .entry(resource.clone())
+                .or_default();
             *granted = granted
                 .checked_sub(amount)
                 .expect("returned materials cannot exceed building grants");
@@ -119,17 +122,17 @@ impl InventoryTurnReport {
             &self.taxed,
         ]
         .into_iter()
-        .flat_map(|totals| totals.keys().copied())
-        .chain(self.losses.iter().map(|loss| loss.resource))
-        .filter(|resource| *resource != ResourceType::Labour)
+        .flat_map(|totals| totals.keys())
+        .chain(self.losses.iter().map(|loss| &loss.resource))
+        .filter(|resource| **resource != ResourceType::Labour)
         .collect();
         resources.into_iter().all(|resource| {
             let amount =
-                |totals: &MaterialTotals| u128::from(totals.get(&resource).copied().unwrap_or(0));
+                |totals: &MaterialTotals| u128::from(totals.get(resource).copied().unwrap_or(0));
             let losses: u128 = self
                 .losses
                 .iter()
-                .filter(|loss| loss.resource == resource)
+                .filter(|loss| &loss.resource == resource)
                 .map(|loss| u128::from(loss.amount))
                 .sum();
             amount(&self.opening_stock) + amount(&self.produced) + amount(&self.trade_received)
@@ -157,7 +160,7 @@ pub struct TurnReport {
 }
 
 /// A trade made at this settlement's market with a visiting caravan.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MarketTrade {
     pub caravan_sender_id: SettlementId,
     /// Seen from this settlement.
@@ -224,8 +227,8 @@ impl TradeTurnReport {
     pub fn reserved(&self) -> MaterialTotals {
         let mut reserved = self.market_reserved.clone();
         for caravan in &self.caravans_dispatched {
-            for (&resource, &amount) in &caravan.cargo {
-                *reserved.entry(resource).or_default() += amount;
+            for (resource, &amount) in &caravan.cargo {
+                *reserved.entry(resource.clone()).or_default() += amount;
             }
         }
         reserved

@@ -179,8 +179,8 @@ pub(super) fn run_turn(
 }
 
 fn add_totals(totals: &mut MaterialTotals, added: &MaterialTotals) {
-    for (&resource, &amount) in added {
-        *totals.entry(resource).or_default() += amount;
+    for (resource, &amount) in added {
+        *totals.entry(resource.clone()).or_default() += amount;
     }
 }
 
@@ -194,7 +194,6 @@ mod tests {
     fn all_settlements_are_validated_before_decisions_or_economic_mutations() {
         use super::super::{SettlementAction, SettlementDecision};
         use crate::domain::buildings::definition::BuildingDefinition;
-        use crate::domain::economy::ResourceType::Wood;
         use crate::domain::ids::ProjectId;
         use crate::domain::settlement::{Settlement, projects::ProjectCost};
         use crate::domain::world::{Position, WorldError};
@@ -205,13 +204,14 @@ mod tests {
             Map::new(3, 1, vec![Area::new(0.5, 0.5); 3], vec![10, 20, 20]),
             vec![Province::new(10), Province::new(20)],
         );
+        let wood = world.resource_catalog().resolve("wood").unwrap();
         let definition = Arc::new(
             BuildingDefinition::new("house", "House", 1, 0, vec![], ProjectCost::default())
                 .unwrap(),
         );
         for (province, id, x, capital_x) in [(10, 1, 0, 0), (20, 2, 1, 2)] {
             let mut settlement = Settlement::new(SettlementId(id), 100, 0, Arc::default());
-            settlement.deposit(Wood, 5);
+            settlement.deposit(wood.clone(), 5);
             world
                 .add_settlement_at(province, Position { x: capital_x, y: 0 }, settlement)
                 .unwrap();
@@ -222,7 +222,7 @@ mod tests {
                     Position { x, y: 0 },
                     definition.clone(),
                     ProjectCost {
-                        needed_resources: HashMap::from([(Wood, 1)]),
+                        needed_resources: HashMap::from([(wood.clone(), 1)]),
                         turn_cost: 2,
                     },
                 )
@@ -251,7 +251,7 @@ mod tests {
             assert_eq!(simulation.current_turn(), 0);
             assert_eq!(simulation.pending_decisions[&SettlementId(1)].len(), 1);
             for settlement in simulation.settlements() {
-                assert_eq!(settlement.inventory().amount(Wood), 5);
+                assert_eq!(settlement.inventory().amount(wood.clone()), 5);
                 assert_eq!(
                     settlement.active_projects()[0].remaining_cost().turn_cost,
                     2

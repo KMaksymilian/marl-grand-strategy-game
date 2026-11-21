@@ -108,7 +108,6 @@ impl std::error::Error for NationDecisionParseError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ResourceType::{Stone, Wood};
 
     fn one_of_each() -> Vec<NationAction> {
         vec![
@@ -116,7 +115,10 @@ mod tests {
             NationAction::Subsidize {
                 settlement_id: SettlementId(2),
                 gold: 50,
-                resources: BTreeMap::from([(Wood, 20), (Stone, 5)]),
+                resources: BTreeMap::from([
+                    (crate::test_support::material("wood"), 20),
+                    (crate::test_support::material("stone"), 5),
+                ]),
             },
         ]
     }

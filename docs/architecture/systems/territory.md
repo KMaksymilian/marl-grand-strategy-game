@@ -24,7 +24,7 @@ on land within those positions.
 
 Scenario setup places a single material deposit per tile with
 `World::place_deposit`. For example, place a `Stone` deposit and register a
-quarry blueprint with `requiring_deposit(ResourceType::Stone)` and a production
+quarry blueprint with `requiring_deposit(catalog.resolve("stone").unwrap())` and a production
 recipe that outputs stone. Deposits are permanent and independent of structural
 occupancy. A flooded deposit is still visible in inspection, but extraction
 requires land. Each turn, a building whose required deposit is inaccessible

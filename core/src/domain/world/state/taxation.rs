@@ -69,14 +69,16 @@ impl World {
             stock_received: MaterialTotals::new(),
             stock_lost: MaterialTotals::new(),
         };
-        for (&resource, &amount) in &production_tax {
+        for (resource, &amount) in &production_tax {
             let offered = u32::try_from(amount).unwrap_or(u32::MAX);
-            let accepted = u64::from(nation.deposit_resource(resource, offered).accepted);
+            let accepted = u64::from(nation.deposit_resource(resource.clone(), offered).accepted);
             if accepted > 0 {
-                collection.stock_received.insert(resource, accepted);
+                collection.stock_received.insert(resource.clone(), accepted);
             }
             if amount > accepted {
-                collection.stock_lost.insert(resource, amount - accepted);
+                collection
+                    .stock_lost
+                    .insert(resource.clone(), amount - accepted);
             }
         }
         Ok(collection)

@@ -1,22 +1,32 @@
+use super::ResourceCatalog;
 use super::resources::ResourceType;
+use super::storage_order::{StorageOrder, StorageOrderError};
 use std::collections::HashMap;
 
 /// Resource counters can only be changed through capacity-aware commands.
 /// ```compile_fail
 /// use simulation_core::economy::{ResourceInventory, ResourceType};
 /// let mut inventory = ResourceInventory::new(1);
-/// inventory.resources.insert(ResourceType::Wood, 100);
+/// let wood = simulation_core::economy::ResourceCatalog::standard().resolve("wood").unwrap();
+/// inventory.resources.insert(wood, 100);
 /// ```
 #[derive(Debug, Default)]
 pub struct ResourceInventory {
     resources: HashMap<ResourceType, u32>,
     max_capacity: u32,
+    priorities: StorageOrder,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InventoryAddResult {
     pub accepted: u32,
     pub rejected: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InventoryRejection {
+    pub resource: ResourceType,
+    pub amount: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,10 +50,60 @@ impl ResourceInventory {
     }
 
     pub fn new(max_capacity: u32) -> Self {
+        Self::with_resource_catalog(max_capacity, ResourceCatalog::standard())
+    }
+
+    pub fn with_resource_catalog(max_capacity: u32, resources: &ResourceCatalog) -> Self {
         Self {
             resources: HashMap::new(),
             max_capacity,
+            priorities: StorageOrder::for_catalog(resources),
         }
+    }
+
+    pub fn storage_order(&self) -> &[ResourceType] {
+        self.priorities.get()
+    }
+
+    /// Change future batch admission priorities without moving existing stock.
+    pub fn set_storage_order(
+        &mut self,
+        materials: impl AsRef<[ResourceType]>,
+    ) -> Result<(), StorageOrderError> {
+        self.priorities.set(materials)
+    }
+
+    pub fn validate_storage_order(
+        &self,
+        materials: &[ResourceType],
+    ) -> Result<(), StorageOrderError> {
+        self.priorities.validate_order(materials)
+    }
+
+    pub fn knows_material(&self, resource: &ResourceType) -> bool {
+        self.storage_order().contains(resource)
+    }
+
+    /// Admit a batch in warehouse priority order, returning all rejected quantities.
+    pub fn add_batch(&mut self, batch: HashMap<ResourceType, u64>) -> Vec<InventoryRejection> {
+        let mut entries: Vec<_> = batch.into_iter().collect();
+        entries.sort_unstable_by(|a, b| {
+            self.priorities
+                .compare(&a.0, &b.0)
+                .then_with(|| a.0.cmp(&b.0))
+        });
+        let mut rejections = Vec::new();
+        for (resource, amount) in entries {
+            let addition = self.add(resource.clone(), amount.min(u64::from(u32::MAX)) as u32);
+            let rejected = amount - u64::from(addition.accepted);
+            if rejected > 0 {
+                rejections.push(InventoryRejection {
+                    resource,
+                    amount: rejected,
+                });
+            }
+        }
+        rejections
     }
     pub fn capacity(&self) -> u32 {
         self.max_capacity
@@ -71,11 +131,17 @@ impl ResourceInventory {
     pub fn total_amount(&self) -> u64 {
         self.resources
             .iter()
-            .filter(|&(&res, _)| res != ResourceType::Labour)
+            .filter(|(res, _)| **res != ResourceType::Labour)
             .map(|(_, &amount)| u64::from(amount))
             .sum()
     }
     pub fn add(&mut self, res_type: ResourceType, amount: u32) -> InventoryAddResult {
+        if res_type != ResourceType::Labour && !self.knows_material(&res_type) {
+            return InventoryAddResult {
+                accepted: 0,
+                rejected: amount,
+            };
+        }
         let counter_space = u32::MAX - self.resources.get(&res_type).copied().unwrap_or(0);
         let available_space = if res_type == ResourceType::Labour {
             counter_space
@@ -116,19 +182,20 @@ impl ResourceInventory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::material;
 
     #[test]
     fn additions_report_both_accepted_and_rejected_units() {
         let mut inventory = ResourceInventory::new(5);
         assert_eq!(
-            inventory.add(ResourceType::Wood, 8),
+            inventory.add(material("wood"), 8),
             InventoryAddResult {
                 accepted: 5,
                 rejected: 3
             }
         );
         assert_eq!(
-            inventory.add(ResourceType::Grain, 2),
+            inventory.add(material("grain"), 2),
             InventoryAddResult {
                 accepted: 0,
                 rejected: 2
@@ -140,7 +207,7 @@ mod tests {
     #[test]
     fn shrinking_capacity_below_stock_is_rejected_without_changing_data() {
         let mut inventory = ResourceInventory::new(10);
-        inventory.add(ResourceType::Wood, 6);
+        inventory.add(material("wood"), 6);
         assert_eq!(
             inventory.set_capacity(5),
             Err(CapacityError {
@@ -149,11 +216,11 @@ mod tests {
             })
         );
         assert_eq!(inventory.capacity(), 10);
-        assert_eq!(inventory.resources[&ResourceType::Wood], 6);
+        assert_eq!(inventory.resources[&material("wood")], 6);
         inventory.set_capacity(6).unwrap();
-        assert_eq!(inventory.add(ResourceType::Stone, 1).rejected, 1);
+        assert_eq!(inventory.add(material("stone"), 1).rejected, 1);
         inventory.set_capacity(7).unwrap();
-        assert_eq!(inventory.add(ResourceType::Stone, 1).accepted, 1);
+        assert_eq!(inventory.add(material("stone"), 1).accepted, 1);
     }
 
     #[test]
@@ -177,16 +244,16 @@ mod tests {
     #[test]
     fn invalid_public_stock_above_u32_is_summed_without_overflow() {
         let mut inventory = ResourceInventory::new(u32::MAX);
-        inventory.resources.insert(ResourceType::Wood, u32::MAX);
-        inventory.resources.insert(ResourceType::Stone, u32::MAX);
+        inventory.resources.insert(material("wood"), u32::MAX);
+        inventory.resources.insert(material("stone"), u32::MAX);
         assert_eq!(inventory.total_amount(), 2 * u64::from(u32::MAX));
-        assert_eq!(inventory.add(ResourceType::Grain, 1).rejected, 1);
+        assert_eq!(inventory.add(material("grain"), 1).rejected, 1);
     }
 
     #[test]
     fn labour_can_be_added_to_a_full_warehouse() {
         let mut inventory = ResourceInventory::new(1);
-        inventory.add(ResourceType::Wood, 1);
+        inventory.add(material("wood"), 1);
         inventory.add(ResourceType::Labour, 10);
         assert_eq!(inventory.resources.get(&ResourceType::Labour), Some(&10));
         assert_eq!(inventory.total_amount(), 1);
@@ -195,10 +262,10 @@ mod tests {
     #[test]
     fn an_overfull_public_inventory_rejects_additions_without_underflow() {
         let mut inventory = ResourceInventory::new(1);
-        inventory.resources.insert(ResourceType::Wood, 2);
-        inventory.add(ResourceType::Grain, 1);
+        inventory.resources.insert(material("wood"), 2);
+        inventory.add(material("grain"), 1);
         assert_eq!(inventory.total_amount(), 2);
-        assert!(!inventory.resources.contains_key(&ResourceType::Grain));
+        assert!(!inventory.resources.contains_key(&material("grain")));
     }
 
     #[test]
@@ -212,64 +279,64 @@ mod tests {
     #[test]
     fn test_add_within_capacity() {
         let mut inv = ResourceInventory::new(100);
-        inv.add(ResourceType::Wood, 40);
+        inv.add(material("wood"), 40);
 
         assert_eq!(inv.total_amount(), 40);
-        assert_eq!(*inv.resources.get(&ResourceType::Wood).unwrap(), 40);
+        assert_eq!(*inv.resources.get(&material("wood")).unwrap(), 40);
     }
 
     #[test]
     fn test_add_exceeding_capacity() {
         let mut inv = ResourceInventory::new(50);
-        inv.add(ResourceType::Stone, 60);
+        inv.add(material("stone"), 60);
 
         assert_eq!(inv.total_amount(), 50);
-        assert_eq!(*inv.resources.get(&ResourceType::Stone).unwrap(), 50);
+        assert_eq!(*inv.resources.get(&material("stone")).unwrap(), 50);
     }
 
     #[test]
     fn test_add_multiple_resources_with_overflow() {
         let mut inv = ResourceInventory::new(100);
-        inv.add(ResourceType::Wood, 30);
-        inv.add(ResourceType::Grain, 50);
+        inv.add(material("wood"), 30);
+        inv.add(material("grain"), 50);
 
         assert_eq!(inv.total_amount(), 80);
 
-        inv.add(ResourceType::Stone, 30);
+        inv.add(material("stone"), 30);
 
         assert_eq!(inv.total_amount(), 100);
-        assert_eq!(*inv.resources.get(&ResourceType::Stone).unwrap(), 20);
+        assert_eq!(*inv.resources.get(&material("stone")).unwrap(), 20);
     }
 
     #[test]
     fn test_add_when_already_full() {
         let mut inv = ResourceInventory::new(100);
-        inv.add(ResourceType::Wood, 100);
+        inv.add(material("wood"), 100);
 
-        inv.add(ResourceType::Grain, 10);
+        inv.add(material("grain"), 10);
 
         assert_eq!(inv.total_amount(), 100);
-        assert_eq!(inv.resources.get(&ResourceType::Grain), None);
+        assert_eq!(inv.resources.get(&material("grain")), None);
     }
 
     #[test]
     fn test_consume_success() {
         let mut inv = ResourceInventory::new(100);
-        inv.add(ResourceType::Grain, 50);
+        inv.add(material("grain"), 50);
 
-        let result = inv.consume(ResourceType::Grain, 20);
+        let result = inv.consume(material("grain"), 20);
 
         assert!(result);
         assert_eq!(inv.total_amount(), 30);
-        assert_eq!(*inv.resources.get(&ResourceType::Grain).unwrap(), 30);
+        assert_eq!(*inv.resources.get(&material("grain")).unwrap(), 30);
     }
 
     #[test]
     fn test_consume_insufficient_amount() {
         let mut inv = ResourceInventory::new(100);
-        inv.add(ResourceType::Wood, 20);
+        inv.add(material("wood"), 20);
 
-        let result = inv.consume(ResourceType::Wood, 30);
+        let result = inv.consume(material("wood"), 30);
 
         assert!(!result);
         assert_eq!(inv.total_amount(), 20);
@@ -279,7 +346,7 @@ mod tests {
     fn test_consume_nonexistent_resource() {
         let mut inv = ResourceInventory::new(100);
 
-        let result = inv.consume(ResourceType::Stone, 10);
+        let result = inv.consume(material("stone"), 10);
 
         assert!(!result);
     }

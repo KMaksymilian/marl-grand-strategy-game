@@ -145,7 +145,7 @@ pub enum OfferSide {
 }
 
 /// Parameters of one trade offer. Purchase progress is never part of the contract.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OfferSpec {
     /// Any material except Labour; at most one offer per resource in a list.
@@ -185,7 +185,11 @@ impl std::error::Error for DecisionParseError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ResourceType::{Grain, Stone, Wood};
+    fn material(id: &str) -> ResourceType {
+        crate::domain::economy::ResourceCatalog::standard()
+            .resolve(id)
+            .expect("fixture material exists")
+    }
 
     fn offer(resource: ResourceType, side: OfferSide, units: u32, price: u32) -> OfferSpec {
         OfferSpec {
@@ -214,18 +218,18 @@ mod tests {
                 workers: 3,
             },
             SettlementAction::SetStorageOrder {
-                order: vec![Grain, Wood, Stone],
+                order: vec![material("grain"), material("wood"), material("stone")],
             },
             SettlementAction::PublishMarketOffers {
                 offers: vec![
-                    offer(Wood, OfferSide::Sell, 10, 2),
-                    offer(Grain, OfferSide::Buy, 4, 3),
+                    offer(material("wood"), OfferSide::Sell, 10, 2),
+                    offer(material("grain"), OfferSide::Buy, 4, 3),
                 ],
             },
             SettlementAction::ClearMarketOffers,
             SettlementAction::OrderCaravan {
                 receiver_id: SettlementId(2),
-                offers: vec![offer(Stone, OfferSide::Sell, 6, 1)],
+                offers: vec![offer(material("stone"), OfferSide::Sell, 6, 1)],
             },
         ]
     }
@@ -261,7 +265,7 @@ mod tests {
                 SettlementAction::ClearMarketOffers,
                 SettlementAction::OrderCaravan {
                     receiver_id: SettlementId(2),
-                    offers: vec![offer(Wood, OfferSide::Buy, 5, 7)],
+                    offers: vec![offer(material("wood"), OfferSide::Buy, 5, 7)],
                 },
             ],
         );
@@ -298,7 +302,7 @@ mod tests {
                     workers: 0
                 },
                 SettlementAction::SetStorageOrder {
-                    order: vec![Stone, Wood, Grain]
+                    order: vec![material("stone"), material("wood"), material("grain")]
                 },
                 SettlementAction::CancelProject {
                     project_id: ProjectId(4)
@@ -360,11 +364,11 @@ mod tests {
     #[test]
     fn offer_specs_become_fresh_trade_offers() {
         assert_eq!(
-            offer(Wood, OfferSide::Sell, 8, 2).to_offer(),
+            offer(material("wood"), OfferSide::Sell, 8, 2).to_offer(),
             TradeOffer::sell(8, 2)
         );
         assert_eq!(
-            offer(Grain, OfferSide::Buy, 4, 3).to_offer(),
+            offer(material("grain"), OfferSide::Buy, 4, 3).to_offer(),
             TradeOffer::buy(4, 3)
         );
     }

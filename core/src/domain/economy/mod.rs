@@ -3,8 +3,12 @@ pub mod allocation;
 pub mod cost;
 pub mod gold_inventory;
 pub mod inventory;
+mod resource_catalog;
 pub mod resources;
 pub mod storage_order;
 
-pub use inventory::{CapacityError, InventoryAddResult, ResourceInventory};
-pub use resources::ResourceType;
+pub use inventory::{CapacityError, InventoryAddResult, InventoryRejection, ResourceInventory};
+pub use resource_catalog::{
+    FoodClass, ResourceCatalog, ResourceCatalogError, ResourceCategory, ResourceDefinition,
+};
+pub use resources::{ResourceId, ResourceType};

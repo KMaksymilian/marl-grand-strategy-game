@@ -24,7 +24,7 @@ impl World {
         if self.map.validate_building_position(position).is_err() {
             return Err(WorldError::DepositOnOcean(position));
         }
-        if !ResourceType::MATERIALS.contains(&resource) {
+        if self.resource_catalog().get(&resource).is_none() {
             return Err(WorldError::InvalidDepositResource(resource));
         }
         match self.map.deposits.entry(position) {
@@ -60,7 +60,7 @@ impl World {
             let province = self.province_at(position)?;
             if !self
                 .map
-                .has_accessible_deposit(province, position, resource)
+                .has_accessible_deposit(province, position, &resource)
             {
                 return Err(WorldError::RequiredDepositMissing { position, resource });
             }

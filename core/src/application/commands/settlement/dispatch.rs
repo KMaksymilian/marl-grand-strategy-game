@@ -5,7 +5,7 @@ use crate::domain::ids::SettlementId;
 use crate::domain::settlement::TradeCommandError;
 use crate::domain::world::{World, WorldError};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum CommandError {
     World(WorldError),
     StorageOrder(StorageOrderError),

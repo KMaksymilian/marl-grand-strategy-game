@@ -1,3 +1,5 @@
+mod common;
+use common::material;
 use simulation_core::ids::SettlementId;
 use simulation_core::world::map as core_map;
 use simulation_core::world::pathfinding::path_finder as test_path;
@@ -22,8 +24,8 @@ use simulation_core::buildings::catalog::BuildingCatalog;
 use simulation_core::buildings::definition::{
     BuildingBehavior, BuildingDefinition, DefinitionError,
 };
-use simulation_core::economy::ResourceType::{self, Grain, Stone, Wood};
 use simulation_core::economy::storage_order::StorageOrderError;
+use simulation_core::economy::{ResourceCatalog, ResourceType};
 use simulation_core::ids::BuildingId;
 use simulation_core::settlement::projects::ProjectCost;
 use simulation_core::settlement::{BuildingCommandError, Settlement};
@@ -54,29 +56,29 @@ fn rejects_totals_across_duplicate_entries_and_recipes_at_creation() {
     assert_eq!(
         try_definition(vec![
             BuildingBehavior::Production {
-                inputs: vec![(Wood, u32::MAX)],
+                inputs: vec![(material("wood"), u32::MAX)],
                 outputs: vec![]
             },
             BuildingBehavior::Production {
-                inputs: vec![(Wood, 1)],
+                inputs: vec![(material("wood"), 1)],
                 outputs: vec![]
             },
         ])
         .unwrap_err(),
-        DefinitionError::InputOverflow(Wood)
+        DefinitionError::InputOverflow(material("wood"))
     );
     assert_eq!(
         try_definition(vec![BuildingBehavior::Production {
             inputs: vec![],
-            outputs: vec![(Stone, u32::MAX), (Stone, 1)],
+            outputs: vec![(material("stone"), u32::MAX), (material("stone"), 1)],
         }])
         .unwrap_err(),
-        DefinitionError::OutputOverflow(Stone)
+        DefinitionError::OutputOverflow(material("stone"))
     );
     assert!(
         try_definition(vec![BuildingBehavior::Production {
-            inputs: vec![(Wood, u32::MAX)],
-            outputs: vec![(Stone, u32::MAX)],
+            inputs: vec![(material("wood"), u32::MAX)],
+            outputs: vec![(material("stone"), u32::MAX)],
         }])
         .is_ok()
     );
@@ -85,16 +87,16 @@ fn rejects_totals_across_duplicate_entries_and_recipes_at_creation() {
 #[test]
 fn rejected_replacement_cannot_change_catalog_or_existing_instances() {
     let mut catalog = BuildingCatalog::default();
-    catalog.register(definition(vec![], vec![(Grain, 1)]));
+    catalog.register(definition(vec![], vec![(material("grain"), 1)]));
     let blueprint = catalog.get_blueprint("mill").unwrap();
     let building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, blueprint.clone());
     let replacement = try_definition(vec![BuildingBehavior::Production {
         inputs: vec![],
-        outputs: vec![(Grain, u32::MAX), (Grain, 1)],
+        outputs: vec![(material("grain"), u32::MAX), (material("grain"), 1)],
     }]);
     assert_eq!(
         replacement.unwrap_err(),
-        DefinitionError::OutputOverflow(Grain)
+        DefinitionError::OutputOverflow(material("grain"))
     );
     assert!(Arc::ptr_eq(
         &catalog.get_blueprint("mill").unwrap(),
@@ -110,7 +112,7 @@ fn invalid_efficiencies_do_not_change_existing_target() {
     let mut building = Building::new(
         BuildingId(1),
         Position { x: 0, y: 0 },
-        Arc::new(definition(vec![], vec![(Grain, 1)])),
+        Arc::new(definition(vec![], vec![(material("grain"), 1)])),
     );
     building.set_target_load(0.5).unwrap();
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -0.1, 1.1] {
@@ -137,8 +139,8 @@ fn invalid_efficiencies_do_not_change_existing_target() {
 #[test]
 fn blueprint_owns_its_recipe_and_exposes_only_shared_views() {
     let mut behaviors = vec![BuildingBehavior::Production {
-        inputs: vec![(Wood, 1)],
-        outputs: vec![(Stone, 2)],
+        inputs: vec![(material("wood"), 1)],
+        outputs: vec![(material("stone"), 2)],
     }];
     let definition = BuildingDefinition::new(
         "mill",
@@ -164,21 +166,25 @@ fn blueprint_owns_its_recipe_and_exposes_only_shared_views() {
 #[test]
 fn variable_length_storage_order_is_validated_atomically() {
     let mut settlement = Settlement::new(SettlementId(1), 10, 1, Arc::default());
-    settlement
-        .set_storage_order(vec![Grain, Wood, Stone])
-        .unwrap();
+    let mut order = ResourceCatalog::standard().materials().to_vec();
+    order[..3].rotate_right(1);
+    settlement.set_storage_order(&order).unwrap();
     assert_eq!(
-        settlement.set_storage_order(vec![Wood, Stone]),
-        Err(StorageOrderError::MissingMaterial(Grain))
+        settlement.set_storage_order(vec![material("wood"), material("stone")]),
+        Err(StorageOrderError::MissingMaterial(material("grain")))
     );
     assert_eq!(
         settlement.set_storage_order(Vec::<ResourceType>::new()),
-        Err(StorageOrderError::MissingMaterial(Wood))
+        Err(StorageOrderError::MissingMaterial(material("wood")))
     );
-    assert_eq!(settlement.storage_order(), &[Grain, Wood, Stone]);
+    assert_eq!(
+        settlement.set_storage_order([material("wood"), material("stone"), material("grain")]),
+        Err(StorageOrderError::MissingMaterial(material("cattle")))
+    );
+    assert_eq!(settlement.storage_order(), order);
     assert_eq!(
         settlement.storage_order().len(),
-        ResourceType::MATERIALS.len()
+        ResourceCatalog::standard().materials().len()
     );
 }
 

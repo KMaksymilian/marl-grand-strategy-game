@@ -128,7 +128,7 @@ impl ConstructionSpace for MapSettlementEnvironment<'_> {
         self.province.is_some_and(|province| {
             self.space
                 .map
-                .has_accessible_deposit(province, position, resource)
+                .has_accessible_deposit(province, position, &resource)
         })
     }
 

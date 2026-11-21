@@ -31,7 +31,6 @@ impl TradeNetwork {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::economy::ResourceType;
     use crate::domain::settlement::Settlement;
     use crate::domain::settlement::turn_report::{InventoryLoss, InventoryLossStage};
     use crate::domain::trade::caravan::{CaravanOutcome, CaravanState};
@@ -40,6 +39,7 @@ mod tests {
     use crate::domain::world::Province;
     use crate::domain::world::map::Map;
     use crate::domain::world::terrain::area::Area;
+    use crate::test_support::material;
     use std::sync::Arc;
 
     const WIDTH: usize = 64;
@@ -88,18 +88,15 @@ mod tests {
         ]);
         let mut seller = settlement(1, 100);
         let mut buyer = settlement(2, 100);
-        seller.deposit(ResourceType::Wood, 10);
+        seller.deposit(material("wood"), 10);
         buyer.deposit_gold(100);
         buyer
-            .publish_trade_offers(HashMap::from([(
-                ResourceType::Wood,
-                TradeOffer::buy(6, 10),
-            )]))
+            .publish_trade_offers(HashMap::from([(material("wood"), TradeOffer::buy(6, 10))]))
             .unwrap();
         seller
             .order_caravan(
                 SettlementId(2),
-                HashMap::from([(ResourceType::Wood, TradeOffer::sell(8, 4))]),
+                HashMap::from([(material("wood"), TradeOffer::sell(8, 4))]),
             )
             .unwrap();
         for settlement in [seller, buyer] {
@@ -115,7 +112,7 @@ mod tests {
 
         let dispatched = &history[0][0].trade.caravans_dispatched;
         assert_eq!(dispatched.len(), 1);
-        assert_eq!(dispatched[0].cargo[&ResourceType::Wood], 8);
+        assert_eq!(dispatched[0].cargo[&material("wood")], 8);
 
         // Buyer: 6 wood at midpoint price 7 at its own market.
         let market: Vec<_> = history
@@ -127,7 +124,7 @@ mod tests {
         assert_eq!(
             market[0].execution,
             TradeExecution {
-                resource: ResourceType::Wood,
+                resource: material("wood"),
                 units: 6,
                 unit_price: 7,
                 side: TradeSide::Bought,
@@ -141,15 +138,15 @@ mod tests {
         assert_eq!(returned.len(), 1);
         assert_eq!(returned[0].outcome, CaravanOutcome::Traded);
         assert_eq!(returned[0].gold, 42);
-        assert_eq!(returned[0].cargo[&ResourceType::Wood], 2);
+        assert_eq!(returned[0].cargo[&material("wood")], 2);
         assert_eq!(returned[0].trades[0].side, TradeSide::Sold);
 
         let seller = world.settlement(SettlementId(1)).unwrap();
         let buyer = world.settlement(SettlementId(2)).unwrap();
         assert_eq!(seller.gold(), 42);
-        assert_eq!(seller.inventory().amount(ResourceType::Wood), 4);
+        assert_eq!(seller.inventory().amount(material("wood")), 4);
         assert_eq!(buyer.gold(), 58);
-        assert_eq!(buyer.inventory().amount(ResourceType::Wood), 6);
+        assert_eq!(buyer.inventory().amount(material("wood")), 6);
     }
 
     #[test]
@@ -170,16 +167,13 @@ mod tests {
             buyer
                 .order_caravan(
                     SettlementId(3),
-                    HashMap::from([(ResourceType::Grain, TradeOffer::buy(10, 3))]),
+                    HashMap::from([(material("grain"), TradeOffer::buy(10, 3))]),
                 )
                 .unwrap();
         }
-        market.deposit(ResourceType::Grain, 8);
+        market.deposit(material("grain"), 8);
         market
-            .publish_trade_offers(HashMap::from([(
-                ResourceType::Grain,
-                TradeOffer::sell(8, 3),
-            )]))
+            .publish_trade_offers(HashMap::from([(material("grain"), TradeOffer::sell(8, 3))]))
             .unwrap();
         for settlement in [first, second, market] {
             world
@@ -199,7 +193,7 @@ mod tests {
                 .settlement(SettlementId(1))
                 .unwrap()
                 .inventory()
-                .amount(ResourceType::Grain),
+                .amount(material("grain")),
             4
         );
         assert_eq!(
@@ -207,7 +201,7 @@ mod tests {
                 .settlement(SettlementId(2))
                 .unwrap()
                 .inventory()
-                .amount(ResourceType::Grain),
+                .amount(material("grain")),
             4
         );
         assert_eq!(world.settlement(SettlementId(1)).unwrap().gold(), 88);
@@ -227,11 +221,11 @@ mod tests {
         ]);
         let mut sender = settlement(1, 10);
         let buyer = settlement(2, 100);
-        sender.deposit(ResourceType::Stone, 10);
+        sender.deposit(material("stone"), 10);
         sender
             .order_caravan(
                 SettlementId(2),
-                HashMap::from([(ResourceType::Stone, TradeOffer::sell(10, 1))]),
+                HashMap::from([(material("stone"), TradeOffer::sell(10, 1))]),
             )
             .unwrap();
         for settlement in [sender, buyer] {
@@ -242,11 +236,11 @@ mod tests {
 
         // Turn 1 funds the caravan, emptying the warehouse; refill it while it travels.
         let first = TradeNetwork::process_turn(&mut world, &locations, &mut finder).unwrap();
-        assert_eq!(first[0].inventory.trade_reserved[&ResourceType::Stone], 10);
+        assert_eq!(first[0].inventory.trade_reserved[&material("stone")], 10);
         world
             .settlement_mut(SettlementId(1))
             .unwrap()
-            .deposit(ResourceType::Wood, 7);
+            .deposit(material("wood"), 7);
 
         let history = run_until_idle(&mut world, &locations, &mut finder);
         let report = history
@@ -255,11 +249,11 @@ mod tests {
             .find(|r| !r.trade.caravans_returned.is_empty())
             .unwrap();
         assert_eq!(
-            report.trade.caravans_returned[0].cargo[&ResourceType::Stone],
+            report.trade.caravans_returned[0].cargo[&material("stone")],
             10
         );
         assert!(report.inventory.losses.contains(&InventoryLoss {
-            resource: ResourceType::Stone,
+            resource: material("stone"),
             amount: 7,
             stage: InventoryLossStage::Warehouse,
         }));
@@ -269,7 +263,7 @@ mod tests {
                 .settlement(SettlementId(1))
                 .unwrap()
                 .inventory()
-                .amount(ResourceType::Stone),
+                .amount(material("stone")),
             3
         );
     }
@@ -284,13 +278,13 @@ mod tests {
         sender
             .order_caravan(
                 SettlementId(2),
-                HashMap::from([(ResourceType::Wood, TradeOffer::buy(10, 3))]),
+                HashMap::from([(material("wood"), TradeOffer::buy(10, 3))]),
             )
             .unwrap();
         sender
             .order_caravan(
                 SettlementId(9),
-                HashMap::from([(ResourceType::Wood, TradeOffer::buy(10, 3))]),
+                HashMap::from([(material("wood"), TradeOffer::buy(10, 3))]),
             )
             .unwrap();
         for settlement in [sender, settlement(2, 100)] {
@@ -324,18 +318,15 @@ mod tests {
         ]);
         let mut seller = settlement(1, 100);
         let mut buyer = settlement(2, 100);
-        seller.deposit(ResourceType::Wood, 10);
+        seller.deposit(material("wood"), 10);
         buyer.deposit_gold(100);
         buyer
-            .publish_trade_offers(HashMap::from([(
-                ResourceType::Wood,
-                TradeOffer::buy(10, 5),
-            )]))
+            .publish_trade_offers(HashMap::from([(material("wood"), TradeOffer::buy(10, 5))]))
             .unwrap();
         seller
             .order_caravan(
                 SettlementId(2),
-                HashMap::from([(ResourceType::Wood, TradeOffer::sell(10, 5))]),
+                HashMap::from([(material("wood"), TradeOffer::sell(10, 5))]),
             )
             .unwrap();
         for settlement in [seller, buyer] {
@@ -367,7 +358,7 @@ mod tests {
                 .settlement(SettlementId(1))
                 .unwrap()
                 .inventory()
-                .amount(ResourceType::Wood),
+                .amount(material("wood")),
             0
         );
         assert_eq!(
@@ -375,7 +366,7 @@ mod tests {
                 .settlement(SettlementId(2))
                 .unwrap()
                 .inventory()
-                .amount(ResourceType::Wood),
+                .amount(material("wood")),
             10
         );
         assert_eq!(world.settlement(SettlementId(1)).unwrap().gold(), 0);

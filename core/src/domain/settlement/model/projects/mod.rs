@@ -13,9 +13,10 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectError {
+    UnknownMaterial(ResourceType),
     MissingProject(ProjectId),
     Territory(crate::domain::spatial::TerritoryError),
     DuplicateProject(ProjectId),
@@ -30,7 +31,7 @@ pub enum ProjectCompletion {
     BuildingUpgraded(BuildingId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProjectOutcome {
     pub project_id: ProjectId,
     pub result: Result<ProjectCompletion, ProjectError>,
@@ -89,7 +90,7 @@ impl Project {
                 .needed_resources
                 .iter()
                 .filter(|(_, amount)| **amount > 0)
-                .map(|(&resource, &amount)| (resource, amount))
+                .map(|(resource, &amount)| (resource.clone(), amount))
                 .collect(),
         }
     }
@@ -124,7 +125,7 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::economy::ResourceType;
+    use crate::test_support::material;
     use std::collections::HashMap;
 
     #[test]
@@ -133,16 +134,13 @@ mod tests {
             ProjectId(1),
             create_dummy_result(),
             ProjectCost {
-                needed_resources: HashMap::from([
-                    (ResourceType::Wood, 0),
-                    (ResourceType::Stone, 5),
-                ]),
+                needed_resources: HashMap::from([(material("wood"), 0), (material("stone"), 5)]),
                 turn_cost: 2,
             },
         );
         assert_eq!(
             project.remaining_cost.needed_resources,
-            HashMap::from([(ResourceType::Stone, 5)])
+            HashMap::from([(material("stone"), 5)])
         );
         assert_eq!(project.remaining_cost.turn_cost, 2);
         assert!(!project.is_completed());
@@ -154,7 +152,7 @@ mod tests {
         project
             .remaining_cost
             .needed_resources
-            .insert(ResourceType::Wood, 0);
+            .insert(material("wood"), 0);
         assert!(project.is_completed());
         assert!(project.as_demand_request().demand.is_empty());
         project.resolve_allocation(None);
@@ -193,7 +191,7 @@ mod tests {
     fn test_project_cost_is_not_paid_when_resources_remain() {
         // Arrange
         let mut resources = HashMap::new();
-        resources.insert(ResourceType::Wood, 10);
+        resources.insert(material("wood"), 10);
 
         let cost = ProjectCost {
             needed_resources: resources,
@@ -234,7 +232,7 @@ mod tests {
     fn test_project_initialization() {
         // Arrange
         let mut resources = HashMap::new();
-        resources.insert(ResourceType::Wood, 50);
+        resources.insert(material("wood"), 50);
         let initial_cost = ProjectCost {
             needed_resources: resources,
             turn_cost: 3,
@@ -250,7 +248,7 @@ mod tests {
             *project
                 .remaining_cost
                 .needed_resources
-                .get(&ResourceType::Wood)
+                .get(&material("wood"))
                 .unwrap(),
             50
         );
@@ -260,8 +258,8 @@ mod tests {
     fn test_as_demand_request_creates_correct_mapping() {
         // Arrange
         let mut resources = HashMap::new();
-        resources.insert(ResourceType::Stone, 100);
-        resources.insert(ResourceType::Wood, 50);
+        resources.insert(material("stone"), 100);
+        resources.insert(material("wood"), 50);
 
         let project = Project::new(
             ProjectId(10),
@@ -286,14 +284,14 @@ mod tests {
             2,
             "DemandRequest should copy all needed resources"
         );
-        assert_eq!(*request.demand.get(&ResourceType::Stone).unwrap(), 100);
+        assert_eq!(*request.demand.get(&material("stone")).unwrap(), 100);
     }
 
     #[test]
     fn test_resolve_allocation_deducts_resources_and_turns() {
         // Arrange
         let mut resources = HashMap::new();
-        resources.insert(ResourceType::Wood, 50);
+        resources.insert(material("wood"), 50);
 
         let mut project = Project::new(
             ProjectId(1),
@@ -305,7 +303,7 @@ mod tests {
         );
 
         let mut grants = HashMap::new();
-        grants.insert(ResourceType::Wood, 20); // Partial allocation
+        grants.insert(material("wood"), 20); // Partial allocation
 
         // Act
         project.resolve_allocation(Some(&grants));
@@ -315,7 +313,7 @@ mod tests {
             *project
                 .remaining_cost
                 .needed_resources
-                .get(&ResourceType::Wood)
+                .get(&material("wood"))
                 .unwrap(),
             30,
             "Wood need should be reduced from 50 to 30"
@@ -330,7 +328,7 @@ mod tests {
     fn test_resolve_allocation_removes_fulfilled_resources() {
         // Arrange
         let mut resources = HashMap::new();
-        resources.insert(ResourceType::Stone, 20);
+        resources.insert(material("stone"), 20);
 
         let mut project = Project::new(
             ProjectId(1),
@@ -342,7 +340,7 @@ mod tests {
         );
 
         let mut grants = HashMap::new();
-        grants.insert(ResourceType::Stone, 20); // Exact allocation
+        grants.insert(material("stone"), 20); // Exact allocation
 
         // Act
         project.resolve_allocation(Some(&grants));
@@ -358,7 +356,7 @@ mod tests {
     fn test_resolve_allocation_handles_over_allocation_safely() {
         // Arrange
         let mut resources = HashMap::new();
-        resources.insert(ResourceType::Wood, 10);
+        resources.insert(material("wood"), 10);
 
         let mut project = Project::new(
             ProjectId(1),
@@ -370,7 +368,7 @@ mod tests {
         );
 
         let mut grants = HashMap::new();
-        grants.insert(ResourceType::Wood, 50); // Granted way more than needed
+        grants.insert(material("wood"), 50); // Granted way more than needed
 
         // Act
         project.resolve_allocation(Some(&grants));
@@ -386,7 +384,7 @@ mod tests {
     fn test_resolve_allocation_handles_none_grants_by_only_decrementing_turn() {
         // Arrange
         let mut resources = HashMap::new();
-        resources.insert(ResourceType::Wood, 50);
+        resources.insert(material("wood"), 50);
 
         let mut project = Project::new(
             ProjectId(1),
@@ -405,7 +403,7 @@ mod tests {
             *project
                 .remaining_cost
                 .needed_resources
-                .get(&ResourceType::Wood)
+                .get(&material("wood"))
                 .unwrap(),
             50,
             "Resources should remain untouched when no grants are provided"
@@ -442,7 +440,7 @@ mod tests {
     fn test_is_completed_checks_both_conditions() {
         // Arrange
         let mut resources = HashMap::new();
-        resources.insert(ResourceType::Wood, 10);
+        resources.insert(material("wood"), 10);
 
         let mut project = Project::new(
             ProjectId(1),
@@ -458,7 +456,7 @@ mod tests {
 
         // Act & Assert 2: Has no resources, has turns
         let mut exact_grants = HashMap::new();
-        exact_grants.insert(ResourceType::Wood, 10);
+        exact_grants.insert(material("wood"), 10);
         project.resolve_allocation(Some(&exact_grants)); // This drops turns to 0 and clears resources
         assert!(
             project.is_completed(),

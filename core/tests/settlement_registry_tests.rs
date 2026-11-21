@@ -1,3 +1,5 @@
+mod common;
+use common::material;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -7,7 +9,6 @@ use simulation_core::buildings::{
     Building,
     productivity::{BuildingProductivityCalculator, TravelCostEfficiencyPolicy},
 };
-use simulation_core::economy::ResourceType::Wood;
 use simulation_core::ids::BuildingTypeId;
 use simulation_core::ids::{BuildingId, ProjectId, SettlementId};
 use simulation_core::settlement::{NeedRegistry, NeedTier, Settlement, projects::ProjectCost};
@@ -301,7 +302,7 @@ fn initialized_population_and_needs_are_used_by_the_economy() {
     let mut simulation = Simulation::new(world()).unwrap();
     let needs = Arc::new(NeedRegistry::new(vec![NeedTier {
         min_population: 1,
-        needs_per_capita: HashMap::from([(Wood, 1)]),
+        needs_per_capita: HashMap::from([(material("wood"), 1)]),
     }]));
     let id = simulation
         .initialize_settlement(100, 100, 4, needs)
@@ -310,7 +311,7 @@ fn initialized_population_and_needs_are_used_by_the_economy() {
     assert_eq!(simulation.settlement(id).unwrap().population(), 4);
     assert_eq!(
         report.settlements[&id].consumption.missing_resources,
-        vec![Wood]
+        vec![material("wood")]
     );
     assert_eq!(
         report.settlements[&id].consumption.satisfaction_percent,
@@ -341,7 +342,7 @@ fn registry_owns_the_same_persistent_economic_and_spatial_state_across_turns() {
     let mut world = world();
     let id = SettlementId(42);
     let mut settlement = Settlement::new(id, 100, 0, Arc::default());
-    settlement.deposit(Wood, 5);
+    settlement.deposit(material("wood"), 5);
     world.add_settlement(100, settlement).unwrap();
     let mut catalog = BuildingCatalog::default();
     catalog.register(
@@ -352,7 +353,7 @@ fn registry_owns_the_same_persistent_economic_and_spatial_state_across_turns() {
             0,
             vec![],
             ProjectCost {
-                needed_resources: HashMap::from([(Wood, 2)]),
+                needed_resources: HashMap::from([(material("wood"), 2)]),
                 turn_cost: 2,
             },
         )
@@ -377,7 +378,7 @@ fn registry_owns_the_same_persistent_economic_and_spatial_state_across_turns() {
         simulation.world().settlement(id).unwrap()
     ));
     assert!(std::ptr::eq(settlement, simulation.settlement(id).unwrap()));
-    assert_eq!(settlement.inventory().amount(Wood), 3);
+    assert_eq!(settlement.inventory().amount(material("wood")), 3);
     assert_eq!(
         settlement.active_projects()[0].remaining_cost().turn_cost,
         1
@@ -391,7 +392,7 @@ fn registry_owns_the_same_persistent_economic_and_spatial_state_across_turns() {
     );
     simulation.step().unwrap();
     let settlement = simulation.settlement(id).unwrap();
-    assert_eq!(settlement.inventory().amount(Wood), 3);
+    assert_eq!(settlement.inventory().amount(material("wood")), 3);
     assert!(settlement.active_projects().is_empty());
     let building = settlement.buildings().next().unwrap();
     assert_eq!(building.position(), site);

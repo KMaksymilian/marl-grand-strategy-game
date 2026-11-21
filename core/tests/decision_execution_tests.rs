@@ -1,9 +1,11 @@
 //! Agent decisions executed through `Simulation::step`: effects on the world,
 //! untouched state for rejected actions, and reported results.
+mod common;
+use common::material;
 use simulation_core::buildings::Building;
 use simulation_core::buildings::catalog::BuildingCatalog;
 use simulation_core::buildings::definition::{BuildingBehavior, BuildingDefinition};
-use simulation_core::economy::ResourceType::{self, Grain, Labour, Stone, Wood};
+use simulation_core::economy::{ResourceCatalog, ResourceType};
 use simulation_core::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
 use simulation_core::settlement::decision::{OfferSide, OfferSpec};
 use simulation_core::settlement::projects::{ProjectCost, ProjectResult};
@@ -35,10 +37,10 @@ fn farm_definition(id: &str, max_workers: u32, wood: u32, turns: u32) -> Buildin
         max_workers,
         vec![BuildingBehavior::Production {
             inputs: vec![],
-            outputs: vec![(Grain, 2)],
+            outputs: vec![(material("grain"), 2)],
         }],
         ProjectCost {
-            needed_resources: HashMap::from([(Wood, wood)]),
+            needed_resources: HashMap::from([(material("wood"), wood)]),
             turn_cost: turns,
         },
     )
@@ -64,8 +66,8 @@ fn world_with_farm_activity(active: bool) -> World {
     catalog.register(farm_definition("big_farm", 6, 5, 4));
     world.set_building_catalog(catalog);
     let mut me = Settlement::new(ME, 100, 5, Arc::default());
-    me.deposit(Wood, 10);
-    me.deposit(Grain, 3);
+    me.deposit(material("wood"), 10);
+    me.deposit(material("grain"), 3);
     me.deposit_gold(20);
     world.add_settlement(10, me).unwrap();
     world
@@ -150,14 +152,17 @@ fn every_action_reaches_the_matching_settlement_operation() {
             },
             workers(4),
             SettlementAction::SetStorageOrder {
-                order: vec![Grain, Stone, Wood],
+                order: [material("grain"), material("stone"), material("wood")]
+                    .into_iter()
+                    .chain(ResourceCatalog::standard().materials()[3..].iter().cloned())
+                    .collect(),
             },
             SettlementAction::PublishMarketOffers {
-                offers: vec![offer(Wood, OfferSide::Sell, 3, 2)],
+                offers: vec![offer(material("wood"), OfferSide::Sell, 3, 2)],
             },
             SettlementAction::OrderCaravan {
                 receiver_id: NEIGHBOUR,
-                offers: vec![offer(Wood, OfferSide::Sell, 2, 1)],
+                offers: vec![offer(material("wood"), OfferSide::Sell, 2, 1)],
             },
         ],
     );
@@ -212,19 +217,28 @@ fn every_action_reaches_the_matching_settlement_operation() {
         4
     );
     let local = &report.settlements[&ME];
-    assert_eq!(local.inventory.produced[&Grain], 2);
+    assert_eq!(local.inventory.produced[&material("grain")], 2);
     // Inventory policy.
-    assert_eq!(me(&simulation).storage_order(), &[Grain, Stone, Wood]);
+    assert_eq!(
+        me(&simulation).storage_order(),
+        &[material("grain"), material("stone"), material("wood")]
+            .into_iter()
+            .chain(ResourceCatalog::standard().materials()[3..].iter().cloned())
+            .collect::<Vec<_>>()
+    );
     // Market offers stay published for later turns.
     assert_eq!(
         me(&simulation).market_offers(),
-        &HashMap::from([(Wood, TradeOffer::sell(3, 2))])
+        &HashMap::from([(material("wood"), TradeOffer::sell(3, 2))])
     );
-    assert_eq!(local.trade.market_reserved[&Wood], 3);
+    assert_eq!(local.trade.market_reserved[&material("wood")], 3);
     // The caravan was funded from stock in the same turn.
     assert_eq!(local.trade.caravans_dispatched.len(), 1);
     assert_eq!(local.trade.caravans_dispatched[0].receiver_id, NEIGHBOUR);
-    assert_eq!(local.trade.caravans_dispatched[0].cargo[&Wood], 2);
+    assert_eq!(
+        local.trade.caravans_dispatched[0].cargo[&material("wood")],
+        2
+    );
     assert!(local.inventory.is_balanced());
 }
 
@@ -236,7 +250,7 @@ fn cancel_and_clear_undo_earlier_decisions() {
         vec![
             construct("farm", at(1, 0)),
             SettlementAction::PublishMarketOffers {
-                offers: vec![offer(Grain, OfferSide::Buy, 2, 1)],
+                offers: vec![offer(material("grain"), OfferSide::Buy, 2, 1)],
             },
         ],
     );
@@ -289,10 +303,16 @@ fn staffing_switches_production_on_and_off() {
     // Staffing a switched-off building also switches it on.
     let report = step_with(&mut simulation, vec![workers(4)]);
     assert!(farm(&simulation).is_active());
-    assert_eq!(report.settlements[&ME].inventory.produced[&Grain], 2);
+    assert_eq!(
+        report.settlements[&ME].inventory.produced[&material("grain")],
+        2
+    );
     // Half the staff produces half the output.
     let report = step_with(&mut simulation, vec![workers(2)]);
-    assert_eq!(report.settlements[&ME].inventory.produced[&Grain], 1);
+    assert_eq!(
+        report.settlements[&ME].inventory.produced[&material("grain")],
+        1
+    );
     // Zero workers stops production but leaves the building in place.
     let report = step_with(&mut simulation, vec![workers(0)]);
     assert!(report.settlements[&ME].inventory.produced.is_empty());
@@ -308,17 +328,17 @@ fn rejected_actions_change_nothing_while_valid_ones_apply() {
             construct("farm", at(1, 1)),
             workers(9),
             SettlementAction::PublishMarketOffers {
-                offers: vec![offer(Labour, OfferSide::Sell, 1, 1)],
+                offers: vec![offer(ResourceType::Labour, OfferSide::Sell, 1, 1)],
             },
             SettlementAction::SetStorageOrder {
-                order: vec![Wood, Wood, Grain],
+                order: vec![material("wood"), material("wood"), material("grain")],
             },
             SettlementAction::CancelProject {
                 project_id: ProjectId(77),
             },
             SettlementAction::OrderCaravan {
                 receiver_id: NEIGHBOUR,
-                offers: vec![offer(Wood, OfferSide::Sell, 50, 1)],
+                offers: vec![offer(material("wood"), OfferSide::Sell, 50, 1)],
             },
             construct("farm", at(1, 0)),
         ],
@@ -344,7 +364,10 @@ fn rejected_actions_change_nothing_while_valid_ones_apply() {
     );
     assert_eq!(farm(&simulation).target_load(), 0.0);
     assert!(me(&simulation).market_offers().is_empty());
-    assert_eq!(me(&simulation).storage_order(), &[Wood, Stone, Grain]);
+    assert_eq!(
+        me(&simulation).storage_order(),
+        ResourceCatalog::standard().materials()
+    );
     assert_eq!(me(&simulation).active_projects().len(), 1);
     assert!(report.settlements[&ME].trade.caravans_dispatched.is_empty());
     assert!(me(&simulation).caravan_orders().is_empty());
@@ -353,7 +376,7 @@ fn rejected_actions_change_nothing_while_valid_ones_apply() {
 #[test]
 fn caravans_are_checked_against_what_the_market_leaves() {
     let mut simulation = Simulation::new(world()).unwrap();
-    let sell_wood = |units| offer(Wood, OfferSide::Sell, units, 1);
+    let sell_wood = |units| offer(material("wood"), OfferSide::Sell, units, 1);
     // Stock 10: the market, funded first, takes all of it, so nothing is left.
     let report = step_with(
         &mut simulation,
@@ -370,7 +393,7 @@ fn caravans_are_checked_against_what_the_market_leaves() {
     assert_eq!(
         outcomes(&report)[1],
         rejected(ActionError::InsufficientStock {
-            resource: Wood,
+            resource: material("wood"),
             requested: 5,
             available: 0
         })
@@ -394,7 +417,7 @@ fn caravans_are_checked_against_what_the_market_leaves() {
         report.decisions[0].results[0].outcome,
         ActionOutcome::Rejected {
             error: ActionError::InsufficientStock {
-                resource: Wood,
+                resource: material("wood"),
                 requested: 1,
                 available: 0,
             },
@@ -419,12 +442,16 @@ fn caravans_are_checked_against_what_the_market_leaves() {
             .all(|result| result.is_applied())
     );
     let local = &report.settlements[&ME].trade;
-    assert_eq!(local.caravans_dispatched[0].cargo[&Wood], 4);
+    assert_eq!(local.caravans_dispatched[0].cargo[&material("wood")], 4);
     let last = simulation.observe(ME).unwrap().last_turn.unwrap();
     assert_eq!(last.caravans_dispatched, 1);
     assert_eq!(last.unfunded_caravan_orders, 0);
 
-    let stock = simulation.settlement(ME).unwrap().inventory().amount(Wood);
+    let stock = simulation
+        .settlement(ME)
+        .unwrap()
+        .inventory()
+        .amount(material("wood"));
     let report = step_with(
         &mut simulation,
         vec![
@@ -440,13 +467,13 @@ fn caravans_are_checked_against_what_the_market_leaves() {
     assert_eq!(
         outcomes(&report)[1],
         rejected(ActionError::InsufficientStock {
-            resource: Wood,
+            resource: material("wood"),
             requested: u64::from(stock),
             available: stock - 2
         })
     );
     assert_eq!(
-        report.settlements[&ME].trade.caravans_dispatched[0].cargo[&Wood],
+        report.settlements[&ME].trade.caravans_dispatched[0].cargo[&material("wood")],
         2
     );
 }
@@ -536,7 +563,7 @@ fn json_from_an_agent_runs_and_results_go_back_as_json() {
     assert_eq!(inventory["produced"]["Grain"], 1);
     assert_eq!(
         inventory["closing_stock"]["Grain"],
-        me(&simulation).inventory().amount(Grain)
+        me(&simulation).inventory().amount(material("grain"))
     );
     assert!(report.settlements[&ME].inventory.is_balanced());
     assert_eq!(
@@ -573,10 +600,10 @@ fn exported_consumption_matches_inventory_after_the_turn() {
     );
     let needs = Arc::new(NeedRegistry::new(vec![NeedTier {
         min_population: 1,
-        needs_per_capita: HashMap::from([(Grain, 2)]),
+        needs_per_capita: HashMap::from([(material("grain"), 2)]),
     }]));
     let mut settlement = Settlement::new(ME, 100, 3, needs);
-    settlement.deposit(Grain, 10);
+    settlement.deposit(material("grain"), 10);
     world.add_settlement(10, settlement).unwrap();
 
     let mut simulation = Simulation::new(world).unwrap();
@@ -594,7 +621,7 @@ fn exported_consumption_matches_inventory_after_the_turn() {
     assert_eq!(inventory["closing_stock"]["Grain"], 4);
     assert_eq!(
         inventory["closing_stock"]["Grain"],
-        me(&simulation).inventory().amount(Grain)
+        me(&simulation).inventory().amount(material("grain"))
     );
     assert!(report.settlements[&ME].inventory.is_balanced());
 }

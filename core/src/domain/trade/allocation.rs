@@ -18,9 +18,9 @@ impl TradeAllocationEngine {
         let (resource_demands, gold_demand) = demands;
 
         for (res_type, amount) in resource_demands {
-            if !inventory.consume(res_type, amount) {
-                let avaiable_units: u32 = inventory.consume_available(res_type);
-                book.update_sell_resource_amount(res_type, avaiable_units);
+            if !inventory.consume(res_type.clone(), amount) {
+                let available_units = inventory.consume_available(res_type.clone());
+                book.update_sell_resource_amount(res_type, available_units);
             }
         }
 

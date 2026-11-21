@@ -1,9 +1,10 @@
 //! Agent decision validation against the authoritative world (read-only).
+use crate::test_support::material;
 use simulation_core::buildings::Building;
 use simulation_core::buildings::catalog::BuildingCatalog;
 use simulation_core::buildings::definition::{BuildingBehavior, BuildingDefinition};
-use simulation_core::economy::ResourceType::{self, Grain, Labour, Stone, Wood};
 use simulation_core::economy::storage_order::StorageOrderError;
+use simulation_core::economy::{ResourceCatalog, ResourceType};
 use simulation_core::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
 use simulation_core::settlement::Settlement;
 use simulation_core::settlement::command::SettlementCommand;
@@ -39,10 +40,10 @@ fn definition(id: &str, max_workers: u32, wood: u32, turns: u32) -> BuildingDefi
         max_workers,
         vec![BuildingBehavior::Production {
             inputs: vec![],
-            outputs: vec![(Grain, 2)],
+            outputs: vec![(material("grain"), 2)],
         }],
         ProjectCost {
-            needed_resources: HashMap::from([(Wood, wood)]),
+            needed_resources: HashMap::from([(material("wood"), wood)]),
             turn_cost: turns,
         },
     )
@@ -73,8 +74,8 @@ fn world_with_farm_load(load: f32) -> World {
     world.set_building_catalog(catalog);
 
     let mut me = Settlement::new(ME, 100, 5, Arc::default());
-    me.deposit(Wood, 10);
-    me.deposit(Grain, 3);
+    me.deposit(material("wood"), 10);
+    me.deposit(material("grain"), 3);
     me.deposit_gold(20);
     world.add_settlement(10, me).unwrap();
     world
@@ -212,7 +213,10 @@ fn construction_and_upgrade_use_catalog_costs_and_new_project_ids() {
             assert_eq!(*project_id, ProjectId(1));
             assert_eq!(*position, at(1, 0));
             assert_eq!(definition.id(), "farm");
-            assert_eq!(cost.needed_resources, HashMap::from([(Wood, 2)]));
+            assert_eq!(
+                cost.needed_resources,
+                HashMap::from([(material("wood"), 2)])
+            );
             assert_eq!(cost.turn_cost, 3);
         }
         other => panic!("{other:?}"),
@@ -227,7 +231,10 @@ fn construction_and_upgrade_use_catalog_costs_and_new_project_ids() {
             assert_eq!(*project_id, ProjectId(2));
             assert_eq!(*building_id, FARM);
             assert_eq!(definition.id(), "big_farm");
-            assert_eq!(cost.needed_resources, HashMap::from([(Wood, 5)]));
+            assert_eq!(
+                cost.needed_resources,
+                HashMap::from([(material("wood"), 5)])
+            );
             assert_eq!(cost.turn_cost, 4);
         }
         other => panic!("{other:?}"),
@@ -473,12 +480,20 @@ fn storage_orders_use_the_engine_rule() {
     let order = |order: Vec<ResourceType>| SettlementAction::SetStorageOrder { order };
     for (materials, error) in [
         (
-            vec![Wood, Wood, Grain],
-            StorageOrderError::DuplicateMaterial(Wood),
+            vec![material("wood"), material("wood"), material("grain")],
+            StorageOrderError::DuplicateMaterial(material("wood")),
         ),
-        (vec![Wood, Stone], StorageOrderError::MissingMaterial(Grain)),
         (
-            vec![Labour, Wood, Stone, Grain],
+            vec![material("wood"), material("stone")],
+            StorageOrderError::MissingMaterial(material("grain")),
+        ),
+        (
+            vec![
+                ResourceType::Labour,
+                material("wood"),
+                material("stone"),
+                material("grain"),
+            ],
             StorageOrderError::LabourIsNotMaterial,
         ),
     ] {
@@ -488,7 +503,15 @@ fn storage_orders_use_the_engine_rule() {
             vec![(0, ActionError::InvalidStorageOrder { error })]
         );
     }
-    let result = validate(&world, vec![order(vec![Grain, Stone, Wood])]);
+    let result = validate(
+        &world,
+        vec![order(
+            [material("grain"), material("stone"), material("wood")]
+                .into_iter()
+                .chain(ResourceCatalog::standard().materials()[3..].iter().cloned())
+                .collect(),
+        )],
+    );
     assert!(result.rejected.is_empty());
 }
 
@@ -497,19 +520,23 @@ fn market_offers_are_checked_and_resolved_to_fresh_offers() {
     let world = world();
     for (offers, error) in [
         (
-            vec![offer(Labour, OfferSide::Sell, 1, 1)],
+            vec![offer(ResourceType::Labour, OfferSide::Sell, 1, 1)],
             ActionError::LabourIsNotTradable,
         ),
         (
-            vec![offer(Wood, OfferSide::Sell, 0, 1)],
-            ActionError::ZeroUnits { resource: Wood },
+            vec![offer(material("wood"), OfferSide::Sell, 0, 1)],
+            ActionError::ZeroUnits {
+                resource: material("wood"),
+            },
         ),
         (
             vec![
-                offer(Wood, OfferSide::Sell, 2, 1),
-                offer(Wood, OfferSide::Buy, 2, 1),
+                offer(material("wood"), OfferSide::Sell, 2, 1),
+                offer(material("wood"), OfferSide::Buy, 2, 1),
             ],
-            ActionError::DuplicateOffer { resource: Wood },
+            ActionError::DuplicateOffer {
+                resource: material("wood"),
+            },
         ),
     ] {
         let result = validate(&world, vec![publish(offers)]);
@@ -519,8 +546,8 @@ fn market_offers_are_checked_and_resolved_to_fresh_offers() {
     let result = validate(
         &world,
         vec![publish(vec![
-            offer(Wood, OfferSide::Sell, 500, 2),
-            offer(Stone, OfferSide::Buy, 4, 3),
+            offer(material("wood"), OfferSide::Sell, 500, 2),
+            offer(material("stone"), OfferSide::Buy, 4, 3),
         ])],
     );
     let SettlementCommand::PublishMarketOffers(offers) = &result.accepted[0].command else {
@@ -529,8 +556,8 @@ fn market_offers_are_checked_and_resolved_to_fresh_offers() {
     assert_eq!(
         offers,
         &HashMap::from([
-            (Wood, TradeOffer::sell(500, 2)),
-            (Stone, TradeOffer::buy(4, 3))
+            (material("wood"), TradeOffer::sell(500, 2)),
+            (material("stone"), TradeOffer::buy(4, 3))
         ])
     );
     let result = validate(&world, vec![SettlementAction::ClearMarketOffers]);
@@ -547,14 +574,35 @@ fn caravans_need_a_receiver_and_enough_stock_and_gold_together() {
         &world,
         vec![
             caravan(NEIGHBOUR, vec![]),
-            caravan(ME, vec![offer(Wood, OfferSide::Sell, 1, 1)]),
-            caravan(SettlementId(99), vec![offer(Wood, OfferSide::Sell, 1, 1)]),
-            caravan(NEIGHBOUR, vec![offer(Labour, OfferSide::Sell, 1, 1)]),
-            caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 6, 1)]),
-            caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 6, 1)]),
-            caravan(NEIGHBOUR, vec![offer(Grain, OfferSide::Buy, 4, 3)]),
-            caravan(NEIGHBOUR, vec![offer(Stone, OfferSide::Buy, 5, 2)]),
-            caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 4, 1)]),
+            caravan(ME, vec![offer(material("wood"), OfferSide::Sell, 1, 1)]),
+            caravan(
+                SettlementId(99),
+                vec![offer(material("wood"), OfferSide::Sell, 1, 1)],
+            ),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(ResourceType::Labour, OfferSide::Sell, 1, 1)],
+            ),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(material("wood"), OfferSide::Sell, 6, 1)],
+            ),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(material("wood"), OfferSide::Sell, 6, 1)],
+            ),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(material("grain"), OfferSide::Buy, 4, 3)],
+            ),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(material("stone"), OfferSide::Buy, 5, 2)],
+            ),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(material("wood"), OfferSide::Sell, 4, 1)],
+            ),
         ],
     );
     assert_eq!(
@@ -573,7 +621,7 @@ fn caravans_need_a_receiver_and_enough_stock_and_gold_together() {
             (
                 5,
                 ActionError::InsufficientStock {
-                    resource: Wood,
+                    resource: material("wood"),
                     requested: 6,
                     available: 4
                 }
@@ -602,18 +650,30 @@ fn world_with_market(offers: Vec<OfferSpec>) -> World {
 
 #[test]
 fn caravans_get_only_what_the_published_market_leaves() {
-    // Stock: Wood 10, gold 20. The market reserves 7 Wood and 4 × 3 = 12 gold first.
+    // Stock: Wood 10, gold 20. The market reserves 7 Wood and 4 Ã— 3 = 12 gold first.
     let world = world_with_market(vec![
-        offer(Wood, OfferSide::Sell, 7, 1),
-        offer(Stone, OfferSide::Buy, 4, 3),
+        offer(material("wood"), OfferSide::Sell, 7, 1),
+        offer(material("stone"), OfferSide::Buy, 4, 3),
     ]);
     let result = validate(
         &world,
         vec![
-            caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 4, 1)]),
-            caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 3, 1)]),
-            caravan(NEIGHBOUR, vec![offer(Grain, OfferSide::Buy, 3, 3)]),
-            caravan(NEIGHBOUR, vec![offer(Grain, OfferSide::Buy, 4, 2)]),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(material("wood"), OfferSide::Sell, 4, 1)],
+            ),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(material("wood"), OfferSide::Sell, 3, 1)],
+            ),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(material("grain"), OfferSide::Buy, 3, 3)],
+            ),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(material("grain"), OfferSide::Buy, 4, 2)],
+            ),
         ],
     );
     assert_eq!(
@@ -622,7 +682,7 @@ fn caravans_get_only_what_the_published_market_leaves() {
             (
                 0,
                 ActionError::InsufficientStock {
-                    resource: Wood,
+                    resource: material("wood"),
                     requested: 4,
                     available: 3
                 }
@@ -641,8 +701,13 @@ fn caravans_get_only_what_the_published_market_leaves() {
 
 #[test]
 fn a_market_action_in_the_same_decision_changes_what_caravans_get() {
-    let world = world_with_market(vec![offer(Wood, OfferSide::Sell, 10, 1)]);
-    let caravan_wood = |units| caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, units, 1)]);
+    let world = world_with_market(vec![offer(material("wood"), OfferSide::Sell, 10, 1)]);
+    let caravan_wood = |units| {
+        caravan(
+            NEIGHBOUR,
+            vec![offer(material("wood"), OfferSide::Sell, units, 1)],
+        )
+    };
     // Clearing or shrinking the market first frees its stock for caravans.
     let result = validate(
         &world,
@@ -652,7 +717,7 @@ fn a_market_action_in_the_same_decision_changes_what_caravans_get() {
     let result = validate(
         &world,
         vec![
-            publish(vec![offer(Wood, OfferSide::Sell, 6, 1)]),
+            publish(vec![offer(material("wood"), OfferSide::Sell, 6, 1)]),
             caravan_wood(4),
             caravan_wood(1),
         ],
@@ -662,7 +727,7 @@ fn a_market_action_in_the_same_decision_changes_what_caravans_get() {
         vec![(
             2,
             ActionError::InsufficientStock {
-                resource: Wood,
+                resource: material("wood"),
                 requested: 1,
                 available: 0
             }
@@ -676,13 +741,19 @@ fn a_later_market_action_cannot_take_what_caravans_were_promised() {
     let result = validate(
         &world,
         vec![
-            caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 6, 1)]),
-            caravan(NEIGHBOUR, vec![offer(Grain, OfferSide::Buy, 5, 3)]),
-            publish(vec![offer(Wood, OfferSide::Sell, 5, 1)]),
-            publish(vec![offer(Stone, OfferSide::Buy, 2, 3)]),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(material("wood"), OfferSide::Sell, 6, 1)],
+            ),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(material("grain"), OfferSide::Buy, 5, 3)],
+            ),
+            publish(vec![offer(material("wood"), OfferSide::Sell, 5, 1)]),
+            publish(vec![offer(material("stone"), OfferSide::Buy, 2, 3)]),
             publish(vec![
-                offer(Wood, OfferSide::Sell, 4, 1),
-                offer(Stone, OfferSide::Buy, 1, 5),
+                offer(material("wood"), OfferSide::Sell, 4, 1),
+                offer(material("stone"), OfferSide::Buy, 1, 5),
             ]),
         ],
     );
@@ -692,7 +763,7 @@ fn a_later_market_action_cannot_take_what_caravans_were_promised() {
             (
                 2,
                 ActionError::InsufficientStock {
-                    resource: Wood,
+                    resource: material("wood"),
                     requested: 5,
                     available: 4
                 }
@@ -710,7 +781,12 @@ fn a_later_market_action_cannot_take_what_caravans_were_promised() {
     assert_eq!(accepted_indices(&result), vec![0, 1, 4]);
     let result = validate(
         &world,
-        vec![publish(vec![offer(Wood, OfferSide::Sell, 999, 1)])],
+        vec![publish(vec![offer(
+            material("wood"),
+            OfferSide::Sell,
+            999,
+            1,
+        )])],
     );
     assert!(result.rejected.is_empty());
 }
@@ -720,19 +796,25 @@ fn caravans_queued_earlier_in_the_turn_count_too() {
     let mut world = world();
     let earlier = SettlementDecision::new(
         ME,
-        vec![caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 8, 1)])],
+        vec![caravan(
+            NEIGHBOUR,
+            vec![offer(material("wood"), OfferSide::Sell, 8, 1)],
+        )],
     );
     assert!(world.apply_decision(&earlier).unwrap().results[0].is_applied());
     let result = validate(
         &world,
-        vec![caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 3, 1)])],
+        vec![caravan(
+            NEIGHBOUR,
+            vec![offer(material("wood"), OfferSide::Sell, 3, 1)],
+        )],
     );
     assert_eq!(
         errors(&result),
         vec![(
             0,
             ActionError::InsufficientStock {
-                resource: Wood,
+                resource: material("wood"),
                 requested: 3,
                 available: 2
             }
@@ -746,8 +828,14 @@ fn caravans_must_carry_goods_or_gold() {
     let result = validate(
         &world,
         vec![
-            caravan(NEIGHBOUR, vec![offer(Grain, OfferSide::Buy, 5, 0)]),
-            caravan(NEIGHBOUR, vec![offer(Grain, OfferSide::Buy, 5, 1)]),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(material("grain"), OfferSide::Buy, 5, 0)],
+            ),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(material("grain"), OfferSide::Buy, 5, 1)],
+            ),
         ],
     );
     assert_eq!(errors(&result), vec![(0, ActionError::NothingToCarry)]);
@@ -769,7 +857,10 @@ fn later_actions_on_the_same_target_are_conflicts() {
         project_id: ProjectId(3),
     };
     let order = SettlementAction::SetStorageOrder {
-        order: vec![Grain, Stone, Wood],
+        order: [material("grain"), material("stone"), material("wood")]
+            .into_iter()
+            .chain(ResourceCatalog::standard().materials()[3..].iter().cloned())
+            .collect(),
     };
     let result = validate(
         &world,
@@ -778,7 +869,7 @@ fn later_actions_on_the_same_target_are_conflicts() {
             construct("big_farm", at(1, 0)),
             workers(FARM, 1),
             workers(FARM, 2),
-            publish(vec![offer(Wood, OfferSide::Sell, 1, 1)]),
+            publish(vec![offer(material("wood"), OfferSide::Sell, 1, 1)]),
             SettlementAction::ClearMarketOffers,
             order.clone(),
             order,
@@ -832,7 +923,10 @@ fn every_action_is_either_accepted_or_rejected_in_order_and_deterministically() 
     let actions = vec![
         workers(FARM, 2),
         construct("farm", at(3, 0)),
-        caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 3, 1)]),
+        caravan(
+            NEIGHBOUR,
+            vec![offer(material("wood"), OfferSide::Sell, 3, 1)],
+        ),
         SettlementAction::CancelProject {
             project_id: ProjectId(1),
         },
@@ -887,10 +981,16 @@ fn validation_leaves_the_world_unchanged() {
             construct("farm", at(1, 0)),
             workers(FARM, 4),
             SettlementAction::SetStorageOrder {
-                order: vec![Grain, Stone, Wood],
+                order: [material("grain"), material("stone"), material("wood")]
+                    .into_iter()
+                    .chain(ResourceCatalog::standard().materials()[3..].iter().cloned())
+                    .collect(),
             },
-            publish(vec![offer(Wood, OfferSide::Sell, 1, 1)]),
-            caravan(NEIGHBOUR, vec![offer(Wood, OfferSide::Sell, 1, 1)]),
+            publish(vec![offer(material("wood"), OfferSide::Sell, 1, 1)]),
+            caravan(
+                NEIGHBOUR,
+                vec![offer(material("wood"), OfferSide::Sell, 1, 1)],
+            ),
         ],
     );
     assert_eq!(result.accepted.len(), 5);
@@ -929,7 +1029,7 @@ fn rejections_serialize_for_agents() {
         index: 0,
         kind: ActionKind::SetStorageOrder,
         error: ActionError::InvalidStorageOrder {
-            error: StorageOrderError::DuplicateMaterial(Wood),
+            error: StorageOrderError::DuplicateMaterial(material("wood")),
         },
     };
     let json = serde_json::to_string(&storage).unwrap();

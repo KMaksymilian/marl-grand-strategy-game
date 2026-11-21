@@ -20,7 +20,7 @@ impl TradeSide {
 }
 
 /// One resource exchanged between two books at a single unit price.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TradeExecution {
     pub resource: ResourceType,
     pub units: u32,
@@ -34,10 +34,10 @@ impl TradeExecution {
     }
 
     /// The same trade seen from the other participant.
-    pub fn mirrored(self) -> Self {
+    pub fn mirrored(&self) -> Self {
         Self {
             side: self.side.opposite(),
-            ..self
+            ..self.clone()
         }
     }
 }

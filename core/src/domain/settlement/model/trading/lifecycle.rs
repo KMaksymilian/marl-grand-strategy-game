@@ -17,7 +17,7 @@ fn totals<'a>(goods: impl IntoIterator<Item = (&'a ResourceType, &'a u32)>) -> M
     goods
         .into_iter()
         .filter(|(resource, amount)| **resource != ResourceType::Labour && **amount > 0)
-        .map(|(&resource, &amount)| (resource, u64::from(amount)))
+        .map(|(resource, &amount)| (resource.clone(), u64::from(amount)))
         .collect()
 }
 
@@ -105,7 +105,7 @@ impl Settlement {
             let caravan_sender_id = caravan.sender_id;
             report
                 .market_trades
-                .extend(executions.iter().map(|&execution| MarketTrade {
+                .extend(executions.iter().cloned().map(|execution| MarketTrade {
                     caravan_sender_id,
                     execution,
                 }));
@@ -121,9 +121,9 @@ impl Settlement {
     ) -> HashMap<ResourceType, u64> {
         let mut batch: HashMap<ResourceType, u64> = HashMap::new();
         let mut add = |goods: &HashMap<ResourceType, u32>| {
-            for (&resource, &amount) in goods {
-                if resource != ResourceType::Labour && amount > 0 {
-                    *batch.entry(resource).or_default() += u64::from(amount);
+            for (resource, &amount) in goods {
+                if *resource != ResourceType::Labour && amount > 0 {
+                    *batch.entry(resource.clone()).or_default() += u64::from(amount);
                 }
             }
         };
@@ -154,7 +154,7 @@ impl Settlement {
 
         report.received = batch
             .iter()
-            .map(|(&resource, &amount)| (resource, amount))
+            .map(|(resource, &amount)| (resource.clone(), amount))
             .collect();
         batch
     }
@@ -171,6 +171,7 @@ mod tests {
     use crate::domain::world::map::Map;
     use crate::domain::world::pathfinding::path_finder::PathFinder;
     use crate::domain::world::terrain::area::Area;
+    use crate::test_support::material;
     use std::sync::Arc;
 
     fn turn(settlement: &mut Settlement) -> crate::domain::settlement::turn_report::TurnReport {
@@ -219,23 +220,23 @@ mod tests {
     #[test]
     fn unsold_market_stock_and_gold_return_each_turn_and_stay_published() {
         let mut settlement = Settlement::new(SettlementId(1), 50, 0, Arc::default());
-        settlement.deposit(ResourceType::Wood, 5);
+        settlement.deposit(material("wood"), 5);
         settlement.deposit_gold(20);
         settlement
             .publish_trade_offers(HashMap::from([
-                (ResourceType::Wood, TradeOffer::sell(8, 2)),
-                (ResourceType::Stone, TradeOffer::buy(4, 3)),
+                (material("wood"), TradeOffer::sell(8, 2)),
+                (material("stone"), TradeOffer::buy(4, 3)),
             ]))
             .unwrap();
         for _ in 0..2 {
             let report = turn(&mut settlement);
-            assert_eq!(report.trade.market_reserved[&ResourceType::Wood], 5);
+            assert_eq!(report.trade.market_reserved[&material("wood")], 5);
             assert_eq!(report.trade.market_gold_reserved, 12);
-            assert_eq!(report.trade.market_unsold[&ResourceType::Wood], 5);
+            assert_eq!(report.trade.market_unsold[&material("wood")], 5);
             assert_eq!(report.trade.gold_received, 12);
             assert!(report.inventory.losses.is_empty());
             assert!(report.inventory.is_balanced());
-            assert_eq!(settlement.inventory().amount(ResourceType::Wood), 5);
+            assert_eq!(settlement.inventory().amount(material("wood")), 5);
             assert_eq!(settlement.gold(), 20);
         }
     }
@@ -243,29 +244,26 @@ mod tests {
     #[test]
     fn caravan_orders_are_funded_after_the_market_in_queue_order() {
         let mut settlement = Settlement::new(SettlementId(1), 50, 0, Arc::default());
-        settlement.deposit(ResourceType::Grain, 10);
+        settlement.deposit(material("grain"), 10);
         settlement
-            .publish_trade_offers(HashMap::from([(
-                ResourceType::Grain,
-                TradeOffer::sell(6, 1),
-            )]))
+            .publish_trade_offers(HashMap::from([(material("grain"), TradeOffer::sell(6, 1))]))
             .unwrap();
         for receiver in [2, 3] {
             settlement
                 .order_caravan(
                     SettlementId(receiver),
-                    HashMap::from([(ResourceType::Grain, TradeOffer::sell(3, 1))]),
+                    HashMap::from([(material("grain"), TradeOffer::sell(3, 1))]),
                 )
                 .unwrap();
         }
         let report = turn(&mut settlement);
         let dispatched = &report.trade.caravans_dispatched;
         assert_eq!(dispatched.len(), 2);
-        assert_eq!(dispatched[0].cargo[&ResourceType::Grain], 3);
-        assert_eq!(dispatched[1].cargo[&ResourceType::Grain], 1);
-        assert_eq!(report.inventory.trade_reserved[&ResourceType::Grain], 10);
+        assert_eq!(dispatched[0].cargo[&material("grain")], 3);
+        assert_eq!(dispatched[1].cargo[&material("grain")], 1);
+        assert_eq!(report.inventory.trade_reserved[&material("grain")], 10);
         assert!(report.inventory.is_balanced());
-        assert_eq!(settlement.inventory().amount(ResourceType::Grain), 6);
+        assert_eq!(settlement.inventory().amount(material("grain")), 6);
         assert_eq!(settlement.take_dispatched_caravans().len(), 2);
         assert!(settlement.caravan_orders().is_empty());
     }
@@ -284,7 +282,7 @@ mod tests {
         settlement.deposit_gold(10);
         settlement
             .publish_trade_offers(HashMap::from([(
-                ResourceType::Wood,
+                material("wood"),
                 partially_bought(3, 1, 2),
             )]))
             .unwrap();
@@ -292,7 +290,7 @@ mod tests {
             let report = turn(&mut settlement);
             assert!(report.trade.received.is_empty());
             assert!(report.inventory.is_balanced());
-            assert_eq!(settlement.inventory().amount(ResourceType::Wood), 0);
+            assert_eq!(settlement.inventory().amount(material("wood")), 0);
             assert_eq!(settlement.gold(), 10);
         }
     }
@@ -304,7 +302,7 @@ mod tests {
         settlement
             .order_caravan(
                 SettlementId(2),
-                HashMap::from([(ResourceType::Wood, partially_bought(3, 1, 2))]),
+                HashMap::from([(material("wood"), partially_bought(3, 1, 2))]),
             )
             .unwrap();
         turn(&mut settlement);
@@ -324,7 +322,7 @@ mod tests {
             settlement.order_caravan(SettlementId(2), labour),
             Err(TradeCommandError::LabourIsNotTradable)
         );
-        let wood = HashMap::from([(ResourceType::Wood, TradeOffer::buy(1, 1))]);
+        let wood = HashMap::from([(material("wood"), TradeOffer::buy(1, 1))]);
         assert_eq!(
             settlement.order_caravan(SettlementId(1), wood),
             Err(TradeCommandError::TradeWithSelf)
@@ -332,7 +330,7 @@ mod tests {
         assert_eq!(
             settlement.order_caravan(
                 SettlementId(2),
-                HashMap::from([(ResourceType::Wood, TradeOffer::buy(0, 1))])
+                HashMap::from([(material("wood"), TradeOffer::buy(0, 1))])
             ),
             Err(TradeCommandError::EmptyOrder)
         );

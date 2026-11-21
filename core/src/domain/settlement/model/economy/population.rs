@@ -32,6 +32,14 @@ impl NeedRegistry {
             .iter()
             .filter(move |tier| population >= tier.min_population)
     }
+
+    pub(in crate::domain::settlement) fn materials(&self) -> impl Iterator<Item = &ResourceType> {
+        self.tiers
+            .iter()
+            .flat_map(|tier| &tier.needs_per_capita)
+            .filter(|(_, amount)| **amount > 0)
+            .map(|(resource, _)| resource)
+    }
 }
 
 #[derive(Debug)]
@@ -67,8 +75,8 @@ impl PopulationManager {
         }
         let mut per_capita = HashMap::new();
         for tier in self.registry.get_active_tiers(self.population) {
-            for (&resource, &amount) in &tier.needs_per_capita {
-                let total = per_capita.entry(resource).or_insert(0_u32);
+            for (resource, &amount) in &tier.needs_per_capita {
+                let total = per_capita.entry(resource.clone()).or_insert(0_u32);
                 *total = total
                     .checked_add(amount)
                     .expect("per-capita demand exceeds u32 capacity");
@@ -123,6 +131,7 @@ impl PopulationManager {
 mod tests {
     use super::*;
     use crate::domain::economy::ResourceType;
+    use crate::test_support::material;
     use std::collections::HashMap;
     use std::sync::Arc;
 
@@ -131,7 +140,7 @@ mod tests {
             .iter()
             .map(|needs| NeedTier {
                 min_population: 0,
-                needs_per_capita: needs.iter().copied().collect(),
+                needs_per_capita: needs.iter().cloned().collect(),
             })
             .collect();
         PopulationManager::new(population, Arc::new(NeedRegistry::new(tiers)))
@@ -139,9 +148,9 @@ mod tests {
 
     #[test]
     fn integer_needs_use_the_same_demand_for_requests_and_evaluation() {
-        let manager = manager_with_tiers(4, &[&[(ResourceType::Grain, 3)]]);
+        let manager = manager_with_tiers(4, &[&[(material("grain"), 3)]]);
         let requests = manager.generate_requests();
-        assert_eq!(requests[0].demand[&ResourceType::Grain], 12);
+        assert_eq!(requests[0].demand[&material("grain")], 12);
         let result = manager.process_allocation(Some(&requests[0].demand));
         assert_eq!(result.satisfaction_percent, 1.0);
         assert!(result.missing_resources.is_empty());
@@ -149,47 +158,44 @@ mod tests {
 
     #[test]
     fn repeated_resources_across_tiers_are_summed_in_the_same_units() {
-        let manager = manager_with_tiers(
-            3,
-            &[&[(ResourceType::Grain, 1)], &[(ResourceType::Grain, 2)]],
-        );
+        let manager =
+            manager_with_tiers(3, &[&[(material("grain"), 1)], &[(material("grain"), 2)]]);
         let requests = manager.generate_requests();
         assert_eq!(requests.len(), 1);
-        assert_eq!(requests[0].demand[&ResourceType::Grain], 9);
+        assert_eq!(requests[0].demand[&material("grain")], 9);
     }
 
     #[test]
     fn excess_of_one_good_cannot_compensate_for_another_missing_good() {
-        let manager =
-            manager_with_tiers(1, &[&[(ResourceType::Grain, 1), (ResourceType::Wood, 1)]]);
+        let manager = manager_with_tiers(1, &[&[(material("grain"), 1), (material("wood"), 1)]]);
         let result = manager.process_allocation(Some(&HashMap::from([
-            (ResourceType::Grain, 2),
-            (ResourceType::Stone, 100),
+            (material("grain"), 2),
+            (material("stone"), 100),
         ])));
         assert_eq!(result.satisfaction_percent, 0.5);
-        assert_eq!(result.missing_resources, vec![ResourceType::Wood]);
+        assert_eq!(result.missing_resources, vec![material("wood")]);
     }
 
     #[test]
     fn one_unit_need_is_missing_without_its_grant() {
-        let manager = manager_with_tiers(1, &[&[(ResourceType::Grain, 1)]]);
+        let manager = manager_with_tiers(1, &[&[(material("grain"), 1)]]);
         let result = manager.process_allocation(None);
         assert_eq!(result.satisfaction_percent, 0.0);
-        assert_eq!(result.missing_resources, vec![ResourceType::Grain]);
+        assert_eq!(result.missing_resources, vec![material("grain")]);
     }
 
     #[test]
     fn zero_needs_generate_no_requests() {
-        let manager = manager_with_tiers(10, &[&[(ResourceType::Grain, 0)]]);
+        let manager = manager_with_tiers(10, &[&[(material("grain"), 0)]]);
         assert!(manager.generate_requests().is_empty());
         assert_eq!(manager.process_allocation(None).satisfaction_percent, 1.0);
     }
 
     #[test]
     fn zero_population_has_no_needs_even_when_tier_zero_is_active() {
-        let manager = manager_with_tiers(0, &[&[(ResourceType::Grain, 1)]]);
+        let manager = manager_with_tiers(0, &[&[(material("grain"), 1)]]);
         assert!(manager.generate_requests().is_empty());
-        let result = manager.process_allocation(Some(&HashMap::from([(ResourceType::Grain, 100)])));
+        let result = manager.process_allocation(Some(&HashMap::from([(material("grain"), 100)])));
         assert_eq!(result.satisfaction_percent, 1.0);
         assert!(result.missing_resources.is_empty());
     }
@@ -200,7 +206,7 @@ mod tests {
             for rate in 0..=5 {
                 let manager = manager_with_tiers(
                     population,
-                    &[&[(ResourceType::Grain, rate), (ResourceType::Wood, 1)]],
+                    &[&[(material("grain"), rate), (material("wood"), 1)]],
                 );
                 let requests = manager.generate_requests();
                 let demand = &requests[0].demand;
@@ -209,7 +215,7 @@ mod tests {
                 assert!(complete.missing_resources.is_empty());
                 let excess: HashMap<_, _> = demand
                     .iter()
-                    .map(|(&resource, &amount)| (resource, amount + 1))
+                    .map(|(resource, &amount)| (resource.clone(), amount + 1))
                     .collect();
                 assert_eq!(
                     manager
@@ -226,11 +232,11 @@ mod tests {
         for population in [16_777_219, u32::MAX] {
             let manager = manager_with_tiers(
                 population,
-                &[&[(ResourceType::Grain, 1), (ResourceType::Wood, 1)]],
+                &[&[(material("grain"), 1), (material("wood"), 1)]],
             );
             let requests = manager.generate_requests();
-            assert_eq!(requests[0].demand[&ResourceType::Grain], population);
-            assert_eq!(requests[0].demand[&ResourceType::Wood], population);
+            assert_eq!(requests[0].demand[&material("grain")], population);
+            assert_eq!(requests[0].demand[&material("wood")], population);
             let result = manager.process_allocation(Some(&requests[0].demand));
             assert_eq!(result.satisfaction_percent, 1.0);
             assert!(result.missing_resources.is_empty());
@@ -242,10 +248,7 @@ mod tests {
     fn overflowing_per_capita_sum_is_rejected() {
         manager_with_tiers(
             1,
-            &[
-                &[(ResourceType::Grain, u32::MAX)],
-                &[(ResourceType::Grain, 1)],
-            ],
+            &[&[(material("grain"), u32::MAX)], &[(material("grain"), 1)]],
         )
         .generate_requests();
     }
@@ -253,15 +256,15 @@ mod tests {
     #[test]
     #[should_panic(expected = "population demand exceeds u32 capacity")]
     fn overflowing_population_demand_is_rejected() {
-        manager_with_tiers(2, &[&[(ResourceType::Grain, u32::MAX)]]).generate_requests();
+        manager_with_tiers(2, &[&[(material("grain"), u32::MAX)]]).generate_requests();
     }
 
     fn create_test_registry() -> Arc<NeedRegistry> {
         let mut t1_needs = HashMap::new();
-        t1_needs.insert(ResourceType::Grain, 1);
+        t1_needs.insert(material("grain"), 1);
 
         let mut t2_needs = HashMap::new();
-        t2_needs.insert(ResourceType::Wood, 1);
+        t2_needs.insert(material("wood"), 1);
 
         let tiers = vec![
             NeedTier {
@@ -305,10 +308,10 @@ mod tests {
         // Verify the Grain request
         let grain_req = requests
             .iter()
-            .find(|r| r.demand.contains_key(&ResourceType::Grain))
+            .find(|r| r.demand.contains_key(&material("grain")))
             .unwrap();
         assert_eq!(
-            *grain_req.demand.get(&ResourceType::Grain).unwrap(),
+            *grain_req.demand.get(&material("grain")).unwrap(),
             100,
             "Grain should be requested for first tier."
         );
@@ -316,10 +319,10 @@ mod tests {
         // Verify the Wood request
         let wood_req = requests
             .iter()
-            .find(|r| r.demand.contains_key(&ResourceType::Wood))
+            .find(|r| r.demand.contains_key(&material("wood")))
             .unwrap();
         assert_eq!(
-            *wood_req.demand.get(&ResourceType::Wood).unwrap(),
+            *wood_req.demand.get(&material("wood")).unwrap(),
             100,
             "Wood should be requested for second tier."
         );
@@ -332,7 +335,7 @@ mod tests {
 
         // Mock the AllocationEngine granting exactly what was requested as u32
         let mut granted = HashMap::new();
-        granted.insert(ResourceType::Grain, 10);
+        granted.insert(material("grain"), 10);
 
         let result = manager.process_allocation(Some(&granted));
 
@@ -348,17 +351,17 @@ mod tests {
 
         // Mock the AllocationEngine granting partial resources
         let mut granted = HashMap::new();
-        granted.insert(ResourceType::Grain, 100);
+        granted.insert(material("grain"), 100);
         // Wood is completely missing (0 granted)
 
         let result = manager.process_allocation(Some(&granted));
 
         // 100 units granted out of 200 needed = 50% satisfaction
         assert_eq!(result.satisfaction_percent, 0.5);
-        assert_eq!(result.missing_resources, vec![ResourceType::Wood]);
+        assert_eq!(result.missing_resources, vec![material("wood")]);
 
         // Grain is fully satisfied, while wood is missing.
-        assert!(result.missing_resources.contains(&ResourceType::Wood));
+        assert!(result.missing_resources.contains(&material("wood")));
     }
 
     #[test]

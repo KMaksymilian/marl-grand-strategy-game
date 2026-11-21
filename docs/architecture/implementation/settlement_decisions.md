@@ -195,13 +195,13 @@ The effect is determined by the validator together with the command
 ```
 
 - IDs are plain integers and `building_type` is a plain string.
-- Action tags and offer sides use `snake_case`; resources use their Rust names
-  (`Wood`, `Stone`, `Grain`, `Labour`).
+- Action tags and offer sides use `snake_case`; resource identifiers use
+  upper camel case (`Wood`, `Stone`, `Grain`, `Labour`, `RockSalt`).
 - A missing `actions` list means no actions.
 - Parsing rejects unknown fields and tags, missing fields, negative or
-  fractional quantities, and unknown resources. Parsing does not check values
-  against the world: for example, `Labour` in an offer parses and is rejected
-  by validation.
+  fractional quantities, and malformed resource identifiers. Action validation
+  checks material identifiers against the settlement's catalog. It also rejects
+  `Labour` in an offer.
 
 `SettlementDecision::to_json()` and `SettlementDecision::from_json(&str)`
 convert to and from text. `from_json` returns `DecisionParseError`, whose

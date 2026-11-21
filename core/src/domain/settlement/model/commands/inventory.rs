@@ -30,4 +30,15 @@ impl Settlement {
     ) -> Result<(), StorageOrderError> {
         self.inventory_manager.set_storage_order(materials)
     }
+
+    pub fn validate_storage_order(
+        &self,
+        materials: &[ResourceType],
+    ) -> Result<(), StorageOrderError> {
+        self.inventory_manager.validate_storage_order(materials)
+    }
+
+    pub fn knows_material(&self, resource: &ResourceType) -> bool {
+        self.inventory_manager.main.knows_material(resource)
+    }
 }

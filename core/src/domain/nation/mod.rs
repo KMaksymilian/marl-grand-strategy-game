@@ -83,8 +83,8 @@ impl Nation {
         self.stock
             .resources()
             .iter()
-            .filter(|&(&resource, &amount)| resource != ResourceType::Labour && amount > 0)
-            .map(|(&resource, &amount)| (resource, amount))
+            .filter(|&(resource, &amount)| resource != &ResourceType::Labour && amount > 0)
+            .map(|(resource, &amount)| (resource.clone(), amount))
             .collect()
     }
 
@@ -152,7 +152,7 @@ impl Nation {
         self.stock
             .take_all()
             .into_iter()
-            .filter(|&(resource, amount)| resource != ResourceType::Labour && amount > 0)
+            .filter(|(resource, amount)| *resource != ResourceType::Labour && *amount > 0)
             .collect()
     }
 
@@ -177,24 +177,31 @@ impl Nation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ResourceType::{Grain, Labour, Wood};
 
     #[test]
     fn the_stock_has_one_capacity_shared_by_all_materials() {
         let mut nation = Nation::new(NationId(1), SettlementId(1));
         nation.set_stock_capacity(10);
-        assert_eq!(nation.deposit_resource(Wood, 6).accepted, 6);
-        let grain = nation.deposit_resource(Grain, 6);
+        assert_eq!(
+            nation
+                .deposit_resource(crate::test_support::material("wood"), 6)
+                .accepted,
+            6
+        );
+        let grain = nation.deposit_resource(crate::test_support::material("grain"), 6);
         assert_eq!(
             (grain.accepted, grain.rejected),
             (4, 2),
             "the capacity is shared"
         );
-        assert_eq!(nation.deposit_resource(Labour, 4).rejected, 4);
+        assert_eq!(nation.deposit_resource(ResourceType::Labour, 4).rejected, 4);
         assert_eq!(nation.stock().total_amount(), 10);
         assert_eq!(
             nation.stock_amounts(),
-            BTreeMap::from([(Wood, 6), (Grain, 4)])
+            BTreeMap::from([
+                (crate::test_support::material("wood"), 6),
+                (crate::test_support::material("grain"), 4)
+            ])
         );
     }
 
@@ -202,15 +209,34 @@ mod tests {
     fn a_smaller_capacity_discards_nothing_but_blocks_additions() {
         let mut nation = Nation::new(NationId(1), SettlementId(1));
         nation.set_stock_capacity(10);
-        nation.deposit_resource(Wood, 10);
+        nation.deposit_resource(crate::test_support::material("wood"), 10);
         nation.set_stock_capacity(4);
-        assert_eq!(nation.stock().amount(Wood), 10);
-        assert_eq!(nation.deposit_resource(Grain, 1).rejected, 1);
-        assert!(nation.withdraw_resource(Wood, 7));
-        assert_eq!(nation.deposit_resource(Grain, 5).accepted, 1);
-        assert!(!nation.withdraw_resource(Wood, 4));
-        assert!(nation.withdraw_resource(Grain, 0));
-        assert_eq!(nation.take_stock(), BTreeMap::from([(Wood, 3), (Grain, 1)]));
+        assert_eq!(
+            nation.stock().amount(crate::test_support::material("wood")),
+            10
+        );
+        assert_eq!(
+            nation
+                .deposit_resource(crate::test_support::material("grain"), 1)
+                .rejected,
+            1
+        );
+        assert!(nation.withdraw_resource(crate::test_support::material("wood"), 7));
+        assert_eq!(
+            nation
+                .deposit_resource(crate::test_support::material("grain"), 5)
+                .accepted,
+            1
+        );
+        assert!(!nation.withdraw_resource(crate::test_support::material("wood"), 4));
+        assert!(nation.withdraw_resource(crate::test_support::material("grain"), 0));
+        assert_eq!(
+            nation.take_stock(),
+            BTreeMap::from([
+                (crate::test_support::material("wood"), 3),
+                (crate::test_support::material("grain"), 1)
+            ])
+        );
         assert_eq!(nation.stock().total_amount(), 0);
     }
 

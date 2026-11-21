@@ -1,6 +1,8 @@
+mod common;
+use common::material;
 use simulation_core::buildings::catalog::BuildingCatalog;
 use simulation_core::buildings::definition::{BuildingBehavior, BuildingDefinition};
-use simulation_core::economy::ResourceType::{Labour, Stone, Wood};
+use simulation_core::economy::ResourceType;
 use simulation_core::ids::{BuildingTypeId, SettlementId};
 use simulation_core::settlement::{Settlement, projects::ProjectCost};
 use simulation_core::simulation::{
@@ -37,27 +39,27 @@ fn scenario() -> World {
         1,
         vec![BuildingBehavior::Production {
             inputs: vec![],
-            outputs: vec![(Stone, 2)],
+            outputs: vec![(material("stone"), 2)],
         }],
         ProjectCost {
-            needed_resources: HashMap::from([(Wood, 2)]),
+            needed_resources: HashMap::from([(material("wood"), 2)]),
             turn_cost: 1,
         },
     )
     .unwrap()
-    .requiring_deposit(Stone)
+    .requiring_deposit(material("stone"))
     .unwrap();
     let mut catalog = BuildingCatalog::default();
     catalog.register(quarry);
     world.set_building_catalog(catalog);
     let mut owner = Settlement::new(OWNER, 100, 1, Arc::default());
-    owner.deposit(Wood, 6);
+    owner.deposit(material("wood"), 6);
     world.add_settlement(10, owner).unwrap();
     world
         .add_settlement(20, Settlement::new(NEIGHBOUR, 100, 1, Arc::default()))
         .unwrap();
-    world.place_deposit(at(2), Stone).unwrap();
-    world.place_deposit(at(3), Stone).unwrap();
+    world.place_deposit(at(2), material("stone")).unwrap();
+    world.place_deposit(at(3), material("stone")).unwrap();
     world
 }
 
@@ -85,30 +87,33 @@ fn deposits_follow_province_membership_and_reject_invalid_placement() {
     );
     assert_eq!(
         world.accessible_deposits(OWNER).unwrap(),
-        vec![(at(2), Stone)]
+        vec![(at(2), material("stone"))]
     );
     assert_eq!(
         world.accessible_deposits(NEIGHBOUR).unwrap(),
-        vec![(at(3), Stone)]
+        vec![(at(3), material("stone"))]
     );
     assert_eq!(
-        world.place_deposit(at(1), Labour),
-        Err(WorldError::InvalidDepositResource(Labour))
+        world.place_deposit(at(1), ResourceType::Labour),
+        Err(WorldError::InvalidDepositResource(ResourceType::Labour))
     );
     assert_eq!(
-        world.place_deposit(at(4), Stone),
+        world.place_deposit(at(4), material("stone")),
         Err(WorldError::DepositOnOcean(at(4)))
     );
     assert_eq!(
-        world.place_deposit(at(2), Wood),
+        world.place_deposit(at(2), material("wood")),
         Err(WorldError::DepositAlreadyExists(at(2)))
     );
-    assert_eq!(world.inspect_tile(at(2)).unwrap().deposit, Some(Stone));
+    assert_eq!(
+        world.inspect_tile(at(2)).unwrap().deposit,
+        Some(material("stone"))
+    );
     world.set_tile_province(at(2), 20).unwrap();
     assert!(world.accessible_deposits(OWNER).unwrap().is_empty());
     assert_eq!(
         world.accessible_deposits(NEIGHBOUR).unwrap(),
-        vec![(at(2), Stone), (at(3), Stone)]
+        vec![(at(2), material("stone")), (at(3), material("stone"))]
     );
 }
 
@@ -116,8 +121,11 @@ fn deposits_follow_province_membership_and_reject_invalid_placement() {
 fn only_an_owned_deposit_supports_quarry_construction_and_production() {
     let mut simulation = Simulation::new(scenario()).unwrap();
     let observation = simulation.observe(OWNER).unwrap();
-    assert_eq!(observation.territory[2].deposit, Some(Stone));
-    assert_eq!(observation.building_types[0].required_deposit, Some(Stone));
+    assert_eq!(observation.territory[2].deposit, Some(material("stone")));
+    assert_eq!(
+        observation.building_types[0].required_deposit,
+        Some(material("stone"))
+    );
     assert!(
         observation
             .territory
@@ -138,7 +146,7 @@ fn only_an_owned_deposit_supports_quarry_construction_and_production() {
         ActionOutcome::Rejected {
             error: ActionError::RequiredDepositMissing {
                 position: at(1),
-                resource: Stone
+                resource: material("stone")
             }
         }
     );
@@ -160,7 +168,7 @@ fn only_an_owned_deposit_supports_quarry_construction_and_production() {
             .settlement(OWNER)
             .unwrap()
             .inventory()
-            .amount(Wood),
+            .amount(material("wood")),
         6
     );
     for position in [at(1), at(3)] {
@@ -179,7 +187,7 @@ fn only_an_owned_deposit_supports_quarry_construction_and_production() {
         ActionOutcome::Applied { .. }
     ));
     let site = simulation.world().inspect_tile(at(2)).unwrap();
-    assert_eq!(site.deposit, Some(Stone));
+    assert_eq!(site.deposit, Some(material("stone")));
     let quarry_id = site.building.unwrap().instance_id();
     simulation
         .queue_decision(SettlementDecision::new(
@@ -191,7 +199,10 @@ fn only_an_owned_deposit_supports_quarry_construction_and_production() {
         ))
         .unwrap();
     let turn = simulation.step().unwrap();
-    assert_eq!(turn.settlements[&OWNER].inventory.produced[&Stone], 2);
+    assert_eq!(
+        turn.settlements[&OWNER].inventory.produced[&material("stone")],
+        2
+    );
 
     let mut world = simulation.into_world();
     world.set_tile_province(at(2), 20).unwrap();
@@ -201,14 +212,14 @@ fn only_an_owned_deposit_supports_quarry_construction_and_production() {
         !turn.settlements[&OWNER]
             .inventory
             .produced
-            .contains_key(&Stone)
+            .contains_key(&material("stone"))
     );
     assert_eq!(
         simulation
             .settlement(OWNER)
             .unwrap()
             .inventory()
-            .amount(Stone),
+            .amount(material("stone")),
         2
     );
     assert_eq!(

@@ -63,7 +63,7 @@ impl TradeBook {
                     gold_demand = gold_demand.saturating_add(gold_amount)
                 }
                 TradeDemand::ResourceType(resource_amount) => {
-                    *resource_demands.entry(*resource_type).or_default() += resource_amount;
+                    *resource_demands.entry(resource_type.clone()).or_default() += resource_amount;
                 }
             }
         }
@@ -75,9 +75,9 @@ impl TradeBook {
     pub fn goods_for_sale(&self) -> BTreeMap<ResourceType, u32> {
         self.offers
             .iter()
-            .filter_map(|(&resource, offer)| match offer {
+            .filter_map(|(resource, offer)| match offer {
                 TradeOffer::Sell(sell) if sell.get_amount_to_sell() > 0 => {
-                    Some((resource, sell.get_amount_to_sell()))
+                    Some((resource.clone(), sell.get_amount_to_sell()))
                 }
                 _ => None,
             })
@@ -88,9 +88,9 @@ impl TradeBook {
     pub fn bought_goods(&self) -> BTreeMap<ResourceType, u32> {
         self.offers
             .iter()
-            .filter_map(|(&resource, offer)| match offer {
+            .filter_map(|(resource, offer)| match offer {
                 TradeOffer::Buy(buy) if buy.get_already_bought_units() > 0 => {
-                    Some((resource, buy.get_already_bought_units()))
+                    Some((resource.clone(), buy.get_already_bought_units()))
                 }
                 _ => None,
             })
@@ -105,11 +105,11 @@ impl TradeBook {
             match offer {
                 TradeOffer::Buy(buy_offer) => {
                     let bought: u32 = buy_offer.consume_bought_units();
-                    *returned_resources.entry(*resource_type).or_insert(0) += bought;
+                    *returned_resources.entry(resource_type.clone()).or_insert(0) += bought;
                 }
                 TradeOffer::Sell(sell_offer) => {
                     let remained: u32 = sell_offer.consume_avaiable_units();
-                    *returned_resources.entry(*resource_type).or_insert(0) += remained;
+                    *returned_resources.entry(resource_type.clone()).or_insert(0) += remained;
                 }
             }
         }
@@ -129,7 +129,7 @@ impl TradeBook {
             .iter()
             .filter_map(|(resource, &amount)| {
                 let offer = self.offers.get_mut(resource)?;
-                Some((*resource, offer.take_share(amount)))
+                Some((resource.clone(), offer.take_share(amount)))
             })
             .collect();
         TradeBook::new(gold, offers)

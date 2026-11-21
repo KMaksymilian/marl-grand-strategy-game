@@ -175,7 +175,7 @@ impl Caravan {
         if self.caravan_state == CaravanState::Trading {
             self.record_observation(market_observation);
             self.trades
-                .extend(receiver_side.into_iter().map(TradeExecution::mirrored));
+                .extend(receiver_side.iter().map(TradeExecution::mirrored));
             self.caravan_state = CaravanState::TravelBack;
         }
     }

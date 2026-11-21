@@ -1,3 +1,4 @@
+use crate::test_support::material;
 use simulation_core::ids::SettlementId;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -7,7 +8,7 @@ use simulation_core::buildings::{
     Building,
     definition::{BuildingBehavior, BuildingDefinition},
 };
-use simulation_core::economy::ResourceType::{Grain, Stone, Wood};
+use simulation_core::economy::ResourceCatalog;
 use simulation_core::economy::storage_order::StorageOrderError;
 use simulation_core::ids::BuildingTypeId;
 use simulation_core::ids::{BuildingId, ProjectId};
@@ -30,8 +31,8 @@ fn definition() -> Arc<BuildingDefinition> {
             1,
             1,
             vec![BuildingBehavior::Production {
-                inputs: vec![(Wood, 1)],
-                outputs: vec![(Grain, 2)],
+                inputs: vec![(material("wood"), 1)],
+                outputs: vec![(material("grain"), 2)],
             }],
             ProjectCost::default(),
         )
@@ -48,10 +49,10 @@ fn world(order: &[u32]) -> World {
     for &id in order {
         let registry = Arc::new(NeedRegistry::new(vec![NeedTier {
             min_population: 1,
-            needs_per_capita: HashMap::from([(Grain, 1)]),
+            needs_per_capita: HashMap::from([(material("grain"), 1)]),
         }]));
         let mut settlement = Settlement::new(SettlementId(id), 100, 1, registry);
-        settlement.deposit(Wood, 10);
+        settlement.deposit(material("wood"), 10);
         world
             .add_settlement(if id == 1 { 10 } else { 20 }, settlement)
             .unwrap();
@@ -82,8 +83,8 @@ fn world_with_catalog(order: &[u32], cost: ProjectCost) -> World {
             1,
             1,
             vec![BuildingBehavior::Production {
-                inputs: vec![(Wood, 1)],
-                outputs: vec![(Grain, 2)],
+                inputs: vec![(material("wood"), 1)],
+                outputs: vec![(material("grain"), 2)],
             }],
             cost,
         )
@@ -190,13 +191,13 @@ fn insertion_order_does_not_change_reports_or_world_results() {
                     .settlement(SettlementId(id))
                     .unwrap()
                     .inventory()
-                    .amount(Grain),
+                    .amount(material("grain")),
                 second
                     .world()
                     .settlement(SettlementId(id))
                     .unwrap()
                     .inventory()
-                    .amount(Grain)
+                    .amount(material("grain"))
             );
         }
     }
@@ -233,7 +234,7 @@ fn production_is_available_to_consumption_on_the_next_turn() {
         first.settlements[&SettlementId(1)]
             .consumption
             .missing_resources,
-        vec![Grain]
+        vec![material("grain")]
     );
     assert_eq!(
         simulation
@@ -241,7 +242,7 @@ fn production_is_available_to_consumption_on_the_next_turn() {
             .settlement(SettlementId(1))
             .unwrap()
             .inventory()
-            .amount(Grain),
+            .amount(material("grain")),
         2
     );
     let second = simulation.step().unwrap();
@@ -254,7 +255,7 @@ fn production_is_available_to_consumption_on_the_next_turn() {
     assert_eq!(
         second.settlements[&SettlementId(1)]
             .inventory
-            .population_consumed[&Grain],
+            .population_consumed[&material("grain")],
         1
     );
     assert_eq!(
@@ -263,7 +264,7 @@ fn production_is_available_to_consumption_on_the_next_turn() {
             .settlement(SettlementId(1))
             .unwrap()
             .inventory()
-            .amount(Grain),
+            .amount(material("grain")),
         3
     );
 }
@@ -305,7 +306,7 @@ fn decisions_wait_for_step_apply_in_submission_order_and_are_not_replayed() {
             .settlement(SettlementId(1))
             .unwrap()
             .inventory()
-            .amount(Wood),
+            .amount(material("wood")),
         10
     );
     assert!(simulation.step().unwrap().decisions.is_empty());
@@ -399,21 +400,21 @@ fn construction_progresses_once_per_global_turn_and_finishes_after_production() 
     decide(&mut simulation, vec![workers(0, 1)]);
     let third = simulation.step().unwrap();
     assert_eq!(
-        third.settlements[&SettlementId(1)].inventory.produced[&Grain],
+        third.settlements[&SettlementId(1)].inventory.produced[&material("grain")],
         2
     );
     assert!(
         third.settlements[&SettlementId(1)]
             .consumption
             .missing_resources
-            .contains(&Grain)
+            .contains(&material("grain"))
     );
 }
 
 #[test]
 fn construction_can_be_canceled_in_the_same_decision_phase_without_spending() {
     let cost = ProjectCost {
-        needed_resources: HashMap::from([(Wood, 4)]),
+        needed_resources: HashMap::from([(material("wood"), 4)]),
         turn_cost: 1,
     };
     let mut simulation = Simulation::new(world_with_catalog(&[1], cost)).unwrap();
@@ -453,7 +454,7 @@ fn construction_can_be_canceled_in_the_same_decision_phase_without_spending() {
             .settlement(SettlementId(1))
             .unwrap()
             .inventory()
-            .amount(Wood),
+            .amount(material("wood")),
         9
     );
 }
@@ -548,7 +549,10 @@ fn storage_order_decision_is_applied_before_economic_updates() {
     decide(
         &mut simulation,
         vec![SettlementAction::SetStorageOrder {
-            order: vec![Grain, Wood, Stone],
+            order: [material("grain"), material("wood"), material("stone")]
+                .into_iter()
+                .chain(ResourceCatalog::standard().materials()[3..].iter().cloned())
+                .collect(),
         }],
     );
     let report = simulation.step().unwrap();
@@ -562,7 +566,10 @@ fn storage_order_decision_is_applied_before_economic_updates() {
             .settlement(SettlementId(1))
             .unwrap()
             .storage_order(),
-        &[Grain, Wood, Stone]
+        &[material("grain"), material("wood"), material("stone")]
+            .into_iter()
+            .chain(ResourceCatalog::standard().materials()[3..].iter().cloned())
+            .collect::<Vec<_>>()
     );
 }
 
@@ -578,8 +585,8 @@ fn an_upgrade_changes_output_only_after_the_turn_in_which_it_completes() {
             2,
             original.max_workers(),
             vec![BuildingBehavior::Production {
-                inputs: vec![(Wood, 1)],
-                outputs: vec![(Grain, 4)],
+                inputs: vec![(material("wood"), 1)],
+                outputs: vec![(material("grain"), 4)],
             }],
             ProjectCost::default(),
         )
@@ -596,7 +603,7 @@ fn an_upgrade_changes_output_only_after_the_turn_in_which_it_completes() {
     );
     let first = simulation.step().unwrap();
     assert_eq!(
-        first.settlements[&SettlementId(1)].inventory.produced[&Grain],
+        first.settlements[&SettlementId(1)].inventory.produced[&material("grain")],
         2
     );
     assert_eq!(
@@ -606,7 +613,7 @@ fn an_upgrade_changes_output_only_after_the_turn_in_which_it_completes() {
     assert_eq!(
         simulation.step().unwrap().settlements[&SettlementId(1)]
             .inventory
-            .produced[&Grain],
+            .produced[&material("grain")],
         4
     );
 }
@@ -623,14 +630,14 @@ fn invalid_storage_order_is_reported_and_does_not_replace_the_existing_order() {
     decide(
         &mut simulation,
         vec![SettlementAction::SetStorageOrder {
-            order: vec![Wood, Wood],
+            order: vec![material("wood"), material("wood")],
         }],
     );
     let report = simulation.step().unwrap();
     assert_eq!(
         rejected(&report.decisions[0].results[0].outcome),
         &ActionError::InvalidStorageOrder {
-            error: StorageOrderError::DuplicateMaterial(Wood)
+            error: StorageOrderError::DuplicateMaterial(material("wood"))
         }
     );
     assert_eq!(

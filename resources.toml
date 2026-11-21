@@ -1,0 +1,159 @@
+# The order of entries is the default settlement warehouse priority.
+# Each content identifier maps to a stable simulation resource.
+
+[[resources]]
+id = "wood"
+name = "Wood"
+tier = 1
+category = "construction_material"
+
+[[resources]]
+id = "stone"
+name = "Stone"
+tier = 1
+category = "construction_material"
+
+[[resources]]
+id = "grain"
+name = "Grain"
+tier = 1
+category = "raw_food"
+
+[[resources]]
+id = "cattle"
+name = "Cattle"
+tier = 1
+category = "raw_food"
+
+[[resources]]
+id = "fish"
+name = "Fish"
+tier = 1
+category = "raw_food"
+
+[[resources]]
+id = "dates"
+name = "Dates"
+tier = 1
+category = "raw_food"
+
+[[resources]]
+id = "clay"
+name = "Clay"
+tier = 1
+category = "construction_material"
+
+[[resources]]
+id = "limestone"
+name = "Limestone"
+tier = 1
+category = "construction_material"
+
+[[resources]]
+id = "coal"
+name = "Coal"
+tier = 1
+category = "metal"
+aliases = ["charcoal", "mined_coal"]
+
+[[resources]]
+id = "iron_ore"
+name = "Iron Ore"
+tier = 1
+category = "metal"
+
+[[resources]]
+id = "copper_ore"
+name = "Copper Ore"
+tier = 1
+category = "metal"
+
+[[resources]]
+id = "tin_ore"
+name = "Tin Ore"
+tier = 1
+category = "metal"
+
+[[resources]]
+id = "bread"
+name = "Bread"
+tier = 2
+category = "processed_food"
+
+[[resources]]
+id = "meat"
+name = "Meat"
+tier = 2
+category = "processed_food"
+
+[[resources]]
+id = "smoked_fish"
+name = "Smoked Fish"
+tier = 2
+category = "processed_food"
+
+[[resources]]
+id = "date_syrup"
+name = "Date Syrup"
+tier = 2
+category = "processed_food"
+
+[[resources]]
+id = "planks"
+name = "Planks"
+tier = 2
+category = "construction_material"
+
+[[resources]]
+id = "stone_bricks"
+name = "Stone Bricks"
+tier = 2
+category = "construction_material"
+
+[[resources]]
+id = "bricks"
+name = "Bricks"
+tier = 2
+category = "construction_material"
+
+[[resources]]
+id = "steel"
+name = "Steel"
+tier = 2
+category = "metal"
+
+[[resources]]
+id = "bronze"
+name = "Bronze"
+tier = 2
+category = "metal"
+
+[[resources]]
+id = "fortification_components"
+name = "Fortification Components"
+tier = 3
+category = "defense"
+
+[[resources]]
+id = "furniture"
+name = "Furniture"
+tier = 3
+category = "crafted_good"
+
+[[resources]]
+id = "tools"
+name = "Tools"
+tier = 3
+category = "crafted_good"
+
+[[resources]]
+id = "monument_components"
+name = "Monument Components"
+tier = 3
+category = "crafted_good"
+
+[[resources]]
+id = "beer"
+name = "Beer"
+tier = 2
+category = "beverage"

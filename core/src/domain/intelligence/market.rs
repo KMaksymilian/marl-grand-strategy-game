@@ -21,7 +21,7 @@ impl ObservationStrategy<MarketObservationSource<'_>> for MarketObservation {
             .book
             .offers()
             .iter()
-            .filter_map(|(&resource, offer)| {
+            .filter_map(|(resource, offer)| {
                 let remaining = offer.remaining_units();
                 let (side, unit_price_limit, units) = match offer {
                     TradeOffer::Buy(buy) => {
@@ -36,7 +36,7 @@ impl ObservationStrategy<MarketObservationSource<'_>> for MarketObservation {
                     ),
                 };
                 (units > 0).then_some((
-                    resource,
+                    resource.clone(),
                     MarketOffer {
                         side,
                         units,
@@ -77,20 +77,27 @@ pub enum MarketOfferSide {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::economy::ResourceType;
+
     use std::collections::BTreeMap;
 
     #[test]
     fn captures_open_offers_without_following_later_market_changes() {
-        use ResourceType::{Grain, Stone, Wood};
-
         let market = SettlementId(4);
         let mut book = TradeBook::new(
             10,
             [
-                (Wood, TradeOffer::sell(6, 11)),
-                (Grain, TradeOffer::buy(9, 3)),
-                (Stone, TradeOffer::sell(0, 7)),
+                (
+                    crate::test_support::material("wood"),
+                    TradeOffer::sell(6, 11),
+                ),
+                (
+                    crate::test_support::material("grain"),
+                    TradeOffer::buy(9, 3),
+                ),
+                (
+                    crate::test_support::material("stone"),
+                    TradeOffer::sell(0, 7),
+                ),
             ]
             .into(),
         );
@@ -113,7 +120,7 @@ mod tests {
                 province_id: 20,
                 offers: BTreeMap::from([
                     (
-                        Wood,
+                        crate::test_support::material("wood"),
                         MarketOffer {
                             side: MarketOfferSide::Sell,
                             units: 6,
@@ -121,7 +128,7 @@ mod tests {
                         },
                     ),
                     (
-                        Grain,
+                        crate::test_support::material("grain"),
                         MarketOffer {
                             side: MarketOfferSide::Buy,
                             units: 3,

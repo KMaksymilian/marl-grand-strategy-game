@@ -1,12 +1,14 @@
-//! Taxation (gameplay specification §6): the owning nation takes its rate from
-//! every settlement's production and sums it in the national stock. Covers rates
-//! 0, 10 and 100%, per-stage production tax, rounding, conquered and attacked
-//! settlements, the shared stock capacity, balances and the nation's report.
-//! Gold is not taxed: the gold tax needs settlement income (§4.4), which belongs
-//! to the settlement economy.
+mod common;
+
+// Taxation (gameplay specification §6): the owning nation takes its rate from
+// every settlement's production and sums it in the national stock. Covers rates
+// 0, 10 and 100%, per-stage production tax, rounding, conquered and attacked
+// settlements, the shared stock capacity, balances and the nation's report.
+// Gold is not taxed: the gold tax needs settlement income (§4.4), which belongs
+// to the settlement economy.
 use simulation_core::buildings::Building;
 use simulation_core::buildings::definition::{BuildingBehavior, BuildingDefinition};
-use simulation_core::economy::ResourceType::{self, Stone, Wood};
+use simulation_core::economy::ResourceType;
 use simulation_core::ids::{BuildingId, NationId, SettlementId};
 use simulation_core::nation::Nation;
 use simulation_core::nation::taxation::TaxStatus;
@@ -50,8 +52,8 @@ fn definition(
 }
 
 /// Provinces `10 10 20 20 30 30`. A founds nation 0 and B joins it; C founds
-/// nation 1. Each owns a camp producing 100 Wood per turn next to its capital.
-/// Warehouses hold 10 000; A starts with 200 Wood and 7 gold.
+/// nation 1. Each owns a camp producing 100 common::material("wood") per turn next to its capital.
+/// Warehouses hold 10 000; A starts with 200 common::material("wood") and 7 gold.
 fn world() -> World {
     let mut world = World::new(
         Map::new(
@@ -63,7 +65,7 @@ fn world() -> World {
         [10, 20, 30].into_iter().map(Province::new).collect(),
     );
     let mut a = Settlement::new(A, 10_000, 100, Arc::default());
-    a.deposit(Wood, 200);
+    a.deposit(common::material("wood"), 200);
     a.deposit_gold(7);
     world.add_settlement_at(10, at(0), a).unwrap();
     world
@@ -72,7 +74,7 @@ fn world() -> World {
     world
         .add_settlement_at(30, at(4), Settlement::new(C, 10_000, 40, Arc::default()))
         .unwrap();
-    let camp = definition("camp", vec![], vec![(Wood, 100)]);
+    let camp = definition("camp", vec![], vec![(common::material("wood"), 100)]);
     let mut finder = PathFinder::new(6, 1);
     for (settlement, x) in [(A, 1), (B, 3), (C, 5)] {
         world
@@ -86,9 +88,13 @@ fn world() -> World {
     world
 }
 
-/// A also gets a mason turning 50 Wood into 25 Stone: a second production stage.
+/// A also gets a mason turning 50 common::material("wood") into 25 common::material("stone"): a second production stage.
 fn with_mason(mut world: World) -> World {
-    let mason = definition("mason", vec![(Wood, 50)], vec![(Stone, 25)]);
+    let mason = definition(
+        "mason",
+        vec![(common::material("wood"), 50)],
+        vec![(common::material("stone"), 25)],
+    );
     world
         .add_building(
             A,
@@ -151,7 +157,7 @@ fn wood_tax(report: &SimulationTurnReport, settlement: SettlementId) -> u64 {
         .as_ref()
         .unwrap()
         .production_tax
-        .get(&Wood)
+        .get(&common::material("wood"))
         .copied()
         .unwrap_or(0)
 }
@@ -176,15 +182,22 @@ fn the_base_rate_takes_ten_percent_of_production() {
         (b.nominal_rate, b.effective_rate),
         (Nation::BASE_TAX_RATE, Nation::BASE_TAX_RATE)
     );
-    assert_eq!(b.production_tax, BTreeMap::from([(Wood, 10)]));
+    assert_eq!(
+        b.production_tax,
+        BTreeMap::from([(common::material("wood"), 10)])
+    );
     assert_eq!(
         report.settlements[&B].inventory.produced,
-        BTreeMap::from([(Wood, 100)]),
+        BTreeMap::from([(common::material("wood"), 100)]),
         "the report keeps gross production"
     );
     assert_eq!(report.settlements[&B].inventory.taxed, b.production_tax);
     assert_eq!(
-        simulation.settlement(B).unwrap().inventory().amount(Wood),
+        simulation
+            .settlement(B)
+            .unwrap()
+            .inventory()
+            .amount(common::material("wood")),
         90
     );
 }
@@ -202,7 +215,12 @@ fn rates_zero_ten_and_one_hundred_percent() {
         let nation = &report.nations[&FIRST];
         assert_eq!(nation.tax_rate, rate);
         assert_eq!(
-            nation.taxes.stock_received.get(&Wood).copied().unwrap_or(0),
+            nation
+                .taxes
+                .stock_received
+                .get(&common::material("wood"))
+                .copied()
+                .unwrap_or(0),
             2 * per_camp,
             "{rate}"
         );
@@ -213,7 +231,7 @@ fn rates_zero_ten_and_one_hundred_percent() {
                     .nation(FIRST)
                     .unwrap()
                     .stock()
-                    .amount(Wood)
+                    .amount(common::material("wood"))
             ),
             2 * per_camp
         );
@@ -228,7 +246,11 @@ fn at_one_hundred_percent_a_settlement_keeps_none_of_its_production() {
     set_rate(&mut simulation, FIRST, 1.0);
     simulation.step().unwrap();
     assert_eq!(
-        simulation.settlement(B).unwrap().inventory().amount(Wood),
+        simulation
+            .settlement(B)
+            .unwrap()
+            .inventory()
+            .amount(common::material("wood")),
         0
     );
 }
@@ -252,26 +274,32 @@ fn every_production_stage_is_taxed_separately() {
     let report = simulation.step().unwrap();
     assert_balanced(&report);
     let a = &report.settlements[&A];
-    // The camp produced 100 Wood; the mason turned 50 Wood from stock into 25 Stone.
+    // The camp produced 100 common::material("wood"); the mason turned 50 common::material("wood") from stock into 25 common::material("stone").
     assert_eq!(
         a.inventory.produced,
-        BTreeMap::from([(Wood, 100), (Stone, 25)])
+        BTreeMap::from([
+            (common::material("wood"), 100),
+            (common::material("stone"), 25)
+        ])
     );
     assert_eq!(
         a.taxation.as_ref().unwrap().production_tax,
-        BTreeMap::from([(Wood, 10), (Stone, 2)]),
-        "2.5 Stone rounds down"
+        BTreeMap::from([
+            (common::material("wood"), 10),
+            (common::material("stone"), 2)
+        ]),
+        "2.5 stone rounds down"
     );
     // 200 − 50 consumed + 100 produced − 10 taxed.
     let settlement = simulation.settlement(A).unwrap();
-    assert_eq!(settlement.inventory().amount(Wood), 240);
-    assert_eq!(settlement.inventory().amount(Stone), 23);
+    assert_eq!(settlement.inventory().amount(common::material("wood")), 240);
+    assert_eq!(settlement.inventory().amount(common::material("stone")), 23);
 }
 
 #[test]
 fn taxes_round_down_to_whole_units() {
     // 29% of 100 is 29 although the f32 0.29 is 0.28999999…;
-    // 37% of 25 Stone is 9.25, so 9.
+    // 37% of 25 common::material("stone") is 9.25, so 9.
     let mut first = simulation(with_mason(world()));
     set_rate(&mut first, FIRST, 0.29);
     let report = first.step().unwrap();
@@ -281,7 +309,13 @@ fn taxes_round_down_to_whole_units() {
     set_rate(&mut second, FIRST, 0.37);
     let report = second.step().unwrap();
     let a = report.settlements[&A].taxation.as_ref().unwrap();
-    assert_eq!(a.production_tax, BTreeMap::from([(Wood, 37), (Stone, 9)]));
+    assert_eq!(
+        a.production_tax,
+        BTreeMap::from([
+            (common::material("wood"), 37),
+            (common::material("stone"), 9)
+        ])
+    );
 }
 
 // ---------------------------------------------------------------- status
@@ -320,7 +354,11 @@ fn a_settlement_under_attack_pays_no_tax() {
     assert_eq!(b.effective_rate, 0.0);
     assert!(b.production_tax.is_empty());
     assert_eq!(
-        simulation.settlement(B).unwrap().inventory().amount(Wood),
+        simulation
+            .settlement(B)
+            .unwrap()
+            .inventory()
+            .amount(common::material("wood")),
         100
     );
     assert!(
@@ -346,24 +384,39 @@ fn a_settlement_under_attack_pays_no_tax() {
 fn taxes_above_the_shared_stock_capacity_are_lost_and_reported() {
     let mut world = world();
     // Nation 0 owns two settlements: 1 000 for all materials. Nearly full already.
-    world.deposit_nation_resource(FIRST, Stone, 950).unwrap();
+    world
+        .deposit_nation_resource(FIRST, common::material("stone"), 950)
+        .unwrap();
     let mut simulation = simulation(world);
     set_rate(&mut simulation, FIRST, 1.0);
     let report = simulation.step().unwrap();
     let taxes = &report.nations[&FIRST].taxes;
-    // A pays 100 Wood first (ascending ID): 50 fit. B's 100 are lost entirely.
-    assert_eq!(taxes.stock_received, BTreeMap::from([(Wood, 50)]));
-    assert_eq!(taxes.stock_lost, BTreeMap::from([(Wood, 150)]));
+    // A pays 100 common::material("wood") first (ascending ID): 50 fit. B's 100 are lost entirely.
+    assert_eq!(
+        taxes.stock_received,
+        BTreeMap::from([(common::material("wood"), 50)])
+    );
+    assert_eq!(
+        taxes.stock_lost,
+        BTreeMap::from([(common::material("wood"), 150)])
+    );
     assert_eq!(
         report.nations[&FIRST].closing_stock,
-        BTreeMap::from([(Wood, 50), (Stone, 950)])
+        BTreeMap::from([
+            (common::material("wood"), 50),
+            (common::material("stone"), 950)
+        ])
     );
     let paid: u64 = taxes
         .settlements
         .values()
-        .map(|tax| tax.production_tax[&Wood])
+        .map(|tax| tax.production_tax[&common::material("wood")])
         .sum();
-    assert_eq!(paid, taxes.stock_received[&Wood] + taxes.stock_lost[&Wood]);
+    assert_eq!(
+        paid,
+        taxes.stock_received[&common::material("wood")]
+            + taxes.stock_lost[&common::material("wood")]
+    );
 }
 
 #[test]
@@ -375,9 +428,15 @@ fn nations_get_their_taxes_in_their_own_report_and_observation() {
         first.taxes.settlements.keys().copied().collect::<Vec<_>>(),
         vec![A, B]
     );
-    assert_eq!(first.taxes.stock_received, BTreeMap::from([(Wood, 20)]));
+    assert_eq!(
+        first.taxes.stock_received,
+        BTreeMap::from([(common::material("wood"), 20)])
+    );
     assert!(first.taxes.stock_lost.is_empty());
-    assert_eq!(first.closing_stock, BTreeMap::from([(Wood, 20)]));
+    assert_eq!(
+        first.closing_stock,
+        BTreeMap::from([(common::material("wood"), 20)])
+    );
     assert_eq!(
         report.nations[&SECOND]
             .taxes
@@ -390,13 +449,19 @@ fn nations_get_their_taxes_in_their_own_report_and_observation() {
 
     let observation = simulation.observe_nation(FIRST).unwrap();
     assert_eq!(observation.last_turn.as_ref(), Some(first));
-    assert_eq!(observation.stock, BTreeMap::from([(Wood, 20)]));
+    assert_eq!(
+        observation.stock,
+        BTreeMap::from([(common::material("wood"), 20)])
+    );
     assert_eq!(
         serde_json::from_str::<NationObservation>(&observation.to_json()).unwrap(),
         observation
     );
     let settlement = simulation.observe(B).unwrap().last_turn.unwrap();
-    assert_eq!(settlement.production_tax, BTreeMap::from([(Wood, 10)]));
+    assert_eq!(
+        settlement.production_tax,
+        BTreeMap::from([(common::material("wood"), 10)])
+    );
 }
 
 #[test]

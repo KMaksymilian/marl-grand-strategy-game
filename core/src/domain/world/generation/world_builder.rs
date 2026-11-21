@@ -6,8 +6,10 @@ use super::config::{
     ElevationTuningFineConfig, NoiseConfig, SeedConfig, VoronoiConfig, WarpConfig, WorldDimensions,
 };
 use super::noise_manager::NoiseManager;
+use crate::domain::economy::ResourceCatalog;
 use crate::domain::world::terrain::area::Area;
 use crate::domain::world::{World, map::Map};
+use std::sync::Arc;
 
 pub struct WorldBuilder {
     pub map: Map,
@@ -19,13 +21,18 @@ pub struct WorldBuilder {
 
 impl WorldBuilder {
     pub fn generate_default() -> World {
-        WorldBuilder::generate(
+        Self::generate_default_with_resources(Arc::new(ResourceCatalog::standard().clone()))
+    }
+
+    pub fn generate_default_with_resources(resources: Arc<ResourceCatalog>) -> World {
+        Self::generate_with_resources(
             WorldDimensions::default(),
             SeedConfig::default(),
             NoiseConfig::default(),
             WarpConfig::default(),
             ElevationTuningFineConfig::default(),
             VoronoiConfig::default(),
+            resources,
         )
     }
 
@@ -57,6 +64,26 @@ impl WorldBuilder {
         elevation_tuning_fine_config: ElevationTuningFineConfig,
         voronoi_config: VoronoiConfig,
     ) -> World {
+        Self::generate_with_resources(
+            world_dimensions,
+            seed_config,
+            noise_config,
+            warp_config,
+            elevation_tuning_fine_config,
+            voronoi_config,
+            Arc::new(ResourceCatalog::standard().clone()),
+        )
+    }
+
+    fn generate_with_resources(
+        world_dimensions: WorldDimensions,
+        seed_config: SeedConfig,
+        noise_config: NoiseConfig,
+        warp_config: WarpConfig,
+        elevation_tuning_fine_config: ElevationTuningFineConfig,
+        voronoi_config: VoronoiConfig,
+        resources: Arc<ResourceCatalog>,
+    ) -> World {
         let mut builder: WorldBuilder = WorldBuilder::new(&world_dimensions, &seed_config);
         builder.build_elevation(
             &world_dimensions,
@@ -74,6 +101,6 @@ impl WorldBuilder {
         builder.build_voronoi(warp_field, &mut provinces, points, &voronoi_config);
         builder.edge_alignment(&mut provinces);
         builder.ocean_set();
-        World::new(builder.map, provinces)
+        World::with_resource_catalog(builder.map, provinces, resources)
     }
 }

@@ -16,10 +16,13 @@ use super::territory::{TerritoryManager, Tile};
 use crate::domain::buildings::catalog::BuildingCatalog;
 use crate::domain::economy::{ResourceCatalog, ResourceType};
 use crate::domain::ids::NationId;
+use crate::domain::military::{UnitCatalog, UnitTypeId};
 use crate::domain::nation::registry::NationRegistry;
 use crate::domain::settlement::{NeedRegistry, Settlement};
 use crate::domain::trade::caravan::Caravan;
-use crate::domain::world::{Position, coordinates::Point, map::Map, province::Province};
+use crate::domain::world::{
+    Position, coordinates::Point, map::Map, province::Province, province_graph::ProvinceGraph,
+};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,6 +82,8 @@ pub enum WorldError {
     /// The national treasury or stock holds less than requested, or the
     /// settlement's gold counter cannot hold it.
     InsufficientNationalFunds(NationId),
+    /// A unit type needs equipment that the world's resource catalogue lacks.
+    UnitEquipmentUnknown(UnitTypeId),
 }
 
 /// World layers are read-only outside the aggregate.
@@ -99,6 +104,11 @@ pub struct World {
     /// Building types agents may construct or upgrade to.
     building_catalog: BuildingCatalog,
     resource_catalog: Arc<ResourceCatalog>,
+    /// Unit types and military rules (`units.toml`).
+    unit_catalog: Arc<UnitCatalog>,
+    /// Borders between provinces, rebuilt whenever a tile changes province
+    /// or terrain.
+    province_graph: ProvinceGraph,
     /// Nations and the single record of which nation owns which settlement.
     nations: NationRegistry,
 }
@@ -152,6 +162,35 @@ impl World {
 
     pub fn map(&self) -> &Map {
         &self.map
+    }
+
+    /// Which provinces border each other, for army movement.
+    pub fn province_graph(&self) -> &ProvinceGraph {
+        &self.province_graph
+    }
+
+    pub(super) fn rebuild_province_graph(&mut self) {
+        self.province_graph = ProvinceGraph::from_map(&self.map);
+    }
+
+    /// Unit types and military rules.
+    pub fn unit_catalog(&self) -> &UnitCatalog {
+        &self.unit_catalog
+    }
+
+    /// Replaces the bundled unit catalogue, e.g. with `units.toml` loaded at
+    /// startup. Every equipment material must exist in this world's resource
+    /// catalogue.
+    pub fn set_unit_catalog(&mut self, catalog: Arc<UnitCatalog>) -> Result<(), WorldError> {
+        if let Some(unit) = catalog.definitions().iter().find(|unit| {
+            unit.equipment()
+                .keys()
+                .any(|resource| self.resource_catalog.get(resource).is_none())
+        }) {
+            return Err(WorldError::UnitEquipmentUnknown(unit.id().clone()));
+        }
+        self.unit_catalog = catalog;
+        Ok(())
     }
 
     pub fn provinces(&self) -> &[Province] {
@@ -259,6 +298,7 @@ impl World {
         provinces: Vec<Province>,
         resource_catalog: Arc<ResourceCatalog>,
     ) -> World {
+        let province_graph = ProvinceGraph::from_map(&map);
         World {
             completed_turn: 0,
             map,
@@ -269,6 +309,8 @@ impl World {
             province_settlements: HashMap::new(),
             building_catalog: BuildingCatalog::default(),
             resource_catalog,
+            unit_catalog: Arc::new(UnitCatalog::standard().clone()),
+            province_graph,
             nations: NationRegistry::default(),
         }
     }

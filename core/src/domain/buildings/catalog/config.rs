@@ -1,6 +1,6 @@
 use super::BuildingCatalog;
 use crate::domain::buildings::definition::{BuildingDefinition, CycleRecipe, DefinitionError};
-use crate::domain::economy::{ResourceCatalog, ResourceId, ResourceType, cost::ProjectCost};
+use crate::domain::economy::{ResourceCatalog, ResourceType, cost::ProjectCost};
 use crate::domain::world::terrain::biome::Biome;
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -107,7 +107,7 @@ impl RawBuilding {
     ) -> Result<(), BuildingCatalogError> {
         let invalid =
             |reason: &str| BuildingCatalogError::Invalid(format!("{}: {reason}", self.id));
-        if ResourceId::from_content_id(&self.id).is_none() || self.name.trim().is_empty() {
+        if !valid_building_id(&self.id) || self.name.trim().is_empty() {
             return Err(invalid("requires a snake_case ID and a display name"));
         }
         let tier = tiers
@@ -213,6 +213,16 @@ fn insert(
     }
     catalog.register(definition);
     Ok(())
+}
+
+fn valid_building_id(id: &str) -> bool {
+    id.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
+        && id.split('_').all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        })
 }
 
 fn materials(

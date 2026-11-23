@@ -1,14 +1,15 @@
 mod common;
 
 use common::material;
-use simulation_core::buildings::catalog::BuildingCatalog;
+use simulation_core::buildings::{Building, catalog::BuildingCatalog};
 use simulation_core::economy::ResourceCatalog;
-use simulation_core::ids::{BuildingTypeId, ProjectId, SettlementId};
+use simulation_core::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
 use simulation_core::settlement::{Settlement, projects::ProjectError};
 use simulation_core::simulation::{
     ActionError, ActionOutcome, SettlementAction, SettlementDecision, Simulation,
 };
 use simulation_core::spatial::{Position, TerritoryError, TileOccupancy};
+use simulation_core::world::pathfinding::path_finder::PathFinder;
 use simulation_core::world::{Map, Province, World, terrain::area::Area};
 use std::sync::Arc;
 
@@ -63,6 +64,17 @@ fn construct(id: &str, position: Position) -> SettlementAction {
         building_type: BuildingTypeId::new(id),
         position,
     }
+}
+
+fn staffed_sawmill(world: &mut World, position: Position) -> BuildingId {
+    let id = BuildingId(1);
+    let definition = world.building_catalog().get_blueprint("sawmill").unwrap();
+    let mut building = Building::new(id, position, definition);
+    building.set_target_load(1.0).unwrap();
+    world
+        .add_building(OWNER, building, &mut PathFinder::new(5, 2))
+        .unwrap();
+    id
 }
 
 #[test]
@@ -186,4 +198,76 @@ fn queued_mine_losing_its_province_deposit_is_rejected_before_spending() {
         simulation.world().tile_at(MINE_SITE).unwrap().occupancy(),
         TileOccupancy::Empty
     );
+}
+
+#[test]
+fn configured_sawmill_stops_operating_after_flooding_or_loss_of_its_site() {
+    for flooded in [true, false] {
+        let site = INLAND;
+        let mut world = scenario();
+        staffed_sawmill(&mut world, site);
+        let mut simulation = Simulation::new(world).unwrap();
+        let turn = simulation.step().unwrap();
+        assert_eq!(
+            turn.settlements[&OWNER].inventory.produced[&material("planks")],
+            100
+        );
+
+        let mut world = simulation.into_world();
+        if flooded {
+            world.set_tile_terrain(site, ocean()).unwrap();
+        } else {
+            world.set_tile_province(site, 20).unwrap();
+        }
+        let mut simulation = Simulation::new(world).unwrap();
+        let turn = simulation.step().unwrap();
+        let inventory = &turn.settlements[&OWNER].inventory;
+        assert!(!inventory.produced.contains_key(&material("planks")));
+        assert!(inventory.production_consumed.is_empty());
+    }
+}
+
+#[test]
+fn pending_configured_upgrades_recheck_the_site_before_spending() {
+    for (target, site, expected) in [
+        ("waterfront", COAST, TerritoryError::CoastRequired(COAST)),
+        ("plantation", INLAND, TerritoryError::ForbiddenBiome(INLAND)),
+        (
+            "mine_iron_ore",
+            MINE_SITE,
+            TerritoryError::ProvinceDepositRequired(MINE_SITE),
+        ),
+    ] {
+        let mut world = scenario();
+        world.place_deposit(OWN_ORE, material("iron_ore")).unwrap();
+        let original = staffed_sawmill(&mut world, site);
+        let definition = world.building_catalog().get_blueprint(target).unwrap();
+        let cost = definition.construction_cost().clone();
+        world
+            .queue_upgrade(OWNER, ProjectId(9), original, definition, cost)
+            .unwrap();
+        match target {
+            "waterfront" => world.set_tile_terrain(SEA, Area::new(0.5, 0.45)).unwrap(),
+            "plantation" => world.set_tile_terrain(site, Area::new(0.5, 0.35)).unwrap(),
+            "mine_iron_ore" => world.set_tile_province(OWN_ORE, 20).unwrap(),
+            _ => unreachable!(),
+        }
+
+        let mut simulation = Simulation::new(world).unwrap();
+        let turn = simulation.step().unwrap();
+        let report = &turn.settlements[&OWNER];
+        assert_eq!(
+            report.projects[0].result,
+            Err(ProjectError::Territory(expected))
+        );
+        assert!(report.inventory.project_consumed.is_empty());
+        let building = simulation
+            .world()
+            .inspect_tile(site)
+            .unwrap()
+            .building
+            .unwrap();
+        assert_eq!(building.instance_id(), original);
+        assert_eq!(building.definition().id(), "sawmill");
+    }
 }

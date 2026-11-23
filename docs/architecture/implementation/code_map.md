@@ -376,6 +376,15 @@ See [Nations](nations.md) for rules and the decision contract.
 | [application/commands/nation/](../../../core/src/application/commands/nation/) | `contract.rs` (`NationDecision`, `NationAction`, `NationActionKind`), `response.rs` (errors, effects, outcomes), `preparation.rs` (read-only validation with a shared subsidy budget and decree slots), `handler.rs` (execution). |
 | [application/queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) | `NationObservation`, `OwnedSettlementObservation`, `DecreesObservation` and their builder. |
 
+## Military
+
+See [Military](military.md) for rules and content.
+
+| File | Contents |
+| --- | --- |
+| [domain/military/unit_catalog.rs](../../../core/src/domain/military/unit_catalog.rs) | `UnitTypeId`, `MilitaryRules`, `UnitDefinition`, `UnitCatalog` loaded from `units.toml` (`standard`, `load`, `from_toml`, `get`, `definitions`, `garrison_unit`, `has_advantage`), `UnitCatalogError`. `World::unit_catalog` and `set_unit_catalog` live in `state.rs`. |
+| [domain/world/province_graph.rs](../../../core/src/domain/world/province_graph.rs) | `ProvinceGraph` (`from_map`, `neighbors`, `are_neighbors`, `route`); `World::province_graph`, rebuilt by `set_tile_province` and `set_tile_terrain`. |
+
 ## Trade and transport
 
 [Trading implementation](trading.md) lists settlement trade commands, world routing,

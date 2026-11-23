@@ -1,4 +1,5 @@
 use crate::domain::buildings::effects::StatType;
+use crate::domain::buildings::passive::PassiveBuildingRules;
 use crate::domain::economy::ResourceType;
 use crate::domain::economy::cost::ProjectCost;
 use std::collections::HashMap;
@@ -33,6 +34,7 @@ pub struct BuildingDefinition {
     construction_cost: ProjectCost,
     required_deposit: Option<ResourceType>,
     requires_coast: bool,
+    passive_rules: PassiveBuildingRules,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,6 +69,7 @@ impl BuildingDefinition {
             construction_cost,
             required_deposit: None,
             requires_coast: false,
+            passive_rules: PassiveBuildingRules::default(),
         };
         definition.validate()?;
         Ok(definition)
@@ -110,6 +113,15 @@ impl BuildingDefinition {
 
     pub fn requires_coast(&self) -> bool {
         self.requires_coast
+    }
+
+    pub fn with_passive_rules(mut self, rules: PassiveBuildingRules) -> Self {
+        self.passive_rules = rules;
+        self
+    }
+
+    pub fn passive_rules(&self) -> &PassiveBuildingRules {
+        &self.passive_rules
     }
 
     pub(crate) fn deposit_resource(&self) -> Option<&ResourceType> {

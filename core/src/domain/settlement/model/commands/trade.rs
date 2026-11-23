@@ -1,6 +1,7 @@
 //! Treasury, market offers and caravan orders.
 use super::super::Settlement;
 use super::super::trading::CaravanOrder;
+use crate::domain::buildings::passive::TradeLimitBonuses;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
 use crate::domain::intelligence::{Information, InformationSnapshot};
@@ -16,9 +17,73 @@ pub enum TradeCommandError {
     TradeWithSelf,
     EmptyOrder,
     UnknownMaterial(ResourceType),
+    MarketCapacityExceeded,
+    CaravanCapacityExceeded,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct CaravanUsage {
+    pub slots: u32,
+    pub units: u64,
+}
+
+impl CaravanUsage {
+    pub fn add(&mut self, units: u64) {
+        self.slots = self.slots.saturating_add(1);
+        self.units = self.units.saturating_add(units);
+    }
+
+    pub fn fits(self, limits: TradeLimitBonuses) -> bool {
+        self.slots <= limits.caravan_slots && self.units <= u64::from(limits.caravan_cargo)
+    }
+}
+
+pub(crate) fn offer_units(offers: &HashMap<ResourceType, TradeOffer>) -> u64 {
+    offers
+        .values()
+        .map(|offer| u64::from(offer.remaining_units()))
+        .sum()
 }
 
 impl Settlement {
+    pub fn set_base_trade_limits(&mut self, limits: Option<TradeLimitBonuses>) {
+        self.trade.base_limits = limits;
+    }
+
+    pub(crate) fn set_active_caravan_usage(&mut self, usage: CaravanUsage) {
+        self.trade.active_caravans = usage;
+    }
+
+    pub fn trade_limits(&self) -> Option<TradeLimitBonuses> {
+        self.trade.base_limits.map(|base| {
+            let bonus = self.trade_limit_bonuses();
+            TradeLimitBonuses {
+                caravan_slots: base.caravan_slots.saturating_add(bonus.caravan_slots),
+                offer_slots: base.offer_slots.saturating_add(bonus.offer_slots),
+                caravan_cargo: base.caravan_cargo.saturating_add(bonus.caravan_cargo),
+                open_offer_units: base.open_offer_units.saturating_add(bonus.open_offer_units),
+            }
+        })
+    }
+
+    pub(crate) fn queued_caravan_usage(&self, mut usage: CaravanUsage) -> CaravanUsage {
+        for order in &self.trade.orders {
+            usage.add(offer_units(&order.offers));
+        }
+        usage
+    }
+
+    pub(crate) fn market_fits(&self, offers: &HashMap<ResourceType, TradeOffer>) -> bool {
+        self.trade_limits().is_none_or(|limits| {
+            offers
+                .values()
+                .filter(|offer| offer.remaining_units() > 0)
+                .count()
+                <= limits.offer_slots as usize
+                && offer_units(offers) <= u64::from(limits.open_offer_units)
+        })
+    }
+
     pub fn deposit_gold(&mut self, amount: u32) {
         self.gold_inventory.add(amount);
     }
@@ -30,6 +95,9 @@ impl Settlement {
         offers: HashMap<ResourceType, TradeOffer>,
     ) -> Result<(), TradeCommandError> {
         self.validate_offers(&offers)?;
+        if !self.market_fits(&offers) {
+            return Err(TradeCommandError::MarketCapacityExceeded);
+        }
         self.trade.market_offers = Self::without_progress(offers);
         Ok(())
     }
@@ -51,6 +119,14 @@ impl Settlement {
             return Err(TradeCommandError::EmptyOrder);
         }
         self.validate_offers(&offers)?;
+        let mut usage = self.queued_caravan_usage(self.trade.active_caravans);
+        usage.add(offer_units(&offers));
+        if self
+            .trade_limits()
+            .is_some_and(|limits| !usage.fits(limits))
+        {
+            return Err(TradeCommandError::CaravanCapacityExceeded);
+        }
         self.trade.orders.push(CaravanOrder {
             receiver_id,
             offers: Self::without_progress(offers),

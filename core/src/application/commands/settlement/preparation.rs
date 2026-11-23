@@ -14,8 +14,8 @@ use crate::domain::buildings::Building;
 use crate::domain::buildings::definition::BuildingDefinition;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
-use crate::domain::settlement::Settlement;
 use crate::domain::settlement::projects::{ProjectError, ProjectResult};
+use crate::domain::settlement::{CaravanUsage, Settlement, offer_units};
 use crate::domain::spatial::{Position, TerritoryError};
 use crate::domain::trade::offer::TradeOffer;
 use crate::domain::world::{World, WorldError};
@@ -61,6 +61,7 @@ struct Checked {
     staff: Option<(BuildingId, u32)>,
     caravan_goods: BTreeMap<ResourceType, u64>,
     caravan_gold: u64,
+    caravan_units: Option<u64>,
     /// New market reservation (goods, gold) after a publish or clear action.
     market: Option<(BTreeMap<ResourceType, u64>, u64)>,
 }
@@ -75,6 +76,7 @@ impl Checked {
             staff: None,
             caravan_goods: BTreeMap::new(),
             caravan_gold: 0,
+            caravan_units: None,
             market: None,
         }
     }
@@ -102,10 +104,11 @@ struct Batch {
     /// Committed to caravans: orders queued earlier this turn plus this decision's.
     caravan_goods: BTreeMap<ResourceType, u64>,
     caravan_gold: u64,
+    caravan_usage: CaravanUsage,
 }
 
 impl Batch {
-    fn new(settlement: &Settlement) -> Self {
+    fn new(settlement: &Settlement, active_caravans: CaravanUsage) -> Self {
         let staff_before: HashMap<_, _> = settlement
             .buildings()
             .map(|building| (building.instance_id(), building.requested_workers()))
@@ -131,6 +134,7 @@ impl Batch {
             market_gold,
             caravan_goods,
             caravan_gold,
+            caravan_usage: settlement.queued_caravan_usage(active_caravans),
         }
     }
 
@@ -227,6 +231,9 @@ impl Batch {
             *self.caravan_goods.entry(resource.clone()).or_default() += amount;
         }
         self.caravan_gold += checked.caravan_gold;
+        if let Some(units) = checked.caravan_units {
+            self.caravan_usage.add(units);
+        }
         if let Some((goods, gold)) = &checked.market {
             self.market_goods = goods.clone();
             self.market_gold = *gold;
@@ -279,7 +286,7 @@ impl<'a> DecisionPreparation<'a> {
             .world
             .settlement(decision.settlement_id)
             .ok_or(WorldError::MissingSettlement(decision.settlement_id))?;
-        let mut batch = Batch::new(settlement);
+        let mut batch = Batch::new(settlement, self.world.active_caravan_usage(settlement.id()));
         let mut accepted = Vec::new();
         let mut rejected = Vec::new();
         for (index, action) in decision.actions.iter().enumerate() {
@@ -328,6 +335,9 @@ impl<'a> DecisionPreparation<'a> {
                 position,
             } => {
                 let definition = self.catalog_definition(building_type)?;
+                settlement
+                    .validate_new_building_rules(&definition)
+                    .map_err(|rule| ActionError::BuildingRule { rule })?;
                 self.world
                     .validate_blueprint_site(settlement.id(), *position, &definition)
                     .map_err(|error| Self::site_error(*position, error))?;
@@ -366,6 +376,14 @@ impl<'a> DecisionPreparation<'a> {
                         building_id: *building_id,
                     });
                 }
+                settlement
+                    .validate_building_upgrade_rules(*building_id, &definition)
+                    .map_err(|error| match error {
+                        ProjectError::BuildingRule(rule) => ActionError::BuildingRule { rule },
+                        _ => ActionError::UnknownBuilding {
+                            building_id: *building_id,
+                        },
+                    })?;
                 self.world
                     .validate_upgrade_site(settlement.id(), building.position(), &definition)
                     .map_err(|error| Self::site_error(building.position(), error))?;
@@ -457,6 +475,9 @@ impl<'a> DecisionPreparation<'a> {
             }
             SettlementAction::PublishMarketOffers { offers } => {
                 let offers = resolve_offers(settlement, offers)?;
+                if !settlement.market_fits(&offers) {
+                    return Err(ActionError::MarketCapacityExceeded);
+                }
                 batch.ensure_free(Target::Market)?;
                 let (goods, gold) = offer_demand(&offers);
                 batch.check_market(settlement, &goods, gold)?;
@@ -548,6 +569,15 @@ impl<'a> DecisionPreparation<'a> {
     ) -> Result<Checked, ActionError> {
         let resolved = resolve_offers(settlement, offers)?;
         self.check_caravan_receiver(settlement, receiver_id)?;
+        let units = offer_units(&resolved);
+        let mut usage = batch.caravan_usage;
+        usage.add(units);
+        if settlement
+            .trade_limits()
+            .is_some_and(|limits| !usage.fits(limits))
+        {
+            return Err(ActionError::CaravanCapacityExceeded);
+        }
         let (goods, gold) = offer_demand(&resolved);
         // The engine skips orders that carry neither goods nor gold.
         if goods.is_empty() && gold == 0 {
@@ -579,6 +609,7 @@ impl<'a> DecisionPreparation<'a> {
         );
         checked.caravan_goods = goods;
         checked.caravan_gold = gold;
+        checked.caravan_units = Some(units);
         Ok(checked)
     }
 }

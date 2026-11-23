@@ -3,6 +3,7 @@ mod building;
 pub mod catalog;
 pub mod definition;
 pub mod effects;
+pub mod passive;
 pub mod productivity;
 
 pub use building::{Building, LoadError, ProductionResult};

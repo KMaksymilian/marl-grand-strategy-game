@@ -1,6 +1,8 @@
 //! Published market offers, caravan orders, funded departures and returns waiting to be unloaded.
 mod lifecycle;
 
+use super::CaravanUsage;
+use crate::domain::buildings::passive::TradeLimitBonuses;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
 use crate::domain::intelligence::InformationSnapshot;
@@ -17,6 +19,8 @@ pub struct CaravanOrder {
 
 #[derive(Debug, Default)]
 pub(in crate::domain::settlement) struct TradeManager {
+    pub(super) base_limits: Option<TradeLimitBonuses>,
+    pub(super) active_caravans: CaravanUsage,
     /// Copied into the market book and funded at the start of every turn.
     pub(in crate::domain::settlement) market_offers: HashMap<ResourceType, TradeOffer>,
     /// Funded during the next turn, in queue order, after the market book.

@@ -1,11 +1,40 @@
 //! Caravan transport coordinates the same settlement instances as construction.
 use super::World;
+use crate::domain::buildings::passive::TradeLimitBonuses;
 use crate::domain::ids::SettlementId;
+use crate::domain::settlement::{CaravanUsage, offer_units};
 use crate::domain::trade::caravan::{Caravan, CaravanOutcome, CaravanReturn, CaravanState};
 use crate::domain::world::{Point, pathfinding::path_finder::PathFinder};
 use std::collections::HashMap;
 
 impl World {
+    pub fn set_base_trade_limits(&mut self, limits: Option<TradeLimitBonuses>) {
+        self.base_trade_limits = limits;
+        for id in self.settlement_ids() {
+            self.settlement_mut(id)
+                .expect("registered settlement")
+                .set_base_trade_limits(limits);
+        }
+    }
+
+    pub(crate) fn active_caravan_usage(&self, id: SettlementId) -> CaravanUsage {
+        let mut usage = CaravanUsage::default();
+        for caravan in self
+            .caravans
+            .iter()
+            .filter(|caravan| caravan.sender_id == id)
+        {
+            let book = caravan.book();
+            let purchased: u64 = book
+                .bought_goods()
+                .values()
+                .map(|&amount| u64::from(amount))
+                .sum();
+            usage.add(offer_units(book.offers()).saturating_add(purchased));
+        }
+        usage
+    }
+
     pub(crate) fn prepare_settlement_turn(
         &mut self,
         id: SettlementId,
@@ -15,26 +44,26 @@ impl World {
         let province_id = self
             .settlement_province(id)
             .expect("registered settlement province");
+        let usage = self.active_caravan_usage(id);
         let mut visitors: Vec<_> = self
             .caravans
             .iter_mut()
             .filter(|caravan| caravan.state() == CaravanState::Trading && caravan.receiver_id == id)
             .collect();
         visitors.sort_by_key(|caravan| caravan.sender_id);
-        self.settlements
-            .get_mut(id)
-            .expect("registered settlement")
-            .prepare_turn(
-                &mut crate::domain::world::settlement_environment::MapSettlementEnvironment::new(
-                    &self.map,
-                    finder,
-                    &mut self.territory,
-                )
-                .with_province(province_id),
-                &mut visitors,
-                turn,
-                province_id,
+        let settlement = self.settlements.get_mut(id).expect("registered settlement");
+        settlement.set_active_caravan_usage(usage);
+        settlement.prepare_turn(
+            &mut crate::domain::world::settlement_environment::MapSettlementEnvironment::new(
+                &self.map,
+                finder,
+                &mut self.territory,
             )
+            .with_province(province_id),
+            &mut visitors,
+            turn,
+            province_id,
+        )
     }
 
     pub(crate) fn capital_trade_locations(&self) -> HashMap<SettlementId, Point> {

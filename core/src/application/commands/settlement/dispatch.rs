@@ -83,11 +83,14 @@ impl<'a> CommandDispatch<'a> {
             SettlementCommand::OrderCaravan {
                 receiver_id,
                 offers,
-            } => world
-                .settlement_mut(id)
-                .map_err(CommandError::World)?
-                .order_caravan(*receiver_id, offers.clone())
-                .map_err(CommandError::Trade),
+            } => {
+                let usage = world.active_caravan_usage(id);
+                let settlement = world.settlement_mut(id).map_err(CommandError::World)?;
+                settlement.set_active_caravan_usage(usage);
+                settlement
+                    .order_caravan(*receiver_id, offers.clone())
+                    .map_err(CommandError::Trade)
+            }
         }
     }
 }

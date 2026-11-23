@@ -1,6 +1,6 @@
 use crate::domain::economy::storage_order::StorageOrderError;
 use crate::domain::economy::{
-    InventoryRejection, ResourceCatalog, ResourceInventory, ResourceType,
+    CapacityError, InventoryRejection, ResourceCatalog, ResourceInventory, ResourceType,
 };
 use crate::domain::settlement::turn_report::{InventoryLoss, InventoryLossStage};
 use std::collections::HashMap;
@@ -9,6 +9,7 @@ use std::collections::HashMap;
 pub struct SettlementInventoryManager {
     pub(in crate::domain::settlement) main: ResourceInventory,
     pub(in crate::domain::settlement) pending_production: ResourceInventory,
+    base_capacity: u32,
 }
 
 impl SettlementInventoryManager {
@@ -16,7 +17,35 @@ impl SettlementInventoryManager {
         Self {
             main: ResourceInventory::with_resource_catalog(capacity, resources),
             pending_production: ResourceInventory::with_resource_catalog(capacity, resources),
+            base_capacity: capacity,
         }
+    }
+
+    pub(in crate::domain::settlement) fn apply_building_capacity(&mut self, bonus: u32) {
+        let effective = self.base_capacity.saturating_add(bonus);
+        self.main.resize(effective);
+        self.pending_production.resize(effective);
+    }
+
+    pub(in crate::domain::settlement) fn set_base_capacity(
+        &mut self,
+        base: u32,
+        bonus: u32,
+    ) -> Result<(), CapacityError> {
+        let effective = base.saturating_add(bonus);
+        let stored = self
+            .main
+            .total_amount()
+            .max(self.pending_production.total_amount());
+        if stored > u64::from(effective) {
+            return Err(CapacityError {
+                requested: effective,
+                stored,
+            });
+        }
+        self.base_capacity = base;
+        self.apply_building_capacity(bonus);
+        Ok(())
     }
 
     pub fn set_storage_order(

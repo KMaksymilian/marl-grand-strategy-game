@@ -34,6 +34,24 @@ impl TerritoryManager {
         self.occupy_empty(position, TileOccupancy::Building(building))
     }
 
+    /// Releases the slot only if it holds the expected building.
+    pub(crate) fn remove_building(
+        &mut self,
+        position: Position,
+        expected: BuildingReference,
+    ) -> Result<(), TerritoryError> {
+        let actual = self.tile_at(position).occupancy();
+        if actual != TileOccupancy::Building(expected) {
+            return Err(TerritoryError::BuildingMismatch {
+                position,
+                expected,
+                actual,
+            });
+        }
+        self.tiles.remove(&position);
+        Ok(())
+    }
+
     /// Returns a read-only snapshot. This does not validate map coordinates.
     pub fn tile_at(&self, position: Position) -> Tile {
         self.tiles.get(&position).copied().unwrap_or_default()

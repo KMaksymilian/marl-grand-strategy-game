@@ -4,10 +4,10 @@ use crate::domain::economy::ResourceType;
 use crate::domain::intelligence::{
     MarketObservation, MarketObservationSource, ObservationStrategy,
 };
-use crate::domain::settlement::Settlement;
 use crate::domain::settlement::turn_report::{
     DispatchedCaravan, MarketTrade, MaterialTotals, ReturnedCaravan, TradeTurnReport,
 };
+use crate::domain::settlement::{Settlement, offer_units};
 use crate::domain::trade::allocation::TradeAllocationEngine;
 use crate::domain::trade::book::TradeBook;
 use crate::domain::trade::caravan::{Caravan, CaravanCargo, CaravanState};
@@ -24,7 +24,25 @@ fn totals<'a>(goods: impl IntoIterator<Item = (&'a ResourceType, &'a u32)>) -> M
 impl Settlement {
     /// Moves stock and gold requested by the published offers into the market book.
     pub(in crate::domain::settlement) fn reserve_market(&mut self, report: &mut TradeTurnReport) {
-        self.book.replace_offers(self.trade.market_offers.clone());
+        let mut offers = self.trade.market_offers.clone();
+        if let Some(limits) = self.trade_limits() {
+            let mut sorted: Vec<_> = offers.into_iter().collect();
+            sorted.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+            let mut remaining = limits.open_offer_units;
+            offers = sorted
+                .into_iter()
+                .filter_map(|(resource, mut offer)| {
+                    let units = offer.remaining_units().min(remaining);
+                    if units == 0 {
+                        return None;
+                    }
+                    remaining -= units;
+                    Some((resource, offer.take_share(units)))
+                })
+                .take(limits.offer_slots as usize)
+                .collect();
+        }
+        self.book.replace_offers(offers);
         let demands = self.book.calculate_demand();
         TradeAllocationEngine::execute(
             &mut self.book,
@@ -41,7 +59,15 @@ impl Settlement {
         &mut self,
         report: &mut TradeTurnReport,
     ) {
+        let limits = self.trade_limits();
+        let mut usage = self.trade.active_caravans;
         for order in std::mem::take(&mut self.trade.orders) {
+            let mut next_usage = usage;
+            next_usage.add(offer_units(&order.offers));
+            if limits.is_some_and(|limits| !next_usage.fits(limits)) {
+                report.unfunded_caravan_orders.push(order.receiver_id);
+                continue;
+            }
             let mut book = TradeBook::with_offers(order.offers);
             let demands = book.calculate_demand();
             TradeAllocationEngine::execute(
@@ -55,6 +81,7 @@ impl Settlement {
                 report.unfunded_caravan_orders.push(order.receiver_id);
                 continue;
             }
+            usage = next_usage;
             report.caravans_dispatched.push(DispatchedCaravan {
                 receiver_id: order.receiver_id,
                 cargo,

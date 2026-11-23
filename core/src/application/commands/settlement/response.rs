@@ -9,6 +9,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "reason", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ActionError {
+    MarketCapacityExceeded,
+    CaravanCapacityExceeded,
+    BuildingRule {
+        rule: crate::domain::buildings::passive::BuildingRuleError,
+    },
     UnknownBuildingType {
         building_type: BuildingTypeId,
     },

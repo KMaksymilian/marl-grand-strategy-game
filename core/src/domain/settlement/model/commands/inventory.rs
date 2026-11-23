@@ -16,11 +16,13 @@ impl Settlement {
         self.inventory_manager.main.consume(resource, amount)
     }
 
+    /// Changes base capacity. Completed warehouses add to this amount.
     pub fn set_inventory_capacity(
         &mut self,
         capacity: u32,
     ) -> Result<(), crate::domain::economy::CapacityError> {
-        self.inventory_manager.main.set_capacity(capacity)
+        let bonus = self.passive_building_effects().warehouse_capacity;
+        self.inventory_manager.set_base_capacity(capacity, bonus)
     }
 
     /// Applies to incoming storage batches; does not evict existing stock.

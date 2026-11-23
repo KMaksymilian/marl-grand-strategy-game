@@ -1,8 +1,10 @@
 //! Applies validated agent decisions through the existing settlement commands.
-use super::{CommandDispatch, preparation::DecisionPreparation};
+use super::{CommandDispatch, dispatch::CommandError, preparation::DecisionPreparation};
 use crate::application::commands::settlement::contract::{
     ActionError, ActionOutcome, ActionResult, DecisionOutcome, SettlementDecision,
 };
+use crate::domain::settlement::TradeCommandError;
+use crate::domain::settlement::projects::ProjectError;
 use crate::domain::world::WorldError;
 
 /// Validates the decision, then executes the accepted actions in submission
@@ -30,8 +32,19 @@ pub(crate) fn handle_decision(
             Ok(()) => ActionOutcome::Applied {
                 effect: accepted.effect,
             },
-            Err(_) => ActionOutcome::Rejected {
-                error: ActionError::ExecutionFailed,
+            Err(error) => ActionOutcome::Rejected {
+                error: match error {
+                    CommandError::World(WorldError::Project(ProjectError::BuildingRule(rule))) => {
+                        ActionError::BuildingRule { rule }
+                    }
+                    CommandError::Trade(TradeCommandError::MarketCapacityExceeded) => {
+                        ActionError::MarketCapacityExceeded
+                    }
+                    CommandError::Trade(TradeCommandError::CaravanCapacityExceeded) => {
+                        ActionError::CaravanCapacityExceeded
+                    }
+                    _ => ActionError::ExecutionFailed,
+                },
             },
         };
         results.push(ActionResult {

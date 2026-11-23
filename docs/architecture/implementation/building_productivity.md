@@ -37,12 +37,23 @@ productivity = numerator / denominator
 | --- | --- |
 | `target_load: f32` | Requested fraction of staffing and inputs, validated in 0..=1 |
 | Recipe work fraction | Actual execution limited by granted workers and remaining inputs |
-| `location_productivity()` | Cached output multiplier computed from the current A* travel cost |
+| `location_productivity()` | Cached yield factor from the current A* travel cost |
 
 `target_efficiency` is renamed to `target_load`. A new building starts active at load zero. Without a configured calculator (`None`), location productivity is 1. When a policy is configured, the registered settlement capital supplies its A* origin. Registration and later policy changes keep the calculator aligned with that capital.
 
 ```text
 work = min(granted_workers / max_workers, remaining_input / base_input, ...)
 consumed_input = ceil(base_input * work)
-produced_output = floor(base_output * work * location_productivity)
+yield_factor = max(0, location_productivity + sum(modifier_basis_points) / 10000)
+produced_output = floor(base_output * work * yield_factor)
 ```
+
+An unreachable A* route forces zero output even with positive modifiers. A reachable
+route at the zero-productivity threshold contributes a penalty of 100%.
+
+Register sources with `Settlement::add_production_modifier_strategy`. Each strategy
+can inspect the building, its allocated workers and the current tile biome.
+`BiomeProductionModifier` supplies an optional rule for a building type and biome.
+The rules apply after allocation and leave recipe input consumption unchanged.
+Register terrain rules when configuring a settlement. For a temporary effect
+such as a decree, the strategy should return a modifier only while it applies.

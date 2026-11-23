@@ -1,5 +1,6 @@
 //! Short-lived adapters. Lifetimes belong here, never to Settlement or Building.
 use super::pathfinding::{a_star::AStar, path_finder::PathFinder};
+use super::terrain::biome::Biome;
 use super::{
     Map,
     territory::{
@@ -128,6 +129,12 @@ impl TravelCostSource for MapSettlementEnvironment<'_> {
 }
 
 impl ConstructionSpace for MapSettlementEnvironment<'_> {
+    fn production_biome(&self, position: Position) -> Option<Biome> {
+        let map = self.space.map;
+        map.tile_index(position)
+            .map(|index| map.terrain[index].determine_biome())
+    }
+
     fn is_coastal(&self, position: Position) -> bool {
         self.space.is_coastal(position)
     }

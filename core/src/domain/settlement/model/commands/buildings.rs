@@ -3,12 +3,21 @@ use super::super::{BuildingCommandError, Settlement};
 use crate::domain::buildings::Building;
 use crate::domain::buildings::definition::{BuildingBehavior, BuildingDefinition};
 use crate::domain::buildings::productivity::BuildingProductivityCalculator;
-use crate::domain::buildings::productivity::TravelCostSource;
+use crate::domain::buildings::productivity::{ProductionModifierStrategy, TravelCostSource};
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::BuildingId;
 use crate::domain::spatial::{BuildingReference, ConstructionSpace, Position, TerritoryError};
 
 impl Settlement {
+    /// Adds a yield modifier source for this settlement's production turns.
+    pub fn add_production_modifier_strategy(
+        &mut self,
+        strategy: impl ProductionModifierStrategy + 'static,
+    ) {
+        self.building_manager
+            .add_production_modifier_strategy(strategy);
+    }
+
     pub(crate) fn validate_coastal_site(
         definition: &BuildingDefinition,
         position: Position,

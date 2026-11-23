@@ -1,6 +1,9 @@
 //! Input/labour demand, allocation resolution and exact recipe execution.
 use super::{Building, ProductionResult};
 use crate::domain::buildings::definition::BuildingBehavior;
+use crate::domain::buildings::productivity::{
+    ProductionModifierContext, ProductionModifierStrategy,
+};
 use crate::domain::economy::ResourceType;
 use std::collections::HashMap;
 
@@ -32,6 +35,14 @@ impl Building {
         &mut self,
         granted: Option<&HashMap<ResourceType, u32>>,
     ) -> ProductionResult {
+        self.resolve_modified_allocation(granted, &[])
+    }
+
+    pub(crate) fn resolve_modified_allocation(
+        &mut self,
+        granted: Option<&HashMap<ResourceType, u32>>,
+        modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
+    ) -> ProductionResult {
         let mut material_grants = granted.cloned().unwrap_or_default();
 
         if self.is_active && self.definition.max_workers() > 0 {
@@ -42,16 +53,30 @@ impl Building {
             material_grants.remove(&ResourceType::Labour);
         }
 
-        self.execute_production(&material_grants)
+        self.execute_production(&material_grants, modifier_strategies)
     }
 
-    fn execute_production(&self, granted: &HashMap<ResourceType, u32>) -> ProductionResult {
+    fn execute_production(
+        &self,
+        granted: &HashMap<ResourceType, u32>,
+        modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
+    ) -> ProductionResult {
         let mut produced = HashMap::new();
         let mut unused = granted.clone();
 
         if !self.is_active || self.current_workers == 0 {
             return ProductionResult { produced, unused };
         }
+
+        let context = ProductionModifierContext {
+            building: self,
+            biome: self.production_biome,
+        };
+        let modifier_basis_points = modifier_strategies
+            .iter()
+            .filter_map(|strategy| strategy.modifier(&context))
+            .map(|modifier| i128::from(modifier.basis_points))
+            .sum();
 
         // Recipes run in definition order against the remaining material balance.
         // Exact fractions avoid floating-point rounding at the withdrawal boundary.
@@ -87,13 +112,14 @@ impl Building {
                     }
                 }
                 for (resource, amount) in outputs {
-                    let output =
-                        self.location_productivity
-                            .scale_output(*amount, numerator, denominator);
-                    let total = produced.entry(resource.clone()).or_insert(0_u32);
-                    *total = total
-                        .checked_add(output)
-                        .expect("production exceeds u32 capacity");
+                    let output = self.location_productivity.scale_output(
+                        *amount,
+                        numerator,
+                        denominator,
+                        modifier_basis_points,
+                    );
+                    let total = produced.entry(resource.clone()).or_insert(0_u64);
+                    *total = total.saturating_add(output);
                 }
             }
         }

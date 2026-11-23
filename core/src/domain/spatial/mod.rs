@@ -63,6 +63,14 @@ pub enum TerritoryError {
 /// are qualified by settlement identity. Returning `Err` must leave occupancy
 /// unchanged; successful operations must be visible to subsequent validation.
 pub trait ConstructionSpace {
+    /// Biome of the tile occupied by a producing building, if terrain is available.
+    fn production_biome(
+        &self,
+        _position: Position,
+    ) -> Option<crate::domain::world::terrain::biome::Biome> {
+        None
+    }
+
     /// Whether this land tile shares an edge with the ocean.
     fn is_coastal(&self, _position: Position) -> bool {
         false

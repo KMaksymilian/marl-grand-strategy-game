@@ -1,4 +1,61 @@
+use super::Building;
 use crate::domain::spatial::Position;
+use crate::domain::world::terrain::biome::Biome;
+
+const BASIS_POINTS_PER_UNIT: u32 = 10_000;
+
+/// A named change to production yield. 100 basis points equal 1%.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProductionModifier {
+    pub source: String,
+    pub basis_points: i32,
+}
+
+impl ProductionModifier {
+    pub fn new(source: impl Into<String>, basis_points: i32) -> Self {
+        Self {
+            source: source.into(),
+            basis_points,
+        }
+    }
+}
+
+pub struct ProductionModifierContext<'a> {
+    /// The building already has its actual worker allocation for this turn.
+    pub building: &'a Building,
+    pub biome: Option<Biome>,
+}
+
+/// Supplies one additive yield modifier when its conditions are met.
+pub trait ProductionModifierStrategy: std::fmt::Debug + Send + Sync {
+    fn modifier(&self, context: &ProductionModifierContext<'_>) -> Option<ProductionModifier>;
+}
+
+/// Applies a yield modifier to one building type on a specific biome.
+#[derive(Debug)]
+pub struct BiomeProductionModifier {
+    building_type: String,
+    biome: Biome,
+    basis_points: i32,
+}
+
+impl BiomeProductionModifier {
+    pub fn new(building_type: impl Into<String>, biome: Biome, basis_points: i32) -> Self {
+        Self {
+            building_type: building_type.into(),
+            biome,
+            basis_points,
+        }
+    }
+}
+
+impl ProductionModifierStrategy for BiomeProductionModifier {
+    fn modifier(&self, context: &ProductionModifierContext<'_>) -> Option<ProductionModifier> {
+        (context.building.definition().id() == self.building_type
+            && context.biome == Some(self.biome))
+        .then(|| ProductionModifier::new("biome", self.basis_points))
+    }
+}
 
 /// Map-independent source of directed movement costs (Strategy boundary).
 pub trait TravelCostSource {
@@ -42,7 +99,7 @@ impl TravelCostEfficiencyPolicy {
 
     fn productivity(self, travel_cost: Option<u32>) -> LocationProductivity {
         let Some(cost) = travel_cost else {
-            return LocationProductivity::ZERO;
+            return LocationProductivity::UNREACHABLE;
         };
         if cost <= self.full_productivity_cost {
             LocationProductivity::FULL
@@ -52,6 +109,7 @@ impl TravelCostEfficiencyPolicy {
             LocationProductivity {
                 numerator: self.zero_productivity_cost - cost,
                 denominator: self.zero_productivity_cost - self.full_productivity_cost,
+                reachable: true,
             }
         }
     }
@@ -106,30 +164,53 @@ impl BuildingProductivityCalculator {
 pub(crate) struct LocationProductivity {
     numerator: u32,
     denominator: u32,
+    reachable: bool,
 }
 
 impl LocationProductivity {
     pub(crate) const ZERO: Self = Self {
         numerator: 0,
         denominator: 1,
+        reachable: true,
+    };
+
+    const UNREACHABLE: Self = Self {
+        reachable: false,
+        ..Self::ZERO
     };
 
     pub(crate) const FULL: Self = Self {
         numerator: 1,
         denominator: 1,
+        reachable: true,
     };
 
     pub(crate) fn as_factor(self) -> f64 {
         f64::from(self.numerator) / f64::from(self.denominator)
     }
 
-    pub(crate) fn scale_output(self, amount: u32, work: u128, capacity: u128) -> u32 {
-        // Each factor is bounded by a validated u32 recipe total or travel-cost threshold.
-        u32::try_from(
-            u128::from(amount) * work * u128::from(self.numerator)
-                / (capacity * u128::from(self.denominator)),
-        )
-        .expect("productivity cannot increase recipe output")
+    pub(crate) fn scale_output(
+        self,
+        amount: u32,
+        work: u128,
+        capacity: u128,
+        modifier_basis_points: i128,
+    ) -> u64 {
+        if !self.reachable {
+            return 0;
+        }
+        // Keep the A* penalty as an exact ratio and add other sources to it.
+        let multiplier = i128::from(self.numerator) * i128::from(BASIS_POINTS_PER_UNIT)
+            + modifier_basis_points * i128::from(self.denominator);
+        let divisor = u128::from(self.denominator) * u128::from(BASIS_POINTS_PER_UNIT);
+        let multiplier = multiplier.max(0) as u128;
+        let work_output = u128::from(amount) * work;
+        // Split the multiplier so the fractional product stays within u128.
+        // The work divisor fits in u32, so saturation only affects yields above u64::MAX.
+        let whole = work_output.saturating_mul(multiplier / divisor);
+        let fractional = work_output * (multiplier % divisor) / divisor;
+        let output = whole.saturating_add(fractional) / capacity;
+        output.min(u128::from(u64::MAX)) as u64
     }
 }
 
@@ -162,8 +243,8 @@ mod tests {
         let policy = TravelCostEfficiencyPolicy::new(0, u32::MAX).unwrap();
         let ratio = policy.productivity(Some(1));
         assert_eq!(
-            ratio.scale_output(u32::MAX, u128::from(u32::MAX), u128::from(u32::MAX)),
-            u32::MAX - 1
+            ratio.scale_output(u32::MAX, u128::from(u32::MAX), u128::from(u32::MAX), 0),
+            u64::from(u32::MAX - 1)
         );
         assert_eq!(policy.productivity(Some(u32::MAX)).as_factor(), 0.0);
     }
@@ -173,6 +254,6 @@ mod tests {
         let ratio = TravelCostEfficiencyPolicy::new(0, 30)
             .unwrap()
             .productivity(Some(10));
-        assert_eq!(ratio.scale_output(3, 1, 2), 1);
+        assert_eq!(ratio.scale_output(3, 1, 2, 0), 1);
     }
 }

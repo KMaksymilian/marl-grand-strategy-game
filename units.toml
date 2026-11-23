@@ -1,0 +1,91 @@
+# Military units (gameplay specification §10 and §11).
+#
+# A unit (oddział) is `soldiers_per_unit` people taken from the population of
+# the recruiting settlement. Its equipment comes from the national stock when
+# it is recruited; resource IDs are those of resources.toml. Upkeep is paid
+# every turn per soldier: food from the national stock and gold from the
+# national treasury.
+#
+# `advantage_against` lists the unit types this one beats: its attack or
+# defence counts `advantage_multiplier` times against them.
+# `wall_bonus_reduction` is how much each unit of this type on the attacking
+# side lowers the defenders' wall bonus (0.25 = 25 percentage points, §11.4).
+
+[rules]
+soldiers_per_unit = 50
+# Share of a settlement's population that may serve at the same time (§10.2);
+# decrees may multiply it.
+conscription_share = 0.1
+recruitment_turns = 2
+advantage_multiplier = 1.5
+
+# Morale (§10.3), from 0 to `max_morale`; a unit at 0 deserts.
+initial_morale = 100
+max_morale = 100
+morale_gain_full_upkeep = 20
+morale_gain_tier2_food = 30
+morale_loss_partial_upkeep = 20
+
+# Battles (§11.3): the loser loses `loser_unit_losses` of its units (rounded
+# up) and `loser_morale_loss` morale; strength varies by ± `strength_variance`.
+loser_unit_losses = 0.3
+loser_morale_loss = 30
+strength_variance = 0.1
+
+# Garrison (§11.4): units of `garrison_unit` from `garrison_share` of the
+# settlement's population; no upkeep, outside the conscription pool.
+garrison_unit = "levy"
+garrison_share = 0.05
+
+[[units]]
+id = "levy"
+name = "Levy"
+attack = 1
+defense = 1
+movement = 1
+gold_upkeep = 1
+food_upkeep = 1
+
+[[units]]
+id = "spearmen"
+name = "Spearmen"
+equipment = { bronze = 25, planks = 25 }
+attack = 2
+defense = 3
+movement = 1
+advantage_against = ["cavalry"]
+gold_upkeep = 1
+food_upkeep = 1
+
+[[units]]
+id = "archers"
+name = "Archers"
+equipment = { planks = 50, tools = 10 }
+attack = 3
+defense = 1
+movement = 1
+advantage_against = ["spearmen"]
+gold_upkeep = 1
+food_upkeep = 1
+
+[[units]]
+id = "cavalry"
+name = "Cavalry"
+equipment = { cattle = 25, steel = 25 }
+attack = 3
+defense = 2
+movement = 2
+advantage_against = ["archers"]
+gold_upkeep = 2
+food_upkeep = 1
+
+[[units]]
+id = "siege_engines"
+name = "Siege Engines"
+equipment = { planks = 50, tools = 25 }
+attack = 1
+defense = 0
+movement = 1
+wall_bonus_reduction = 0.25
+gold_upkeep = 2
+food_upkeep = 1

@@ -25,15 +25,21 @@ pub struct NationTurnReport {
     /// declared on it, allies joining, proposals received and answered,
     /// broken treaties, embargoes, expired proposals, ended truces (§8).
     pub diplomacy: Vec<DiplomaticEvent>,
+    /// Decrees at the end of the turn: pending, active or cooling down (§7).
+    pub decrees: BTreeMap<DecreeId, DecreeState>,
+    /// Decree upkeep paid this turn, and decrees revoked because the treasury
+    /// could not pay them.
+    pub decree_upkeep: DecreeUpkeepReport,
 }
 
 impl NationTurnReport {
     /// The end-of-turn state of a nation owning `settlements`, with this
-    /// turn's taxes.
+    /// turn's taxes and decree upkeep.
     pub(crate) fn closing(
         nation: &Nation,
         settlements: Vec<SettlementId>,
         taxes: NationTaxReport,
+        decree_upkeep: DecreeUpkeepReport,
     ) -> Self {
         Self {
             tax_rate: nation.tax_rate(),
@@ -44,6 +50,8 @@ impl NationTurnReport {
             closing_stock: nation.stock_amounts(),
             taxes,
             diplomacy: Vec::new(),
+            decrees: nation.decrees().states().clone(),
+            decree_upkeep,
         }
     }
 }

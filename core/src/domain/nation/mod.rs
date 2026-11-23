@@ -6,6 +6,8 @@
 //! [`registry::NationRegistry`]. Rules that need settlements as well (capital
 //! succession, extinction, subsidies) are coordinated by World.
 pub mod diplomacy;
+pub mod decree;
+pub mod decree_catalog;
 pub mod registry;
 pub mod report;
 pub mod taxation;
@@ -13,6 +15,7 @@ pub mod taxation;
 use crate::domain::economy::gold_inventory::GoldInventory;
 use crate::domain::economy::{InventoryAddResult, ResourceInventory, ResourceType};
 use crate::domain::ids::{NationId, SettlementId};
+use decree::DecreeBook;
 use std::collections::BTreeMap;
 
 /// One nation. Its settlements are not stored here: ownership lives in the
@@ -35,6 +38,8 @@ pub struct Nation {
     /// Turns left of the penalty for losing the capital (§4.2); its effect on
     /// happiness arrives with the happiness model.
     capital_loss_turns: u32,
+    /// Pending, active and cooling-down decrees (§7).
+    decrees: DecreeBook,
 }
 
 impl Nation {
@@ -59,6 +64,7 @@ impl Nation {
             stock: ResourceInventory::new(Self::STOCK_CAPACITY_PER_SETTLEMENT),
             tax_rate: Self::BASE_TAX_RATE,
             capital_loss_turns: 0,
+            decrees: DecreeBook::default(),
         }
     }
 
@@ -163,6 +169,14 @@ impl Nation {
         self.stock.resize(capacity);
     }
 
+    pub fn decrees(&self) -> &DecreeBook {
+        &self.decrees
+    }
+
+    pub(crate) fn decrees_mut(&mut self) -> &mut DecreeBook {
+        &mut self.decrees
+    }
+
     /// Moves the capital after the old one was lost and starts the penalty.
     pub(crate) fn replace_lost_capital(&mut self, capital: SettlementId) {
         self.capital = capital;
@@ -172,6 +186,7 @@ impl Nation {
     /// Counts down per-turn timers at the end of a global turn.
     pub(crate) fn advance_turn(&mut self) {
         self.capital_loss_turns = self.capital_loss_turns.saturating_sub(1);
+        self.decrees.advance_turn();
     }
 }
 

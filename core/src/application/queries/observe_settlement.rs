@@ -127,6 +127,7 @@ impl ObservationQuery<'_> {
                         )
                 })
                 .collect(),
+            active_decrees: nation.decrees().active().cloned().collect(),
         })
     }
 

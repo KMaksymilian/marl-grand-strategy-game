@@ -3,6 +3,7 @@ use super::contract::NationActionKind;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::diplomacy::{DiplomacyError, DiplomaticOutcome};
+use crate::domain::nation::decree::DecreeId;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -34,6 +35,21 @@ pub enum NationActionError {
     Diplomacy { error: DiplomacyError },
     /// An earlier action of the same decision already sets the same policy or
     /// targets the same nation.
+    /// No decree with this ID in the decree catalogue.
+    UnknownDecree { decree: DecreeId },
+    /// The decree is already pending or active.
+    DecreeAlreadyEnacted { decree: DecreeId },
+    /// The decree was revoked recently; it can be enacted again after
+    /// `turns_left` more turns.
+    DecreeOnCooldown { decree: DecreeId, turns_left: u32 },
+    /// Every decree slot is taken by a pending or active decree.
+    NoFreeDecreeSlot { slots: usize },
+    /// Only an active decree can be revoked (not a pending one).
+    DecreeNotActive { decree: DecreeId },
+    /// The decree must stay active for `turns_left` more turns.
+    DecreeMinimumDuration { decree: DecreeId, turns_left: u32 },
+    /// An earlier action of the same decision already sets the same policy or
+    /// targets the same decree.
     Conflict { with_index: usize },
     /// The engine refused an action that passed validation; the state is unchanged.
     ExecutionFailed,
@@ -57,6 +73,16 @@ pub enum NationActionEffect {
     /// A diplomatic action took effect (§8).
     Diplomacy {
         outcome: DiplomaticOutcome,
+    /// Pending this turn, active from the next; `upkeep` is the gold it will
+    /// cost every active turn (for the current number of settlements).
+    DecreeEnacted {
+        decree: DecreeId,
+        upkeep: u64,
+    },
+    /// Ended now; it can be enacted again after `cooldown_turns` turns.
+    DecreeRevoked {
+        decree: DecreeId,
+        cooldown_turns: u32,
     },
 }
 

@@ -15,6 +15,8 @@
 //!     { "type": "declare_war", "target": 1 },
 //!     { "type": "propose_treaty", "target": 2, "treaty": "trade_agreement" },
 //!     { "type": "respond_to_proposal", "proposer": 2, "treaty": "peace", "accept": true }
+//!     { "type": "enact_decree", "decree": "agricultural_decree" },
+//!     { "type": "revoke_decree", "decree": "games" }
 //!   ]
 //! }
 //! ```
@@ -25,6 +27,7 @@ pub use super::response::{
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::diplomacy::{DiplomaticAction, Treaty};
+use crate::domain::nation::decree::DecreeId;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -90,6 +93,12 @@ pub enum NationAction {
         treaty: Treaty,
         accept: bool,
     },
+    /// Start a decree: it takes a slot now, works from the next turn and costs
+    /// its upkeep every active turn (§7). Enacting itself costs nothing.
+    EnactDecree { decree: DecreeId },
+    /// End a decree active for the minimum duration; it can be enacted again
+    /// after the cooldown. Nothing is refunded.
+    RevokeDecree { decree: DecreeId },
 }
 
 impl NationAction {
@@ -104,6 +113,8 @@ impl NationAction {
             Self::BreakAlliance { .. } => NationActionKind::BreakAlliance,
             Self::ProposeTreaty { .. } => NationActionKind::ProposeTreaty,
             Self::RespondToProposal { .. } => NationActionKind::RespondToProposal,
+            Self::EnactDecree { .. } => NationActionKind::EnactDecree,
+            Self::RevokeDecree { .. } => NationActionKind::RevokeDecree,
         }
     }
 
@@ -145,6 +156,8 @@ pub enum NationActionKind {
     BreakAlliance,
     ProposeTreaty,
     RespondToProposal,
+    EnactDecree,
+    RevokeDecree,
 }
 
 impl NationActionKind {
@@ -216,6 +229,11 @@ mod tests {
                 proposer: NationId(2),
                 treaty: Treaty::Peace,
                 accept: true,
+            NationAction::EnactDecree {
+                decree: DecreeId::new("agricultural_decree").unwrap(),
+            },
+            NationAction::RevokeDecree {
+                decree: DecreeId::new("games").unwrap(),
             },
         ]
     }
@@ -252,6 +270,8 @@ mod tests {
                 {"type": "break_alliance", "target": 1},
                 {"type": "propose_treaty", "target": 2, "treaty": "trade_agreement"},
                 {"type": "respond_to_proposal", "proposer": 2, "treaty": "peace", "accept": true}
+                {"type": "enact_decree", "decree": "agricultural_decree"},
+                {"type": "revoke_decree", "decree": "games"}
             ]
         });
         // Compared as the text an agent receives: `to_value` would widen the f32
@@ -297,6 +317,11 @@ mod tests {
             wrap(r#"{"type": "declare_war", "nation": 2}"#),
             wrap(r#"{"type": "propose_treaty", "target": 2, "treaty": "marriage"}"#),
             wrap(r#"{"type": "respond_to_proposal", "proposer": 2, "treaty": "peace"}"#),
+            wrap(r#"{"type": "declare_war", "target": 2}"#),
+            wrap(r#"{"type": "enact_decree", "decree": "Free Beer"}"#),
+            wrap(r#"{"type": "enact_decree"}"#),
+            wrap(r#"{"type": "revoke_decree", "decree": 3}"#),
+            wrap(r#"{"type": "relocate_capital", "settlement_id": 3}"#),
             r#"{"nation_id": -1}"#.to_owned(),
             r#"{"nation_id": 1, "turn": 2}"#.to_owned(),
             r#"{"actions": []}"#.to_owned(),

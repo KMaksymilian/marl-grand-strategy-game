@@ -95,5 +95,16 @@ fn execute(
             })
         }
         NationCommand::Diplomacy(_) => unreachable!("applied by handle_nation_decision"),
+        NationCommand::EnactDecree(decree) => {
+            let upkeep = world.enact_decree(nation_id, decree.clone())?;
+            Ok(NationActionEffect::DecreeEnacted { decree, upkeep })
+        }
+        NationCommand::RevokeDecree(decree) => {
+            let cooldown_turns = world.revoke_decree(nation_id, &decree)?;
+            Ok(NationActionEffect::DecreeRevoked {
+                decree,
+                cooldown_turns,
+            })
+        }
     }
 }

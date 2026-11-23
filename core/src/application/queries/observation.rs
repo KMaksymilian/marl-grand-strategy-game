@@ -10,6 +10,7 @@
 use crate::application::commands::settlement::contract::{OfferSide, OfferSpec};
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{BuildingId, BuildingTypeId, NationId, ProjectId, SettlementId};
+use crate::domain::nation::decree::DecreeId;
 use crate::domain::spatial::Position;
 use crate::domain::world::terrain::elevation::Elevation;
 use crate::domain::world::terrain::moisture::Moisture;
@@ -236,6 +237,8 @@ pub struct NationPolicyObservation {
     pub is_capital: bool,
     /// Nations this settlement's nation is at war with.
     pub at_war_with: Vec<NationId>,
+    /// Decrees of the nation in effect this turn, ascending ID.
+    pub active_decrees: Vec<DecreeId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -7,7 +7,84 @@ use simulation_core::settlement::Settlement;
 use simulation_core::world::generation::deposits::{DepositGenerationConfig, OreDepositRule};
 use simulation_core::world::terrain::{area::Area, biome::Biome};
 use simulation_core::world::{Map, Position, Province, World};
+use std::collections::HashMap;
 use std::sync::Arc;
+
+#[test]
+fn catalog_limits_control_vein_count_and_sizes() {
+    let catalog = Arc::new(
+        ResourceCatalog::from_toml(
+            r#"
+        [deposits]
+        max_veins = 1
+        max_vein_tiles = 4
+
+        [[resources]]
+        id = "iron_ore"
+        name = "Iron"
+        tier = 1
+        category = "metal"
+        max_vein_tiles = 2
+
+        [[resources]]
+        id = "copper_ore"
+        name = "Copper"
+        tier = 1
+        category = "metal"
+        "#,
+        )
+        .unwrap(),
+    );
+    let scenario = || {
+        World::with_resource_catalog(
+            Map::new(
+                11,
+                1,
+                [
+                    vec![area(Biome::Forest); 5],
+                    vec![area(Biome::Ocean)],
+                    vec![area(Biome::Desert); 5],
+                ]
+                .concat(),
+                [vec![10; 6], vec![20; 5]].concat(),
+            ),
+            vec![Province::new(10), Province::new(20)],
+            Arc::clone(&catalog),
+        )
+    };
+    let mut configuration = DepositGenerationConfig::for_catalog(67, &catalog);
+    for rule in &mut configuration.rules {
+        rule.probabilities = [0; 8];
+        let biome_index = if rule.resource_id == "iron_ore" { 2 } else { 0 };
+        rule.probabilities[biome_index] = 100;
+    }
+    let capped = scenario().generate_deposits(&configuration).unwrap();
+    assert_eq!(capped.veins.len(), 1);
+    assert_eq!(
+        capped,
+        scenario().generate_deposits(&configuration).unwrap()
+    );
+
+    configuration.max_veins = 2;
+    let report = scenario().generate_deposits(&configuration).unwrap();
+    let sizes: HashMap<_, _> = report
+        .veins
+        .iter()
+        .map(|vein| (vein.resource.as_str(), vein.tiles.len()))
+        .collect();
+    assert_eq!(sizes, HashMap::from([("IronOre", 2), ("CopperOre", 4)]));
+
+    configuration.max_veins = 0;
+    let mut disabled = scenario();
+    assert!(
+        disabled
+            .generate_deposits(&configuration)
+            .unwrap()
+            .veins
+            .is_empty()
+    );
+    assert_eq!(disabled.map().deposits().count(), 0);
+}
 
 const LAND_BIOMES: [Biome; 8] = [
     Biome::Desert,
@@ -58,6 +135,7 @@ fn config(
     DepositGenerationConfig {
         seed: 1234,
         max_vein_tiles,
+        max_veins: u32::MAX,
         rules: vec![OreDepositRule {
             resource_id: resource_id.into(),
             probabilities,

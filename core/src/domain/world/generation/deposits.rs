@@ -2,6 +2,7 @@
 use crate::domain::economy::{ResourceCatalog, ResourceType};
 use crate::domain::world::terrain::biome::Biome;
 use crate::domain::world::{Position, World, WorldError};
+use rand::seq::SliceRandom;
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use std::collections::{BTreeMap, HashSet};
 
@@ -37,14 +38,18 @@ pub struct DepositGenerationConfig {
     pub seed: u64,
     /// Maximum tiles per vein, including its focus. Must be positive.
     pub max_vein_tiles: u32,
+    /// Maximum generated veins across the map in one generation pass.
+    pub max_veins: u32,
     pub rules: Vec<OreDepositRule>,
 }
 
 impl Default for DepositGenerationConfig {
     fn default() -> Self {
+        let limits = ResourceCatalog::standard().deposit_limits();
         Self {
             seed: 67,
-            max_vein_tiles: 16,
+            max_vein_tiles: limits.max_vein_tiles.get(),
+            max_veins: limits.max_veins,
             rules: [
                 ("coal", [0, 0, 25, 10, 5, 30, 0, 0]),
                 ("iron_ore", [0, 0, 5, 0, 25, 5, 30, 20]),
@@ -65,8 +70,11 @@ impl DepositGenerationConfig {
     /// Standard generation skips ores absent from a custom content catalogue.
     /// Explicit rules supplied to `generate_deposits` require every material to exist.
     pub fn for_catalog(seed: u64, resources: &ResourceCatalog) -> Self {
+        let limits = resources.deposit_limits();
         let mut config = Self {
             seed,
+            max_vein_tiles: limits.max_vein_tiles.get(),
+            max_veins: limits.max_veins,
             ..Self::default()
         };
         config.rules.retain(|rule| {
@@ -133,35 +141,50 @@ impl World {
         config: &DepositGenerationConfig,
     ) -> Result<DepositGenerationReport, DepositGenerationError> {
         let rules = validated_rules(config, self.resource_catalog())?;
-        let provinces = province_land(self)?;
+        let mut provinces = province_land(self)?;
         let mut report = DepositGenerationReport::default();
-        for (province_id, land) in provinces {
-            let biome = land.biome();
-            let mut available = land
-                .positions
-                .into_iter()
-                .filter(|&position| self.map().deposit_at(position).is_none())
-                .collect::<Vec<_>>();
+        if config.max_veins == 0 {
+            return Ok(report);
+        }
+        let mut candidates = Vec::new();
+        for (&province_id, land) in &mut provinces {
+            land.positions
+                .retain(|&position| self.map().deposit_at(position).is_none());
             for (resource, rule) in &rules {
                 let mut chance = stream(config.seed, province_id, resource, 0);
-                if chance.random_range(0..100_u8) >= rule.chance_for(biome) {
-                    continue;
+                if chance.random_range(0..100_u8) < rule.chance_for(land.biome()) {
+                    candidates.push((province_id, resource));
                 }
-                if available.is_empty() {
-                    report.unplaced_focuses += 1;
-                    continue;
-                }
-                let mut focus_rng = stream(config.seed, province_id, resource, 1);
-                let focus = available.swap_remove(focus_rng.random_range(0..available.len()));
-                self.place_deposit(focus, resource.clone())
-                    .map_err(DepositGenerationError::Placement)?;
-                report.veins.push(GeneratedVein {
-                    province_id,
-                    resource: resource.clone(),
-                    focus,
-                    tiles: vec![focus],
-                });
             }
+        }
+        let max_veins = config.max_veins as usize;
+        if candidates.len() > max_veins {
+            // Sample across the whole map instead of favoring the lowest province IDs.
+            let mut selection = StdRng::seed_from_u64(config.seed ^ 0xa591_b8df_9472_1c03);
+            candidates.shuffle(&mut selection);
+        }
+        for (province_id, resource) in candidates {
+            if report.veins.len() == max_veins {
+                break;
+            }
+            let available = &mut provinces
+                .get_mut(&province_id)
+                .expect("candidate province")
+                .positions;
+            if available.is_empty() {
+                report.unplaced_focuses += 1;
+                continue;
+            }
+            let mut focus_rng = stream(config.seed, province_id, resource, 1);
+            let focus = available.swap_remove(focus_rng.random_range(0..available.len()));
+            self.place_deposit(focus, resource.clone())
+                .map_err(DepositGenerationError::Placement)?;
+            report.veins.push(GeneratedVein {
+                province_id,
+                resource: resource.clone(),
+                focus,
+                tiles: vec![focus],
+            });
         }
         // Reserve every focus before expansion, so growth cannot suppress another roll.
         for vein in &mut report.veins {
@@ -178,7 +201,14 @@ impl World {
         let mut rng = stream(config.seed, vein.province_id, &vein.resource, 2);
         let mut frontier = vec![vein.focus];
         let mut visited = HashSet::from([vein.focus]);
-        while !frontier.is_empty() && vein.tiles.len() < config.max_vein_tiles as usize {
+        let max_tiles = self
+            .resource_catalog()
+            .get(&vein.resource)
+            .and_then(|definition| definition.max_vein_tiles())
+            .map_or(config.max_vein_tiles, |limit| {
+                limit.get().min(config.max_vein_tiles)
+            });
+        while !frontier.is_empty() && vein.tiles.len() < max_tiles as usize {
             let position = frontier.swap_remove(rng.random_range(0..frontier.len()));
             if position != vein.focus {
                 if self.map().deposit_at(position).is_some() {

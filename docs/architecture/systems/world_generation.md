@@ -53,9 +53,15 @@ the columns of this table, from left to right. An all-water province has no focu
 | Tin ore | 5 | 0 | 0 | 0 | 0 | 0 | 10 | 20 |
 
 A successful roll chooses an unoccupied land focus in the source province.
+The `[deposits]` table in `resources.toml` sets `max_veins` for the whole map and
+`max_vein_tiles` for each vein, including its focus. An ore entry can set a
+smaller `max_vein_tiles`. The bundled limits are 100 veins and 16 tiles, with
+smaller limits for iron (14), copper (10) and tin (8). A zero vein count disables
+generation. If successful rolls exceed the count limit, seeded selection samples
+across the map before growth begins.
+
 Focuses are placed before growth. Each vein expands through randomly selected
-cardinally adjacent land tiles, up to 16 tiles including its focus by default.
-The growth limit is configurable. Province and biome boundaries permit growth,
+cardinally adjacent land tiles. Province and biome boundaries permit growth,
 while ocean and occupied deposit tiles block it. Collisions retain the existing
 resource, and lack of available space can produce shorter veins. The report
 records focuses, their source provinces, vein tiles and unplaced focuses.

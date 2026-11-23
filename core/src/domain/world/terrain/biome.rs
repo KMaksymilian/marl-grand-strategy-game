@@ -1,6 +1,9 @@
 use crate::domain::world::terrain::elevation::*;
 use crate::domain::world::terrain::moisture::*;
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Biome {
     Ocean,
     Desert,

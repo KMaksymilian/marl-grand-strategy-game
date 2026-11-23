@@ -1,14 +1,14 @@
 //! Settlement phases shared by local turns and the global coordinator.
 pub mod report;
 use super::Settlement;
+use super::economy::BuildingRequests;
 use super::projects::ProjectOutcome;
 use super::turn_report::TradeTurnReport;
 use super::turn_report::{ConsumptionResult, InventoryTurnReport, MaterialTotals, TurnReport};
 use crate::domain::buildings::productivity::TravelCostSource;
 use crate::domain::economy::ResourceType;
-use crate::domain::economy::allocation::{
-    AllocationEngine, AllocationRecipient, AllocationResult, DemandRequest,
-};
+use crate::domain::economy::allocation::{AllocationEngine, AllocationRecipient, AllocationResult};
+use crate::domain::ids::BuildingId;
 use crate::domain::nation::taxation::tax_amount;
 use crate::domain::spatial::ConstructionSpace;
 use crate::domain::trade::caravan::Caravan;
@@ -18,13 +18,14 @@ pub(crate) struct PreparedTurn {
     trade: TradeTurnReport,
     projects: Vec<ProjectOutcome>,
     opening_stock: MaterialTotals,
-    building_requests: Vec<DemandRequest>,
+    building_requests: BuildingRequests,
 }
 
 pub(crate) struct AllocatedTurn {
     trade: TradeTurnReport,
     projects: Vec<ProjectOutcome>,
     allocations: AllocationResult,
+    cycle_recipes: HashMap<BuildingId, usize>,
     inventory: InventoryTurnReport,
 }
 
@@ -96,12 +97,21 @@ impl Settlement {
         self.reserve_market(&mut trade);
         self.fund_caravan_orders(&mut trade);
         self.trade_with_visitors(visitors, &mut trade, turn, province_id);
-        let building_requests = self.building_manager.generate_requests(|building| {
-            building
-                .definition()
-                .required_deposit()
-                .is_none_or(|resource| environment.can_extract(building.position(), resource))
-        });
+        let building_requests = self.building_manager.generate_requests(
+            |building| {
+                let definition = building.definition();
+                let position = building.position();
+                (!definition.requires_coast() || environment.is_coastal(position))
+                    && definition.required_deposit().is_none_or(|resource| {
+                        if definition.requires_province_deposit() {
+                            environment.can_extract_in_province(position, resource)
+                        } else {
+                            environment.can_extract(position, resource)
+                        }
+                    })
+            },
+            |resource| self.inventory_manager.main.amount(resource.clone()),
+        );
         PreparedTurn {
             trade,
             projects,
@@ -114,13 +124,14 @@ impl Settlement {
         let mut requests = Vec::new();
         requests.extend(self.population_manager.generate_requests());
         requests.extend(self.project_manager.generate_requests());
-        requests.extend(prepared.building_requests);
+        requests.extend(prepared.building_requests.demands);
         let allocations = AllocationEngine::execute(&mut self.inventory_manager.main, requests);
         let inventory = InventoryTurnReport::from_allocations(prepared.opening_stock, &allocations);
         AllocatedTurn {
             trade: prepared.trade,
             projects: prepared.projects,
             allocations,
+            cycle_recipes: prepared.building_requests.recipes,
             inventory,
         }
     }
@@ -141,9 +152,10 @@ impl Settlement {
     }
 
     pub(crate) fn produce_turn(&mut self, mut consumed: ConsumedTurn) -> ProducedTurn {
-        let (produced, returned) = self
-            .building_manager
-            .process_allocations(&consumed.allocated.allocations);
+        let (produced, returned) = self.building_manager.process_allocations(
+            &consumed.allocated.allocations,
+            &consumed.allocated.cycle_recipes,
+        );
         consumed
             .allocated
             .inventory

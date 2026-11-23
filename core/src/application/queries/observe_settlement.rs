@@ -192,19 +192,35 @@ impl ObservationQuery<'_> {
                 construction_turns: definition.construction_cost().turn_cost,
                 required_deposit: definition.required_deposit(),
                 requires_coast: definition.requires_coast(),
-                recipes: definition
-                    .behaviors()
-                    .iter()
-                    .filter_map(|behavior| match behavior {
-                        BuildingBehavior::Production { inputs, outputs } => {
+                requires_province_deposit: definition.requires_province_deposit(),
+                biome_efficiencies: definition.biome_efficiencies().cloned(),
+                cycles_per_turn: definition
+                    .cycle_production()
+                    .map(|production| production.cycles_per_turn),
+                recipes: if let Some(production) = definition.cycle_production() {
+                    production
+                        .recipes
+                        .iter()
+                        .map(|recipe| RecipeObservation {
+                            inputs: summed(&recipe.inputs),
+                            outputs: summed(&recipe.outputs),
+                        })
+                        .collect()
+                } else {
+                    definition
+                        .behaviors()
+                        .iter()
+                        .filter_map(|behavior| {
+                            let BuildingBehavior::Production { inputs, outputs } = behavior else {
+                                return None;
+                            };
                             Some(RecipeObservation {
                                 inputs: summed(inputs),
                                 outputs: summed(outputs),
                             })
-                        }
-                        BuildingBehavior::StatModifier { .. } => None,
-                    })
-                    .collect(),
+                        })
+                        .collect()
+                },
             })
             .collect()
     }

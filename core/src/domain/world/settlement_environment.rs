@@ -42,8 +42,19 @@ impl<'a> MapConstructionSpace<'a> {
 }
 
 impl ConstructionSpace for MapConstructionSpace<'_> {
+    fn production_biome(&self, position: Position) -> Option<Biome> {
+        self.map.biome_at(position)
+    }
+
     fn is_coastal(&self, position: Position) -> bool {
         self.map.is_coastal(position)
+    }
+
+    fn can_extract_in_province(&self, position: Position, resource: ResourceType) -> bool {
+        self.map.province_at(position).is_some_and(|province| {
+            self.map
+                .has_accessible_province_deposit(province, position, &resource)
+        })
     }
 
     fn reserve_construction(
@@ -130,9 +141,7 @@ impl TravelCostSource for MapSettlementEnvironment<'_> {
 
 impl ConstructionSpace for MapSettlementEnvironment<'_> {
     fn production_biome(&self, position: Position) -> Option<Biome> {
-        let map = self.space.map;
-        map.tile_index(position)
-            .map(|index| map.terrain[index].determine_biome())
+        self.space.production_biome(position)
     }
 
     fn is_coastal(&self, position: Position) -> bool {
@@ -145,6 +154,12 @@ impl ConstructionSpace for MapSettlementEnvironment<'_> {
                 .map
                 .has_accessible_deposit(province, position, &resource)
         })
+    }
+
+    fn can_extract_in_province(&self, position: Position, resource: ResourceType) -> bool {
+        self.province
+            .is_none_or(|province| self.space.map.province_at(position) == Some(province))
+            && self.space.can_extract_in_province(position, resource)
     }
 
     fn reserve_construction(

@@ -1,7 +1,11 @@
 //! Registry of shared, validated building definitions.
+mod config;
+
 use super::definition::BuildingDefinition;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+pub use config::BuildingCatalogError;
 
 #[derive(Default)]
 pub struct BuildingCatalog {

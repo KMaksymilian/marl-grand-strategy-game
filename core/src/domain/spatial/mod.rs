@@ -42,6 +42,8 @@ pub enum TerritoryError {
     InvalidMapPosition(Position),
     OceanTile(Position),
     CoastRequired(Position),
+    ForbiddenBiome(Position),
+    ProvinceDepositRequired(Position),
     Occupied {
         position: Position,
         occupancy: TileOccupancy,
@@ -78,6 +80,15 @@ pub trait ConstructionSpace {
 
     /// Whether this settlement can work a deposit on the specified tile.
     fn can_extract(
+        &self,
+        _position: Position,
+        _resource: crate::domain::economy::ResourceType,
+    ) -> bool {
+        false
+    }
+
+    /// Whether the specified land tile and a matching land deposit share this settlement's province.
+    fn can_extract_in_province(
         &self,
         _position: Position,
         _resource: crate::domain::economy::ResourceType,

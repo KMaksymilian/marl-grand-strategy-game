@@ -167,7 +167,7 @@ impl Settlement {
                 space
                     .validate_construction(*position, reference)
                     .map_err(ProjectError::Territory)?;
-                Self::validate_coastal_site(definition, *position, space)
+                Self::validate_building_site(definition, *position, space)
                     .map_err(ProjectError::Territory)?;
             }
             ProjectResult::UpgradeBuilding {
@@ -177,7 +177,7 @@ impl Settlement {
                 let building = buildings
                     .get(*target_instance_id)
                     .ok_or(ProjectError::MissingBuilding(*target_instance_id))?;
-                Self::validate_coastal_site(new_definition, building.position(), space)
+                Self::validate_building_site(new_definition, building.position(), space)
                     .map_err(ProjectError::Territory)?;
             }
             ProjectResult::RecruitUnit { .. } => {}

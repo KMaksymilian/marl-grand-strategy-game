@@ -4,7 +4,7 @@ use super::super::projects::{Project, ProjectCost, ProjectError, ProjectResult};
 use crate::domain::buildings::definition::BuildingDefinition;
 use crate::domain::ids::{BuildingId, ProjectId};
 use crate::domain::spatial::Position;
-use crate::domain::spatial::{ConstructionSpace, ProjectReference};
+use crate::domain::spatial::{ConstructionSpace, ProjectReference, TerritoryError};
 use std::sync::Arc;
 
 impl Settlement {
@@ -49,7 +49,7 @@ impl Settlement {
         space: &mut impl ConstructionSpace,
     ) -> Result<(), ProjectError> {
         self.validate_project_materials(&definition, &cost)?;
-        Self::validate_coastal_site(&definition, position, space)
+        Self::validate_building_site(&definition, position, space)
             .map_err(ProjectError::Territory)?;
         let project = Project::new(
             project_id,
@@ -93,13 +93,15 @@ impl Settlement {
         cost: ProjectCost,
     ) -> Result<(), ProjectError> {
         self.validate_project_materials(&new_definition, &cost)?;
-        if new_definition.requires_coast() {
-            let building = self
-                .building_manager
-                .get(target_instance_id)
-                .ok_or(ProjectError::MissingBuilding(target_instance_id))?;
+        let building = self
+            .building_manager
+            .get(target_instance_id)
+            .ok_or(ProjectError::MissingBuilding(target_instance_id))?;
+        Self::validate_building_terrain(&new_definition, building.position(), None, || false)
+            .map_err(ProjectError::Territory)?;
+        if new_definition.requires_province_deposit() {
             return Err(ProjectError::Territory(
-                crate::domain::spatial::TerritoryError::CoastRequired(building.position()),
+                TerritoryError::ProvinceDepositRequired(building.position()),
             ));
         }
         self.queue_validated_upgrade(project_id, target_instance_id, new_definition, cost)
@@ -119,7 +121,7 @@ impl Settlement {
             .building_manager
             .get(target_instance_id)
             .ok_or(ProjectError::MissingBuilding(target_instance_id))?;
-        Self::validate_coastal_site(&new_definition, building.position(), space)
+        Self::validate_building_site(&new_definition, building.position(), space)
             .map_err(ProjectError::Territory)?;
         self.queue_validated_upgrade(project_id, target_instance_id, new_definition, cost)
     }

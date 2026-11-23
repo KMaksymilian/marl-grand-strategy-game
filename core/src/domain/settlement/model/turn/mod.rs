@@ -84,6 +84,7 @@ impl Settlement {
         province_id: usize,
     ) -> PreparedTurn {
         self.building_manager.refresh_productivity(environment);
+        self.building_manager.refresh_production_biomes(environment);
         let opening_stock = InventoryTurnReport::snapshot(
             &self.inventory_manager.main,
             &self.inventory_manager.pending_production,

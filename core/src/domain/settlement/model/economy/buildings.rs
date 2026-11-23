@@ -1,11 +1,13 @@
 use crate::domain::buildings::Building;
 use crate::domain::buildings::definition::BuildingDefinition;
 use crate::domain::buildings::productivity::{
-    BuildingProductivityCalculator, LocationProductivity, TravelCostSource,
+    BuildingProductivityCalculator, LocationProductivity, ProductionModifierStrategy,
+    TravelCostSource,
 };
 use crate::domain::economy::ResourceType;
 use crate::domain::economy::allocation::{AllocationRecipient, AllocationResult, DemandRequest};
 use crate::domain::ids::BuildingId;
+use crate::domain::spatial::ConstructionSpace;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -13,6 +15,7 @@ use std::sync::Arc;
 pub struct BuildingManager {
     pub(in crate::domain::settlement) buildings: Vec<Building>,
     productivity_calculator: Option<BuildingProductivityCalculator>,
+    production_modifier_strategies: Vec<Box<dyn ProductionModifierStrategy>>,
 }
 
 impl BuildingManager {
@@ -20,6 +23,7 @@ impl BuildingManager {
         Self {
             buildings: Vec::new(),
             productivity_calculator: None,
+            production_modifier_strategies: Vec::new(),
         }
     }
 
@@ -65,6 +69,24 @@ impl BuildingManager {
                 calculator.multiplier_at(building.position(), source)
             });
             building.set_location_productivity(productivity);
+        }
+    }
+
+    pub(in crate::domain::settlement) fn add_production_modifier_strategy(
+        &mut self,
+        strategy: impl ProductionModifierStrategy + 'static,
+    ) {
+        self.production_modifier_strategies.push(Box::new(strategy));
+    }
+
+    pub(in crate::domain::settlement) fn refresh_production_biomes(
+        &mut self,
+        space: &impl ConstructionSpace,
+    ) {
+        if !self.production_modifier_strategies.is_empty() {
+            for building in &mut self.buildings {
+                building.production_biome = space.production_biome(building.position());
+            }
         }
     }
 
@@ -148,10 +170,12 @@ impl BuildingManager {
 
         for building in self.buildings.iter_mut() {
             let grants = allocations.get(&AllocationRecipient::Building(building.instance_id()));
-            let update_result = building.resolve_allocation(grants);
+            let update_result =
+                building.resolve_modified_allocation(grants, &self.production_modifier_strategies);
 
             for (res, amount) in update_result.produced {
-                *all_produced.entry(res).or_insert(0_u64) += u64::from(amount);
+                let total = all_produced.entry(res).or_insert(0_u64);
+                *total = total.saturating_add(amount);
             }
             for (res, amount) in update_result.unused {
                 if amount > 0 {

@@ -2,6 +2,7 @@
 mod production;
 
 use crate::domain::spatial::Position;
+use crate::domain::world::terrain::biome::Biome;
 
 use super::definition::BuildingDefinition;
 use super::productivity::LocationProductivity;
@@ -11,7 +12,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub struct ProductionResult {
-    pub produced: HashMap<ResourceType, u32>,
+    pub produced: HashMap<ResourceType, u64>,
     pub unused: HashMap<ResourceType, u32>,
 }
 
@@ -29,6 +30,7 @@ pub struct Building {
     definition: Arc<BuildingDefinition>,
     target_load: f32,
     location_productivity: LocationProductivity,
+    pub(crate) production_biome: Option<Biome>,
     is_active: bool,
     current_workers: u32,
 }
@@ -129,6 +131,7 @@ impl Building {
             definition,
             target_load: 0.0,
             location_productivity: LocationProductivity::FULL,
+            production_biome: None,
             is_active: true,
             current_workers: 0,
         }
@@ -261,7 +264,7 @@ mod tests {
         let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
         let grants = HashMap::from([(ResourceType::Labour, 1), (material("wood"), amount)]);
         let result = building.resolve_allocation(Some(&grants));
-        assert_eq!(result.produced[&material("stone")], amount);
+        assert_eq!(result.produced[&material("stone")], u64::from(amount));
         assert_eq!(result.unused[&material("wood")], 0);
     }
 

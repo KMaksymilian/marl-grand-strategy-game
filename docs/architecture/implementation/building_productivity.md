@@ -37,12 +37,30 @@ productivity = numerator / denominator
 | --- | --- |
 | `target_load: f32` | Requested fraction of staffing and inputs, validated in 0..=1 |
 | Recipe work fraction | Actual execution limited by granted workers and remaining inputs |
-| `location_productivity()` | Cached output multiplier computed from the current A* travel cost |
+| `location_productivity()` | Cached yield factor from the current A* travel cost |
 
 `target_efficiency` is renamed to `target_load`. A new building starts active at load zero. Without a configured calculator (`None`), location productivity is 1. When a policy is configured, the registered settlement capital supplies its A* origin. Registration and later policy changes keep the calculator aligned with that capital.
 
 ```text
 work = min(granted_workers / max_workers, remaining_input / base_input, ...)
 consumed_input = ceil(base_input * work)
-produced_output = floor(base_output * work * location_productivity)
+yield_factor = max(0, apply_modifiers_in_registration_order(location_productivity))
+produced_output = floor(base_output * work * yield_factor)
 ```
+
+An unreachable A* route forces zero output even with positive modifiers. A reachable
+route at the zero-productivity threshold contributes a penalty of 100%.
+
+Register sources with `Settlement::add_production_modifier_strategy`. Each strategy
+can inspect the building, its allocated workers and the current tile biome.
+A modifier that always applies can be registered directly with the same method.
+`BiomeProductionModifier` supplies an optional rule for a building type and biome.
+Use `ProductionModifier::new("decree", 2_000)` to add 20 percentage points
+or `ProductionModifier::multiplicative("tools", 15_000)` to multiply by 1.5.
+Use `ProductionModifier::with_operation` to supply a new operation on the exact
+factor, such as capping its value. The same calculator applies all operations in
+the order their strategies were registered. For a starting factor of 1,
+adding 0.2 then multiplying by 1.5 yields 1.8. Reversing them yields 1.7.
+The rules apply after allocation and leave recipe input consumption unchanged.
+Register terrain rules when configuring a settlement. For a temporary effect
+such as a decree, the strategy should return a modifier only while it applies.

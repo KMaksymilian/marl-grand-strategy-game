@@ -1,6 +1,7 @@
 use crate::domain::ids::SettlementId;
 use std::collections::HashMap;
 mod construction;
+mod decrees;
 mod inspection;
 mod map_commands;
 mod nations;
@@ -17,6 +18,8 @@ use crate::domain::buildings::catalog::BuildingCatalog;
 use crate::domain::economy::{ResourceCatalog, ResourceType};
 use crate::domain::ids::NationId;
 use crate::domain::military::{UnitCatalog, UnitTypeId};
+use crate::domain::nation::decree::DecreeId;
+use crate::domain::nation::decree_catalog::DecreeCatalog;
 use crate::domain::nation::registry::NationRegistry;
 use crate::domain::settlement::{NeedRegistry, Settlement};
 use crate::domain::trade::caravan::Caravan;
@@ -84,6 +87,16 @@ pub enum WorldError {
     InsufficientNationalFunds(NationId),
     /// A unit type needs equipment that the world's resource catalogue lacks.
     UnitEquipmentUnknown(UnitTypeId),
+    /// No decree with this ID in the world's decree catalogue.
+    UnknownDecree(DecreeId),
+    /// The decree cannot be enacted or revoked now (slot, state or duration).
+    DecreeUnavailable {
+        nation_id: NationId,
+        decree: DecreeId,
+    },
+    /// The decree catalogue cannot be replaced while a nation has a decree
+    /// that is pending, active or cooling down.
+    DecreeCatalogInUse,
 }
 
 /// World layers are read-only outside the aggregate.
@@ -109,6 +122,8 @@ pub struct World {
     /// Borders between provinces, rebuilt whenever a tile changes province
     /// or terrain.
     province_graph: ProvinceGraph,
+    /// Decrees nations may enact and their common rules (`decrees.toml`).
+    decree_catalog: Arc<DecreeCatalog>,
     /// Nations and the single record of which nation owns which settlement.
     nations: NationRegistry,
 }
@@ -311,6 +326,7 @@ impl World {
             resource_catalog,
             unit_catalog: Arc::new(UnitCatalog::standard().clone()),
             province_graph,
+            decree_catalog: Arc::new(DecreeCatalog::standard().clone()),
             nations: NationRegistry::default(),
         }
     }

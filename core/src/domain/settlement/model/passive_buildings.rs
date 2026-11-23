@@ -116,7 +116,7 @@ pub(super) fn validate_building_rules(
             .buildings
             .iter()
             .filter(|building| {
-                !replacing.is_some_and(|replaced| replaced.instance_id() == building.instance_id())
+                replacing.is_none_or(|replaced| replaced.instance_id() != building.instance_id())
                     && in_group(building.definition(), &limit.group)
             })
             .count();

@@ -25,6 +25,7 @@ pub struct SettlementDecision {
 | `Upgrade` | `building_id`, `building_type` | Replace an own building's definition with another catalog building. No upgrade paths are enforced yet. |
 | `CancelProject` | `project_id` | Stop an own active project; no refund. |
 | `SetBuildingWorkers` | `building_id`, `workers` | Requested staff in `0..=max_workers`. Zero switches the building off; recipe inputs scale with the staff. |
+| `Demolish` | `building_id` | Remove an owned completed building and its effects without a refund. |
 | `SetStorageOrder` | `order` | Every material exactly once, no `Labour`. |
 | `PublishMarketOffers` | `offers` | Replace all market offers. Offers persist until replaced or cleared. |
 | `ClearMarketOffers` | none | Remove all market offers; the market book stays empty and visiting caravans find nothing to trade. |
@@ -139,6 +140,7 @@ checking and applying individual decisions in isolation. [Handler source](../../
 | `Upgrade` | `queue_upgrade` with catalog definition and cost | `ProjectQueued { project_id }` |
 | `CancelProject` | `cancel_project`; releases a construction reservation | `ProjectCanceled { project_id }` |
 | `SetBuildingWorkers` | `set_building_staff`: activates the building and sets the exact load | `WorkersSet { building_id, workers }` |
+| `Demolish` | `demolish_building`: frees the site and removes passive effects | `BuildingDemolished { building_id }` |
 | `SetStorageOrder` | `set_storage_order` | `StorageOrderSet` |
 | `PublishMarketOffers` | `publish_trade_offers` | `MarketOffersPublished` |
 | `ClearMarketOffers` | `clear_trade_offers` | `MarketOffersCleared` |

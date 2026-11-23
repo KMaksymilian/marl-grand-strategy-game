@@ -27,3 +27,31 @@ after allocation, with the configured biome percentage applied relative to
 
 The settlement observation lists each blueprint's cycle rate, recipes, allowed
 biomes, and placement requirements.
+
+## Special buildings
+
+The `[[special_buildings]]` entries use the same catalog and construction
+workflow. They configure costs, build times, passive effects, shared placement
+caps, and any required previous blueprint. Special buildings use tier 0 in the
+catalog and require no staff. The default build time is three turns, with five
+and eight turns for the second and third wall levels.
+
+Warehouse bonuses increase shared material capacity and stack. Demolition
+removes the bonus immediately. Existing stock is retained if the settlement
+temporarily exceeds its reduced capacity. The settlement decision
+`demolish` removes an owned building without a refund.
+
+The [game configuration](../../../configuration.toml) sets initial settlement
+trade capacity. Each market adds to all four limits. Buy and sell quantities
+count toward open units. Queued and travelling caravans share the slot and cargo
+limits. Demolition leaves caravans in transit intact. Offers that exceed the
+new cap fund only eligible units in resource order. Further markets can restore
+funding for the published quantities.
+
+The four-monument cap counts completed monuments and pending construction.
+Monuments expose a permanent happiness bonus while standing. Wall upgrades
+replace the preceding level's defense bonus. The province defense query
+returns that bonus for the defending garrison and army. The settlement
+observation also exposes passive effects and current trade limits. Happiness
+totals and battle resolution can consume these values when those systems are
+implemented.

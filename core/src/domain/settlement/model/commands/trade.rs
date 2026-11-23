@@ -3,7 +3,7 @@ use super::super::Settlement;
 use super::super::trading::CaravanOrder;
 use crate::domain::buildings::passive::TradeLimitBonuses;
 use crate::domain::economy::ResourceType;
-use crate::domain::ids::SettlementId;
+use crate::domain::ids::{BuildingId, SettlementId};
 use crate::domain::intelligence::{Information, InformationSnapshot};
 use crate::domain::trade::book::TradeBook;
 use crate::domain::trade::caravan::{CaravanCargo, CaravanReturn};
@@ -55,14 +55,19 @@ impl Settlement {
     }
 
     pub fn trade_limits(&self) -> Option<TradeLimitBonuses> {
+        self.trade_limits_retaining(|_| true)
+    }
+
+    pub(crate) fn trade_limits_retaining(
+        &self,
+        keep: impl Fn(BuildingId) -> bool,
+    ) -> Option<TradeLimitBonuses> {
         self.trade.base_limits.map(|base| {
-            let bonus = self.trade_limit_bonuses();
-            TradeLimitBonuses {
-                caravan_slots: base.caravan_slots.saturating_add(bonus.caravan_slots),
-                offer_slots: base.offer_slots.saturating_add(bonus.offer_slots),
-                caravan_cargo: base.caravan_cargo.saturating_add(bonus.caravan_cargo),
-                open_offer_units: base.open_offer_units.saturating_add(bonus.open_offer_units),
-            }
+            self.buildings()
+                .filter(|building| keep(building.instance_id()))
+                .fold(base, |limits, building| {
+                    limits.saturating_add(building.definition().passive_rules().effects.trade)
+                })
         })
     }
 
@@ -73,8 +78,11 @@ impl Settlement {
         usage
     }
 
-    pub(crate) fn market_fits(&self, offers: &HashMap<ResourceType, TradeOffer>) -> bool {
-        self.trade_limits().is_none_or(|limits| {
+    pub(crate) fn market_fits(
+        offers: &HashMap<ResourceType, TradeOffer>,
+        limits: Option<TradeLimitBonuses>,
+    ) -> bool {
+        limits.is_none_or(|limits| {
             offers
                 .values()
                 .filter(|offer| offer.remaining_units() > 0)
@@ -82,6 +90,30 @@ impl Settlement {
                 <= limits.offer_slots as usize
                 && offer_units(offers) <= u64::from(limits.open_offer_units)
         })
+    }
+
+    pub(crate) fn fundable_market_offers(
+        offers: HashMap<ResourceType, TradeOffer>,
+        limits: Option<TradeLimitBonuses>,
+    ) -> HashMap<ResourceType, TradeOffer> {
+        let Some(limits) = limits else {
+            return offers;
+        };
+        let mut sorted: Vec<_> = offers.into_iter().collect();
+        sorted.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        let mut remaining = limits.open_offer_units;
+        sorted
+            .into_iter()
+            .filter_map(|(resource, mut offer)| {
+                let units = offer.remaining_units().min(remaining);
+                if units == 0 {
+                    return None;
+                }
+                remaining -= units;
+                Some((resource, offer.take_share(units)))
+            })
+            .take(limits.offer_slots as usize)
+            .collect()
     }
 
     pub fn deposit_gold(&mut self, amount: u32) {
@@ -95,7 +127,7 @@ impl Settlement {
         offers: HashMap<ResourceType, TradeOffer>,
     ) -> Result<(), TradeCommandError> {
         self.validate_offers(&offers)?;
-        if !self.market_fits(&offers) {
+        if !Self::market_fits(&offers, self.trade_limits()) {
             return Err(TradeCommandError::MarketCapacityExceeded);
         }
         self.trade.market_offers = Self::without_progress(offers);

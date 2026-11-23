@@ -12,6 +12,7 @@ use crate::application::commands::settlement::contract::{
 use crate::application::commands::settlement::prepared::SettlementCommand;
 use crate::domain::buildings::Building;
 use crate::domain::buildings::definition::BuildingDefinition;
+use crate::domain::buildings::passive::TradeLimitBonuses;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
 use crate::domain::settlement::projects::{ProjectError, ProjectResult};
@@ -46,6 +47,7 @@ pub struct ValidatedDecision {
 enum Target {
     Tile(Position),
     Upgrade(BuildingId),
+    Demolition(BuildingId),
     Project(ProjectId),
     Workers(BuildingId),
     StorageOrder,
@@ -62,8 +64,6 @@ struct Checked {
     caravan_goods: BTreeMap<ResourceType, u64>,
     caravan_gold: u64,
     caravan_units: Option<u64>,
-    /// New market reservation (goods, gold) after a publish or clear action.
-    market: Option<(BTreeMap<ResourceType, u64>, u64)>,
 }
 
 impl Checked {
@@ -77,7 +77,6 @@ impl Checked {
             caravan_goods: BTreeMap::new(),
             caravan_gold: 0,
             caravan_units: None,
-            market: None,
         }
     }
 
@@ -101,6 +100,8 @@ struct Batch {
     /// What the market will reserve: published offers, or this decision's new ones.
     market_goods: BTreeMap<ResourceType, u64>,
     market_gold: u64,
+    market_offers: HashMap<ResourceType, TradeOffer>,
+    trade_limits: Option<TradeLimitBonuses>,
     /// Committed to caravans: orders queued earlier this turn plus this decision's.
     caravan_goods: BTreeMap<ResourceType, u64>,
     caravan_gold: u64,
@@ -113,7 +114,12 @@ impl Batch {
             .buildings()
             .map(|building| (building.instance_id(), building.requested_workers()))
             .collect();
-        let (market_goods, market_gold) = offer_demand(settlement.market_offers());
+        let market_offers = settlement.market_offers().clone();
+        let trade_limits = settlement.trade_limits();
+        let (market_goods, market_gold) = offer_demand(&Settlement::fundable_market_offers(
+            market_offers.clone(),
+            trade_limits,
+        ));
         let mut caravan_goods = BTreeMap::new();
         let mut caravan_gold = 0;
         for order in settlement.caravan_orders() {
@@ -132,6 +138,8 @@ impl Batch {
             staff_before,
             market_goods,
             market_gold,
+            market_offers,
+            trade_limits,
             caravan_goods,
             caravan_gold,
             caravan_usage: settlement.queued_caravan_usage(active_caravans),
@@ -216,7 +224,7 @@ impl Batch {
             .map_err(|_| ActionError::ProjectIdsExhausted)
     }
 
-    fn accept(&mut self, index: usize, checked: &Checked) {
+    fn accept(&mut self, index: usize, checked: &Checked, settlement: &Settlement) {
         if let Some(target) = checked.target {
             self.claimed.insert(target, index);
         }
@@ -234,10 +242,20 @@ impl Batch {
         if let Some(units) = checked.caravan_units {
             self.caravan_usage.add(units);
         }
-        if let Some((goods, gold)) = &checked.market {
-            self.market_goods = goods.clone();
-            self.market_gold = *gold;
+        match &checked.command {
+            SettlementCommand::PublishMarketOffers(offers) => self.market_offers = offers.clone(),
+            SettlementCommand::ClearMarketOffers => self.market_offers.clear(),
+            SettlementCommand::Demolish(_) => {
+                self.trade_limits = settlement.trade_limits_retaining(|id| {
+                    !self.claimed.contains_key(&Target::Demolition(id))
+                });
+            }
+            _ => return,
         }
+        (self.market_goods, self.market_gold) = offer_demand(&Settlement::fundable_market_offers(
+            self.market_offers.clone(),
+            self.trade_limits,
+        ));
     }
 }
 
@@ -292,7 +310,7 @@ impl<'a> DecisionPreparation<'a> {
         for (index, action) in decision.actions.iter().enumerate() {
             match self.prepare_action(settlement, action, &batch) {
                 Ok(checked) => {
-                    batch.accept(index, &checked);
+                    batch.accept(index, &checked, settlement);
                     accepted.push(AcceptedAction {
                         index,
                         command: checked.command,
@@ -388,6 +406,7 @@ impl<'a> DecisionPreparation<'a> {
                     .validate_upgrade_site(settlement.id(), building.position(), &definition)
                     .map_err(|error| Self::site_error(building.position(), error))?;
                 batch.ensure_free(Target::Upgrade(*building_id))?;
+                batch.ensure_free(Target::Demolition(*building_id))?;
                 let project_id = batch.project_id()?;
                 let mut checked = Checked::new(
                     SettlementCommand::Upgrade {
@@ -441,6 +460,7 @@ impl<'a> DecisionPreparation<'a> {
                     },
                 )?;
                 batch.ensure_free(Target::Workers(*building_id))?;
+                batch.ensure_free(Target::Demolition(*building_id))?;
                 if *workers > batch.worker_limit(settlement, *building_id, max_workers) {
                     let before = batch.staff_before[building_id];
                     return Err(ActionError::InsufficientWorkers {
@@ -475,34 +495,43 @@ impl<'a> DecisionPreparation<'a> {
             }
             SettlementAction::PublishMarketOffers { offers } => {
                 let offers = resolve_offers(settlement, offers)?;
-                if !settlement.market_fits(&offers) {
+                if !Settlement::market_fits(&offers, batch.trade_limits) {
                     return Err(ActionError::MarketCapacityExceeded);
                 }
                 batch.ensure_free(Target::Market)?;
                 let (goods, gold) = offer_demand(&offers);
                 batch.check_market(settlement, &goods, gold)?;
-                let mut checked = Checked::new(
+                Ok(Checked::new(
                     SettlementCommand::PublishMarketOffers(offers),
                     ActionEffect::MarketOffersPublished,
                 )
-                .target(Target::Market);
-                checked.market = Some((goods, gold));
-                Ok(checked)
+                .target(Target::Market))
             }
             SettlementAction::ClearMarketOffers => {
                 batch.ensure_free(Target::Market)?;
-                let mut checked = Checked::new(
+                Ok(Checked::new(
                     SettlementCommand::ClearMarketOffers,
                     ActionEffect::MarketOffersCleared,
                 )
-                .target(Target::Market);
-                checked.market = Some((BTreeMap::new(), 0));
-                Ok(checked)
+                .target(Target::Market))
             }
             SettlementAction::OrderCaravan {
                 receiver_id,
                 offers,
             } => self.check_caravan(settlement, *receiver_id, offers, batch),
+            SettlementAction::Demolish { building_id } => {
+                own_building(settlement, *building_id)?;
+                batch.ensure_free(Target::Demolition(*building_id))?;
+                batch.ensure_free(Target::Upgrade(*building_id))?;
+                batch.ensure_free(Target::Workers(*building_id))?;
+                Ok(Checked::new(
+                    SettlementCommand::Demolish(*building_id),
+                    ActionEffect::BuildingDemolished {
+                        building_id: *building_id,
+                    },
+                )
+                .target(Target::Demolition(*building_id)))
+            }
         }
     }
 
@@ -575,10 +604,7 @@ impl<'a> DecisionPreparation<'a> {
         let units = offer_units(&resolved);
         let mut usage = batch.caravan_usage;
         usage.add(units);
-        if settlement
-            .trade_limits()
-            .is_some_and(|limits| !usage.fits(limits))
-        {
+        if batch.trade_limits.is_some_and(|limits| !usage.fits(limits)) {
             return Err(ActionError::CaravanCapacityExceeded);
         }
         let (goods, gold) = offer_demand(&resolved);

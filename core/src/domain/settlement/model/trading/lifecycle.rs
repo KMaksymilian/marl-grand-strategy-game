@@ -24,25 +24,10 @@ fn totals<'a>(goods: impl IntoIterator<Item = (&'a ResourceType, &'a u32)>) -> M
 impl Settlement {
     /// Moves stock and gold requested by the published offers into the market book.
     pub(in crate::domain::settlement) fn reserve_market(&mut self, report: &mut TradeTurnReport) {
-        let mut offers = self.trade.market_offers.clone();
-        if let Some(limits) = self.trade_limits() {
-            let mut sorted: Vec<_> = offers.into_iter().collect();
-            sorted.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-            let mut remaining = limits.open_offer_units;
-            offers = sorted
-                .into_iter()
-                .filter_map(|(resource, mut offer)| {
-                    let units = offer.remaining_units().min(remaining);
-                    if units == 0 {
-                        return None;
-                    }
-                    remaining -= units;
-                    Some((resource, offer.take_share(units)))
-                })
-                .take(limits.offer_slots as usize)
-                .collect();
-        }
-        self.book.replace_offers(offers);
+        self.book.replace_offers(Self::fundable_market_offers(
+            self.trade.market_offers.clone(),
+            self.trade_limits(),
+        ));
         let demands = self.book.calculate_demand();
         TradeAllocationEngine::execute(
             &mut self.book,

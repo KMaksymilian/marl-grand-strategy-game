@@ -75,6 +75,19 @@ impl SettlementInventoryManager {
         self.main.reset_labour(population);
     }
 
+    /// Restores reservations made from stock retained after a capacity reduction.
+    pub(in crate::domain::settlement) fn restore_reserved_stock(
+        &mut self,
+        batch: HashMap<ResourceType, u64>,
+        opening_stock_limit: u32,
+    ) -> Vec<InventoryLoss> {
+        let capacity = self.main.capacity();
+        self.main.resize(opening_stock_limit.max(capacity));
+        let rejected = self.main.add_batch(batch);
+        self.main.resize(capacity);
+        Self::report_rejections(rejected, InventoryLossStage::Returns)
+    }
+
     /// Produced goods are stored in buffer
     pub fn process_production_results(
         &mut self,

@@ -240,3 +240,46 @@ cost = { planks = 100, stone_bricks = 100, bricks = 100, steel = 100, bronze = 1
 recipes = [
     { inputs = { bronze = 2 }, outputs = { monument_components = 1 } },
 ]
+
+# Special construction times are balance defaults and can be tuned here.
+[[special_buildings]]
+id = "warehouse"
+name = "Warehouse"
+build_turns = 3
+cost = { wood = 200, stone = 150 }
+rules = { effects = { warehouse_capacity = 2000 } }
+
+[[special_buildings]]
+id = "market"
+name = "Market"
+build_turns = 3
+cost = { planks = 150, stone_bricks = 100 }
+rules = { effects = { trade = { caravan_slots = 2, offer_slots = 4, caravan_cargo = 400, open_offer_units = 800 } } }
+
+[[special_buildings]]
+id = "monument"
+name = "Monument"
+build_turns = 3
+cost = { monument_components = 100, stone_bricks = 100 }
+rules = { effects = { happiness = 5 }, limit = { group = "monuments", maximum = 4 } }
+
+[[special_buildings]]
+id = "wall_1"
+name = "Walls (Level 1)"
+build_turns = 3
+cost = { fortification_components = 200 }
+rules = { effects = { defense_basis_points = 2500 }, limit = { group = "walls", maximum = 1 }, upgrade = "construction_only" }
+
+[[special_buildings]]
+id = "wall_2"
+name = "Walls (Level 2)"
+build_turns = 5
+cost = { fortification_components = 400 }
+rules = { effects = { defense_basis_points = 5000 }, limit = { group = "walls", maximum = 1 }, upgrade = { from = "wall_1" } }
+
+[[special_buildings]]
+id = "wall_3"
+name = "Walls (Level 3)"
+build_turns = 8
+cost = { fortification_components = 800 }
+rules = { effects = { defense_basis_points = 10000 }, limit = { group = "walls", maximum = 1 }, upgrade = { from = "wall_2" } }

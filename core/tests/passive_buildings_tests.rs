@@ -2,13 +2,16 @@ mod common;
 
 use common::material;
 use simulation_core::buildings::Building;
+use simulation_core::buildings::catalog::BuildingCatalog;
 use simulation_core::buildings::definition::{BuildingBehavior, BuildingDefinition};
-use simulation_core::buildings::passive::{
-    BuildingPlacementLimit, BuildingRuleError, BuildingUpgradeRule, PassiveBuildingEffects,
-    PassiveBuildingRules, TradeLimitBonuses,
-};
-use simulation_core::ids::{BuildingId, ProjectId, SettlementId};
+use simulation_core::buildings::passive::{BuildingRuleError, TradeLimitBonuses};
+use simulation_core::configuration::Configuration;
+use simulation_core::economy::ResourceCatalog;
+use simulation_core::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
 use simulation_core::settlement::Settlement;
+use simulation_core::settlement::decision::{
+    ActionError, ActionOutcome, OfferSide, OfferSpec, SettlementAction, SettlementDecision,
+};
 use simulation_core::settlement::projects::{ProjectCost, ProjectError};
 use simulation_core::simulation::Simulation;
 use simulation_core::world::pathfinding::path_finder::PathFinder;
@@ -38,24 +41,12 @@ fn world() -> World {
     world
 }
 
-fn blueprint(
-    id: &str,
-    effects: PassiveBuildingEffects,
-    limit: Option<(&str, u32)>,
-    upgrade: BuildingUpgradeRule,
-) -> Arc<BuildingDefinition> {
-    Arc::new(
-        BuildingDefinition::new(id, id, 1, 0, vec![], ProjectCost::default())
-            .unwrap()
-            .with_passive_rules(PassiveBuildingRules {
-                effects,
-                limit: limit.map(|(group, maximum)| BuildingPlacementLimit {
-                    group: group.to_owned(),
-                    maximum,
-                }),
-                upgrade,
-            }),
+fn catalog() -> BuildingCatalog {
+    BuildingCatalog::from_toml(
+        include_str!("../../buildings.toml"),
+        ResourceCatalog::standard(),
     )
+    .unwrap()
 }
 
 fn advance(world: World) -> World {
@@ -82,29 +73,9 @@ fn build(
 #[test]
 fn passive_warehouse_and_market_stack_and_demolition_preserves_stock() {
     let mut world = world();
-    let warehouse = blueprint(
-        "warehouse",
-        PassiveBuildingEffects {
-            warehouse_capacity: 2000,
-            ..Default::default()
-        },
-        None,
-        BuildingUpgradeRule::Unrestricted,
-    );
-    let market = blueprint(
-        "market",
-        PassiveBuildingEffects {
-            trade: TradeLimitBonuses {
-                caravan_slots: 2,
-                offer_slots: 4,
-                caravan_cargo: 400,
-                open_offer_units: 800,
-            },
-            ..Default::default()
-        },
-        None,
-        BuildingUpgradeRule::Unrestricted,
-    );
+    let catalog = catalog();
+    let warehouse = catalog.get_blueprint("warehouse").unwrap();
+    let market = catalog.get_blueprint("market").unwrap();
     let mut finder = PathFinder::new(8, 1);
     for (id, definition) in [(0, &warehouse), (1, &warehouse), (2, &market), (3, &market)] {
         world
@@ -165,20 +136,59 @@ fn passive_warehouse_and_market_stack_and_demolition_preserves_stock() {
         settlement.trade_limit_bonuses(),
         market.passive_rules().effects.trade
     );
+
+    world.demolish_building(OWNER, BuildingId(4)).unwrap();
+    let workshop = Arc::new(
+        BuildingDefinition::new(
+            "test_workshop",
+            "Test Workshop",
+            1,
+            1,
+            vec![BuildingBehavior::Production {
+                inputs: vec![(material("wood"), 80), (material("stone"), 80)],
+                outputs: vec![(material("planks"), 80)],
+            }],
+            ProjectCost::default(),
+        )
+        .unwrap(),
+    );
+    let mut building = Building::new(BuildingId(4), position(4), workshop);
+    building.set_target_load(1.0).unwrap();
+    world.add_building(OWNER, building, &mut finder).unwrap();
+    let mut simulation = Simulation::new(world).unwrap();
+    simulation
+        .queue_decision(SettlementDecision::new(
+            OWNER,
+            vec![SettlementAction::PublishMarketOffers {
+                offers: vec![OfferSpec {
+                    resource: material("wood"),
+                    side: OfferSide::Sell,
+                    units: 70,
+                    price_per_unit: 1,
+                }],
+            }],
+        ))
+        .unwrap();
+    let report = simulation.step().unwrap();
+    assert_eq!(
+        report.settlements[&OWNER].inventory.returned[&material("wood")],
+        80
+    );
+    assert_eq!(
+        report.settlements[&OWNER].trade.market_unsold[&material("wood")],
+        70
+    );
+    assert!(report.settlements[&OWNER].inventory.losses.is_empty());
+    assert_eq!(
+        simulation.observe(OWNER).unwrap().inventory.stored[&material("wood")],
+        stored
+    );
 }
 
 #[test]
 fn monument_limit_reserves_active_projects_and_demolition_frees_a_slot() {
     let mut world = world();
-    let monument = blueprint(
-        "monument",
-        PassiveBuildingEffects {
-            happiness: 5,
-            ..Default::default()
-        },
-        Some(("monuments", 4)),
-        BuildingUpgradeRule::Unrestricted,
-    );
+    let monument = catalog().get_blueprint("monument").unwrap();
     for index in 0..4 {
         build(&mut world, index as u32, index, &monument).unwrap();
     }
@@ -217,28 +227,21 @@ fn monument_limit_reserves_active_projects_and_demolition_frees_a_slot() {
 #[test]
 fn walls_upgrade_one_level_at_a_time_and_replace_the_defense_bonus() {
     let mut world = world();
-    let wall = |id, bonus, rule| {
-        blueprint(
-            id,
-            PassiveBuildingEffects {
-                defense_basis_points: bonus,
-                ..Default::default()
-            },
-            Some(("walls", 1)),
-            rule,
-        )
-    };
-    let level_one = wall("wall_1", 2500, BuildingUpgradeRule::ConstructionOnly);
-    let level_two = wall(
-        "wall_2",
-        5000,
-        BuildingUpgradeRule::From("wall_1".to_owned()),
-    );
-    let level_three = wall(
-        "wall_3",
-        10000,
-        BuildingUpgradeRule::From("wall_2".to_owned()),
-    );
+    let catalog = catalog();
+    let level_one = catalog.get_blueprint("wall_1").unwrap();
+    let level_two = catalog.get_blueprint("wall_2").unwrap();
+    let level_three = catalog.get_blueprint("wall_3").unwrap();
+    for (wall, turns, cost) in [
+        (&level_one, 3, 200),
+        (&level_two, 5, 400),
+        (&level_three, 8, 800),
+    ] {
+        assert_eq!(wall.construction_cost().turn_cost, turns);
+        assert_eq!(
+            wall.construction_cost().needed_resources[&material("fortification_components")],
+            cost
+        );
+    }
     let upgrade = |world: &mut World, project, definition: &Arc<BuildingDefinition>| {
         world.queue_upgrade(
             OWNER,
@@ -296,4 +299,140 @@ fn walls_upgrade_one_level_at_a_time_and_replace_the_defense_bonus() {
             .unwrap(),
         0
     );
+}
+
+#[test]
+fn configured_market_capacity_is_enforced_and_demolition_trims_funded_offers() {
+    let mut world = World::new(
+        Map::new(
+            8,
+            1,
+            vec![Area::new(0.5, 0.5); 8],
+            vec![1, 1, 1, 1, 1, 1, 1, 2],
+        ),
+        vec![Province::new(1), Province::new(2)],
+    );
+    let configuration = Configuration::from_toml(include_str!("../../configuration.toml")).unwrap();
+    world.set_base_trade_limits(configuration.economy.trade_limits);
+    world.set_building_catalog(catalog());
+    let mut settlement = Settlement::new(OWNER, 3_000, 1, Arc::default());
+    settlement.deposit(material("wood"), 1200);
+    settlement.deposit(material("stone"), 1000);
+    world.add_settlement_at(1, position(0), settlement).unwrap();
+    let trading_partner = SettlementId(2);
+    world
+        .add_settlement_at(
+            2,
+            position(7),
+            Settlement::new(trading_partner, 100, 1, Arc::default()),
+        )
+        .unwrap();
+    let market = world.building_catalog().get_blueprint("market").unwrap();
+    world
+        .add_building(
+            OWNER,
+            Building::new(BuildingId(0), position(1), market),
+            &mut PathFinder::new(8, 1),
+        )
+        .unwrap();
+    let mut simulation = Simulation::new(world).unwrap();
+    let sell = |resource, units| OfferSpec {
+        resource: material(resource),
+        side: OfferSide::Sell,
+        units,
+        price_per_unit: 1,
+    };
+    let offers = || SettlementAction::PublishMarketOffers {
+        offers: vec![sell("wood", 900)],
+    };
+    let caravan = |units| SettlementAction::OrderCaravan {
+        receiver_id: trading_partner,
+        offers: vec![sell("stone", units)],
+    };
+    simulation
+        .queue_decision(SettlementDecision::new(
+            OWNER,
+            vec![offers(), caravan(500), caravan(301)],
+        ))
+        .unwrap();
+    let report = simulation.step().unwrap();
+    let results = &report.decisions[0].results;
+    assert!(results[0].is_applied());
+    assert!(results[1].is_applied());
+    assert_eq!(
+        results[2].outcome,
+        ActionOutcome::Rejected {
+            error: ActionError::CaravanCapacityExceeded
+        }
+    );
+    assert_eq!(
+        report.settlements[&OWNER].trade.market_reserved[&material("wood")],
+        900
+    );
+
+    simulation
+        .queue_decision(SettlementDecision::new(
+            OWNER,
+            vec![
+                SettlementAction::Demolish {
+                    building_id: BuildingId(0),
+                },
+                offers(),
+            ],
+        ))
+        .unwrap();
+    let report = simulation.step().unwrap();
+    assert!(report.decisions[0].results[0].is_applied());
+    assert_eq!(
+        report.decisions[0].results[1].outcome,
+        ActionOutcome::Rejected {
+            error: ActionError::MarketCapacityExceeded
+        }
+    );
+    assert_eq!(
+        report.settlements[&OWNER].trade.market_reserved[&material("wood")],
+        800
+    );
+    assert_eq!(
+        simulation.observe(OWNER).unwrap().trade.limits,
+        configuration.economy.trade_limits
+    );
+}
+
+#[test]
+fn agent_construction_uses_configured_cost_and_turns() {
+    let mut world = World::new(
+        Map::new(3, 1, vec![Area::new(0.5, 0.5); 3], vec![1; 3]),
+        vec![Province::new(1)],
+    );
+    world.set_building_catalog(catalog());
+    let mut settlement = Settlement::new(OWNER, 1_000, 1, Arc::default());
+    settlement.deposit(material("wood"), 200);
+    settlement.deposit(material("stone"), 150);
+    world.add_settlement_at(1, position(0), settlement).unwrap();
+    let mut simulation = Simulation::new(world).unwrap();
+    simulation
+        .queue_decision(SettlementDecision::new(
+            OWNER,
+            vec![SettlementAction::Construct {
+                building_type: BuildingTypeId::new("warehouse"),
+                position: position(1),
+            }],
+        ))
+        .unwrap();
+    let first = simulation.step().unwrap();
+    assert!(first.decisions[0].results[0].is_applied());
+    assert_eq!(
+        first.settlements[&OWNER].inventory.project_consumed[&material("wood")],
+        200
+    );
+    assert_eq!(
+        first.settlements[&OWNER].inventory.project_consumed[&material("stone")],
+        150
+    );
+    assert_eq!(simulation.observe(OWNER).unwrap().inventory.capacity, 1_000);
+    simulation.step().unwrap();
+    assert_eq!(simulation.observe(OWNER).unwrap().inventory.capacity, 1_000);
+    simulation.step().unwrap();
+    assert_eq!(simulation.observe(OWNER).unwrap().inventory.capacity, 3_000);
 }

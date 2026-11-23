@@ -129,6 +129,9 @@ pub enum ActionEffect {
     ProjectCanceled {
         project_id: ProjectId,
     },
+    BuildingDemolished {
+        building_id: BuildingId,
+    },
     /// The building is active and requests this staff from the next allocation on.
     WorkersSet {
         building_id: BuildingId,

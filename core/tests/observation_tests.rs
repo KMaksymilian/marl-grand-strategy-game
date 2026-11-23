@@ -220,6 +220,7 @@ fn observation_describes_the_local_economy() {
             requires_province_deposit: false,
             biome_efficiencies: None,
             cycles_per_turn: None,
+            passive_rules: None,
             building_type: BuildingTypeId::new("farm"),
             name: "Farm".into(),
             tier: 1,

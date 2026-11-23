@@ -91,6 +91,8 @@ pub enum SettlementAction {
         receiver_id: SettlementId,
         offers: Vec<OfferSpec>,
     },
+    /// Remove an own completed building and its effects, without a refund.
+    Demolish { building_id: BuildingId },
 }
 
 impl SettlementAction {
@@ -104,6 +106,7 @@ impl SettlementAction {
             Self::PublishMarketOffers { .. } => ActionKind::PublishMarketOffers,
             Self::ClearMarketOffers => ActionKind::ClearMarketOffers,
             Self::OrderCaravan { .. } => ActionKind::OrderCaravan,
+            Self::Demolish { .. } => ActionKind::Demolish,
         }
     }
 }
@@ -121,11 +124,12 @@ pub enum ActionKind {
     PublishMarketOffers,
     ClearMarketOffers,
     OrderCaravan,
+    Demolish,
 }
 
 impl ActionKind {
     /// Every kind in a fixed order, e.g. for a fixed-size mask vector.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Construct,
         Self::Upgrade,
         Self::CancelProject,
@@ -134,6 +138,7 @@ impl ActionKind {
         Self::PublishMarketOffers,
         Self::ClearMarketOffers,
         Self::OrderCaravan,
+        Self::Demolish,
     ];
 }
 
@@ -230,6 +235,9 @@ mod tests {
             SettlementAction::OrderCaravan {
                 receiver_id: SettlementId(2),
                 offers: vec![offer(material("stone"), OfferSide::Sell, 6, 1)],
+            },
+            SettlementAction::Demolish {
+                building_id: BuildingId(4),
             },
         ]
     }

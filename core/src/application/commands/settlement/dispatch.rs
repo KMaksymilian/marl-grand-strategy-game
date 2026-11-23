@@ -58,6 +58,9 @@ impl<'a> CommandDispatch<'a> {
             SettlementCommand::CancelProject(project_id) => world
                 .cancel_project(id, *project_id)
                 .map_err(CommandError::World),
+            SettlementCommand::Demolish(building_id) => world
+                .demolish_building(id, *building_id)
+                .map_err(CommandError::World),
             SettlementCommand::SetBuildingStaff { building_id, load } => world
                 .settlement_mut(id)
                 .map_err(CommandError::World)?

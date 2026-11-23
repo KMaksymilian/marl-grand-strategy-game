@@ -40,6 +40,7 @@ async fn main() {
     );
     let mut world: World = WorldBuilder::generate_default_with_resources(Arc::new(resources));
     world.set_building_catalog(buildings);
+    world.set_base_trade_limits(configuration.economy.trade_limits);
     world
         .set_unit_catalog(Arc::new(units))
         .unwrap_or_else(|error| panic!("units.toml: {error:?}"));

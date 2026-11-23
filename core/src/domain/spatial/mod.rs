@@ -78,6 +78,11 @@ pub trait ConstructionSpace {
         None
     }
 
+    /// Whether a building can work its site given current land and ownership.
+    fn can_operate_on_land(&self, _position: Position) -> bool {
+        true
+    }
+
     /// Whether this land tile shares an edge with the ocean.
     fn is_coastal(&self, _position: Position) -> bool {
         false

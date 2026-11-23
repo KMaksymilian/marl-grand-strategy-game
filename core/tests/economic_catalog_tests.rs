@@ -189,3 +189,14 @@ fn builder_selects_one_recipe_from_available_inputs_in_configuration_order() {
         assert_eq!(output, expected_outputs);
     }
 }
+
+#[test]
+fn builders_plan_against_the_same_stock_without_requesting_the_same_bundle_twice() {
+    let report = produce(
+        &[("builder", GRASSLAND), ("builder", GRASSLAND)],
+        &[("stone_bricks", 50), ("bricks", 50)],
+    );
+    assert_eq!(report.produced[&material("fortification_components")], 50);
+    assert_eq!(report.production_consumed[&material("stone_bricks")], 50);
+    assert_eq!(report.production_consumed[&material("bricks")], 50);
+}

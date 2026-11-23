@@ -106,7 +106,9 @@ impl Settlement {
             |building| {
                 let definition = building.definition();
                 let position = building.position();
-                (!definition.requires_coast() || environment.is_coastal(position))
+                (definition.cycle_production().is_none()
+                    || environment.can_operate_on_land(position))
+                    && (!definition.requires_coast() || environment.is_coastal(position))
                     && definition.required_deposit().is_none_or(|resource| {
                         if definition.requires_province_deposit() {
                             environment.can_extract_in_province(position, resource)

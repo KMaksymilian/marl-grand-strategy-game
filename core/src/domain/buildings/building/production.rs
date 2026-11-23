@@ -58,6 +58,7 @@ impl Building {
             self.choose_cycle_recipe(workers, |resource| {
                 grants.get(resource).copied().unwrap_or_default()
             })
+            .map(|(index, _)| index)
         });
         self.resolve_planned_allocation(granted, modifier_strategies, recipe)
     }

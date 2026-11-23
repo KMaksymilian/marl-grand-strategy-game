@@ -156,18 +156,37 @@ impl BuildingManager {
         available: impl Fn(&ResourceType) -> u32,
     ) -> BuildingRequests {
         let mut plan = BuildingRequests::default();
-        for building in self
+        let mut eligible: Vec<_> = self
             .buildings
             .iter()
             .filter(|building| can_operate(building))
-        {
+            .collect();
+        eligible.sort_unstable_by_key(|building| building.instance_id());
+        let mut alternative_requests = HashMap::<ResourceType, u32>::new();
+        for building in eligible {
             let id = building.instance_id();
-            let demand = if building.definition().cycle_production().is_some() {
-                let recipe = building.preferred_cycle_recipe(&available);
-                if let Some(recipe) = recipe {
+            let demand = if let Some(production) = building.definition().cycle_production() {
+                let has_alternatives = production.recipes.len() > 1;
+                let selection = building.preferred_cycle_recipe(|resource| {
+                    let stock = available(resource);
+                    if has_alternatives {
+                        stock - alternative_requests.get(resource).copied().unwrap_or(0)
+                    } else {
+                        stock
+                    }
+                });
+                if let Some((recipe, _)) = selection {
                     plan.recipes.insert(id, recipe);
                 }
-                building.calculate_cycle_demand(recipe)
+                let demand = building.calculate_cycle_demand(selection);
+                if has_alternatives {
+                    for (resource, &amount) in &demand {
+                        if resource != &ResourceType::Labour {
+                            *alternative_requests.entry(resource.clone()).or_default() += amount;
+                        }
+                    }
+                }
+                demand
             } else {
                 building.calculate_demand()
             };

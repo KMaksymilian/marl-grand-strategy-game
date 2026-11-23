@@ -20,6 +20,8 @@ The building requests staffing and materials for one recipe. For alternatives
 such as the builder's three recipes, it selects the recipe with the most
 possible full cycles in the available stock before allocation. Ties use
 configuration order. The allocation engine still arbitrates competing requests.
+Buildings with alternatives plan in ascending building ID against a shared
+estimate of the stock those buildings have yet to request.
 Production uses the actual grants for that recipe and returns unused inputs.
 Output modifiers share the existing production calculator. They affect yield
 after allocation, with the configured biome percentage applied relative to

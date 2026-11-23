@@ -7,7 +7,7 @@ impl Building {
     pub(crate) fn preferred_cycle_recipe(
         &self,
         available: impl Fn(&ResourceType) -> u32,
-    ) -> Option<usize> {
+    ) -> Option<(usize, u32)> {
         self.choose_cycle_recipe(self.requested_workers(), available)
     }
 
@@ -15,7 +15,7 @@ impl Building {
         &self,
         workers: u32,
         available: impl Fn(&ResourceType) -> u32,
-    ) -> Option<usize> {
+    ) -> Option<(usize, u32)> {
         let production = self.definition.cycle_production()?;
         self.configured_biome_efficiency()?;
         let staff_limit = self.staffed_cycles(production, workers);
@@ -26,12 +26,11 @@ impl Building {
             .map(|(index, recipe)| (index, executable_cycles(recipe, staff_limit, &available)))
             .filter(|&(_, cycles)| cycles > 0)
             .max_by_key(|&(index, cycles)| (cycles, Reverse(index)))
-            .map(|(index, _)| index)
     }
 
     pub(crate) fn calculate_cycle_demand(
         &self,
-        recipe_index: Option<usize>,
+        plan: Option<(usize, u32)>,
     ) -> HashMap<ResourceType, u32> {
         let mut demand = HashMap::new();
         let workers = self.requested_workers();
@@ -41,9 +40,9 @@ impl Building {
 
         demand.insert(ResourceType::Labour, workers);
         if let Some(production) = self.definition.cycle_production()
-            && let Some(recipe) = recipe_index.and_then(|index| production.recipes.get(index))
+            && let Some((index, cycles)) = plan
+            && let Some(recipe) = production.recipes.get(index)
         {
-            let cycles = self.staffed_cycles(production, workers);
             for (resource, units) in &recipe.inputs {
                 demand.insert(resource.clone(), cycles * units);
             }

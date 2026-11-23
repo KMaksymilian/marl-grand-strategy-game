@@ -144,6 +144,13 @@ impl ConstructionSpace for MapSettlementEnvironment<'_> {
         self.space.production_biome(position)
     }
 
+    fn can_operate_on_land(&self, position: Position) -> bool {
+        self.space.map.validate_building_position(position).is_ok()
+            && self
+                .province
+                .is_none_or(|province| self.space.map.province_at(position) == Some(province))
+    }
+
     fn is_coastal(&self, position: Position) -> bool {
         self.space.is_coastal(position)
     }

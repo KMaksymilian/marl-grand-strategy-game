@@ -31,6 +31,7 @@ system overview to functional areas and implementation references.
 - [Rendering and camera](architecture/systems/rendering.md)
 - [Headless execution and simulation API](architecture/implementation/simulation_commands.md)
 - [Nations: ownership, capital, treasury and decisions](architecture/implementation/nations.md)
+- [Military: unit catalogue and province graph](architecture/implementation/military.md)
 - [Configuration](architecture/implementation/configuration.md)
 - [Building productivity](architecture/implementation/building_productivity.md)
 

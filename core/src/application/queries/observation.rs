@@ -10,6 +10,7 @@
 use crate::application::commands::settlement::contract::{OfferSide, OfferSpec};
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{BuildingId, BuildingTypeId, NationId, ProjectId, SettlementId};
+use crate::domain::nation::decree::DecreeId;
 use crate::domain::spatial::Position;
 use crate::domain::world::terrain::elevation::Elevation;
 use crate::domain::world::terrain::moisture::Moisture;
@@ -233,6 +234,8 @@ pub struct NationPolicyObservation {
     pub capital: SettlementId,
     /// This settlement is the national capital.
     pub is_capital: bool,
+    /// Decrees of the nation in effect this turn, ascending ID.
+    pub active_decrees: Vec<DecreeId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

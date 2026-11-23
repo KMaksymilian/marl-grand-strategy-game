@@ -1,9 +1,9 @@
 use super::{ResourceId, ResourceType};
-use serde::Deserialize;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fmt;
 use std::num::NonZeroU32;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -13,7 +13,7 @@ pub enum FoodClass {
     Processed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResourceCategory {
     RawFood,

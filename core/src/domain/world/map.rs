@@ -1,5 +1,8 @@
 use crate::domain::economy::ResourceType;
-use crate::domain::world::{Position, terrain::area::Area};
+use crate::domain::world::{
+    Position,
+    terrain::{area::Area, biome::Biome},
+};
 use std::collections::HashMap;
 
 pub struct Map {
@@ -37,6 +40,26 @@ impl Map {
 
     pub fn deposit_at(&self, position: Position) -> Option<ResourceType> {
         self.deposits.get(&position).cloned()
+    }
+
+    pub fn biome_at(&self, position: Position) -> Option<Biome> {
+        self.tile_index(position)
+            .map(|index| self.terrain[index].determine_biome())
+    }
+
+    pub(super) fn has_accessible_province_deposit(
+        &self,
+        province_id: usize,
+        position: Position,
+        resource: &ResourceType,
+    ) -> bool {
+        self.province_at(position) == Some(province_id)
+            && self.validate_building_position(position).is_ok()
+            && self.deposits().any(|(deposit_position, deposit)| {
+                deposit == resource
+                    && self.province_at(deposit_position) == Some(province_id)
+                    && self.validate_building_position(deposit_position).is_ok()
+            })
     }
 
     pub(super) fn has_accessible_deposit(

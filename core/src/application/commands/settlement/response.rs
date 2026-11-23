@@ -43,6 +43,9 @@ pub enum ActionError {
     CoastRequired {
         position: Position,
     },
+    ForbiddenBiome {
+        position: Position,
+    },
     RequiredDepositMissing {
         position: Position,
         resource: ResourceType,

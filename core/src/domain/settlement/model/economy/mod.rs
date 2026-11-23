@@ -4,7 +4,7 @@ mod buildings;
 mod inventory;
 mod population;
 
-pub(super) use buildings::BuildingManager;
+pub(super) use buildings::{BuildingManager, BuildingRequests};
 pub(super) use inventory::SettlementInventoryManager;
 pub(super) use population::PopulationManager;
 pub use population::{ConsumptionResult, NeedRegistry, NeedTier};

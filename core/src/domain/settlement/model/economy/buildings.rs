@@ -18,6 +18,12 @@ pub struct BuildingManager {
     production_modifier_strategies: Vec<Box<dyn ProductionModifierStrategy>>,
 }
 
+#[derive(Default)]
+pub(crate) struct BuildingRequests {
+    pub demands: Vec<DemandRequest>,
+    pub recipes: HashMap<BuildingId, usize>,
+}
+
 impl BuildingManager {
     pub fn new() -> Self {
         Self {
@@ -83,8 +89,9 @@ impl BuildingManager {
         &mut self,
         space: &impl ConstructionSpace,
     ) {
-        if !self.production_modifier_strategies.is_empty() {
-            for building in &mut self.buildings {
+        let uses_strategies = !self.production_modifier_strategies.is_empty();
+        for building in &mut self.buildings {
+            if uses_strategies || building.definition().is_biome_restricted() {
                 building.production_biome = space.production_biome(building.position());
             }
         }
@@ -143,35 +150,53 @@ impl BuildingManager {
         }
     }
 
-    pub fn generate_requests(&self, can_operate: impl Fn(&Building) -> bool) -> Vec<DemandRequest> {
-        self.buildings
+    pub(crate) fn generate_requests(
+        &self,
+        can_operate: impl Fn(&Building) -> bool,
+        available: impl Fn(&ResourceType) -> u32,
+    ) -> BuildingRequests {
+        let mut plan = BuildingRequests::default();
+        for building in self
+            .buildings
             .iter()
             .filter(|building| can_operate(building))
-            .filter_map(|b| {
-                let demand = b.calculate_demand();
-                if demand.is_empty() {
-                    None
-                } else {
-                    Some(DemandRequest {
-                        recipient: AllocationRecipient::Building(b.instance_id()),
-                        demand,
-                    })
+        {
+            let id = building.instance_id();
+            let demand = if building.definition().cycle_production().is_some() {
+                let recipe = building.preferred_cycle_recipe(&available);
+                if let Some(recipe) = recipe {
+                    plan.recipes.insert(id, recipe);
                 }
-            })
-            .collect()
+                building.calculate_cycle_demand(recipe)
+            } else {
+                building.calculate_demand()
+            };
+            if !demand.is_empty() {
+                plan.demands.push(DemandRequest {
+                    recipient: AllocationRecipient::Building(id),
+                    demand,
+                });
+            }
+        }
+        plan
     }
 
     pub fn process_allocations(
         &mut self,
         allocations: &AllocationResult,
+        recipes: &HashMap<BuildingId, usize>,
     ) -> (HashMap<ResourceType, u64>, HashMap<ResourceType, u64>) {
         let mut all_produced = HashMap::new();
         let mut all_returned = HashMap::new();
 
         for building in self.buildings.iter_mut() {
-            let grants = allocations.get(&AllocationRecipient::Building(building.instance_id()));
-            let update_result =
-                building.resolve_modified_allocation(grants, &self.production_modifier_strategies);
+            let id = building.instance_id();
+            let grants = allocations.get(&AllocationRecipient::Building(id));
+            let update_result = building.resolve_planned_allocation(
+                grants,
+                &self.production_modifier_strategies,
+                recipes.get(&id).copied(),
+            );
 
             for (res, amount) in update_result.produced {
                 let total = all_produced.entry(res).or_insert(0_u64);
@@ -373,7 +398,7 @@ mod tests {
             .unwrap();
 
         // Act
-        let requests = manager.generate_requests(|_| true);
+        let requests = manager.generate_requests(|_| true, |_| 0).demands;
 
         // Assert
         assert_eq!(
@@ -441,7 +466,7 @@ mod tests {
         allocations.insert(AllocationRecipient::Building(BuildingId(2)), b2_grants);
 
         // Act
-        let (produced, returned) = manager.process_allocations(&allocations);
+        let (produced, returned) = manager.process_allocations(&allocations, &HashMap::new());
 
         // Assert
         // Both buildings worked at 100% capacity (10 labour, enough wood).

@@ -7,6 +7,7 @@ use crate::domain::buildings::productivity::{ProductionModifierStrategy, TravelC
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::BuildingId;
 use crate::domain::spatial::{BuildingReference, ConstructionSpace, Position, TerritoryError};
+use crate::domain::world::terrain::biome::Biome;
 
 impl Settlement {
     /// Adds a yield modifier source for this settlement's production turns.
@@ -18,13 +19,44 @@ impl Settlement {
             .add_production_modifier_strategy(strategy);
     }
 
-    pub(crate) fn validate_coastal_site(
+    pub(crate) fn validate_building_terrain(
+        definition: &BuildingDefinition,
+        position: Position,
+        biome: Option<Biome>,
+        is_coastal: impl FnOnce() -> bool,
+    ) -> Result<(), TerritoryError> {
+        if biome == Some(Biome::Ocean) {
+            return Err(TerritoryError::OceanTile(position));
+        }
+        if definition.requires_coast() && !is_coastal() {
+            return Err(TerritoryError::CoastRequired(position));
+        }
+        if definition.is_biome_restricted()
+            && biome
+                .and_then(|biome| definition.biome_efficiency(biome))
+                .is_none()
+        {
+            return Err(TerritoryError::ForbiddenBiome(position));
+        }
+        Ok(())
+    }
+
+    pub(in crate::domain::settlement) fn validate_building_site(
         definition: &BuildingDefinition,
         position: Position,
         space: &impl ConstructionSpace,
     ) -> Result<(), TerritoryError> {
-        if definition.requires_coast() && !space.is_coastal(position) {
-            return Err(TerritoryError::CoastRequired(position));
+        Self::validate_building_terrain(
+            definition,
+            position,
+            space.production_biome(position),
+            || space.is_coastal(position),
+        )?;
+        if definition.requires_province_deposit()
+            && let Some(resource) = definition.required_deposit()
+            && !space.can_extract_in_province(position, resource)
+        {
+            return Err(TerritoryError::ProvinceDepositRequired(position));
         }
         Ok(())
     }
@@ -41,6 +73,13 @@ impl Settlement {
                 BuildingBehavior::StatModifier { .. } => [].iter().chain(&[]),
             });
         recipes
+            .chain(
+                definition
+                    .cycle_production()
+                    .into_iter()
+                    .flat_map(|production| &production.recipes)
+                    .flat_map(|recipe| recipe.inputs.iter().chain(&recipe.outputs)),
+            )
             .map(|(resource, _)| resource)
             .chain(definition.construction_cost().needed_resources.keys())
             .chain(definition.deposit_resource())
@@ -64,7 +103,7 @@ impl Settlement {
         }
         self.validate_new_building_rules(building.definition())
             .map_err(BuildingCommandError::BuildingRule)?;
-        Self::validate_coastal_site(building.definition(), position, environment)
+        Self::validate_building_site(building.definition(), position, environment)
             .map_err(BuildingCommandError::Territory)?;
         environment
             .register_building(

@@ -8,6 +8,7 @@ use crate::domain::ids::{BuildingId, ProjectId};
 use crate::domain::settlement::projects::{ProjectCost, ProjectError, ProjectResult};
 #[cfg(test)]
 use crate::domain::settlement::turn_report::TurnReport;
+use crate::domain::settlement::{BuildingCommandError, Settlement};
 use crate::domain::world::settlement_environment::{
     MapConstructionSpace, MapSettlementEnvironment,
 };
@@ -35,8 +36,7 @@ impl World {
     ) -> Result<(), WorldError> {
         self.validate_construction_site(settlement_id, position)?;
         self.validate_blueprint_materials(settlement_id, definition)?;
-        self.validate_coast_requirement(position, definition)?;
-        self.validate_building_deposit(position, definition.required_deposit())
+        self.validate_site_requirements(position, definition)
     }
 
     pub(crate) fn validate_upgrade_site(
@@ -50,8 +50,7 @@ impl World {
             .validate_building_position(position)
             .map_err(|error| WorldError::Project(ProjectError::Territory(error)))?;
         self.validate_blueprint_materials(settlement_id, definition)?;
-        self.validate_coast_requirement(position, definition)?;
-        self.validate_building_deposit(position, definition.required_deposit())
+        self.validate_site_requirements(position, definition)
     }
 
     fn validate_blueprint_materials(
@@ -68,17 +67,19 @@ impl World {
         }
     }
 
-    fn validate_coast_requirement(
+    fn validate_site_requirements(
         &self,
         position: Position,
         definition: &BuildingDefinition,
     ) -> Result<(), WorldError> {
-        if definition.requires_coast() && !self.map.is_coastal(position) {
-            return Err(WorldError::Project(ProjectError::Territory(
-                crate::domain::spatial::TerritoryError::CoastRequired(position),
-            )));
-        }
-        Ok(())
+        Settlement::validate_building_terrain(
+            definition,
+            position,
+            self.map.biome_at(position),
+            || self.map.is_coastal(position),
+        )
+        .map_err(|error| WorldError::Project(ProjectError::Territory(error)))?;
+        self.validate_building_deposit(position, definition)
     }
 
     /// Cancellation belongs to the settlement and also works after map edits.
@@ -126,10 +127,10 @@ impl World {
         finder: &mut PathFinder,
     ) -> Result<(), WorldError> {
         self.validate_settlement_position(settlement_id, building.position())?;
-        self.validate_building_deposit(
-            building.position(),
-            building.definition().required_deposit(),
-        )?;
+        self.map
+            .validate_building_position(building.position())
+            .map_err(|error| WorldError::Building(BuildingCommandError::Territory(error)))?;
+        self.validate_building_deposit(building.position(), building.definition())?;
         self.settlements
             .get_mut(settlement_id)
             .expect("settlement was validated")
@@ -224,11 +225,12 @@ impl World {
                         .buildings()
                         .find(|building| building.instance_id() == *target_instance_id)
                     {
-                        self.validate_upgrade_site(
-                            settlement_id,
-                            building.position(),
-                            new_definition,
-                        )?;
+                        self.validate_settlement_position(settlement_id, building.position())?;
+                        // Legacy tile-bound upgrades keep their original deposit validation.
+                        // Blueprint terrain and province deposits are rechecked during project preparation.
+                        if !new_definition.requires_province_deposit() {
+                            self.validate_building_deposit(building.position(), new_definition)?;
+                        }
                     }
                 }
                 ProjectResult::RecruitUnit { .. } => {}

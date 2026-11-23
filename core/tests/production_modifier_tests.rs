@@ -4,7 +4,7 @@ use common::material;
 use simulation_core::buildings::Building;
 use simulation_core::buildings::definition::{BuildingBehavior, BuildingDefinition};
 use simulation_core::buildings::productivity::{
-    BiomeProductionModifier, BuildingProductivityCalculator, ProductionModifier,
+    BiomeProductionModifier, BuildingProductivityCalculator, ProductionFactor, ProductionModifier,
     ProductionModifierContext, ProductionModifierStrategy, TravelCostEfficiencyPolicy,
 };
 use simulation_core::ids::{BuildingId, SettlementId};
@@ -94,6 +94,34 @@ fn biome_and_decree_stack_after_allocation_without_changing_recipe_cost() {
     assert_eq!(inventory.production_consumed[&material("stone")], 3);
     assert_eq!(inventory.returned[&material("stone")], 1);
     assert!(inventory.is_balanced());
+}
+
+#[test]
+fn yield_operations_use_registration_order_and_allow_a_custom_cap() {
+    let add = || ProductionModifier::new("decree", 2_000);
+    let multiply = || ProductionModifier::multiplicative("tools", 15_000);
+    let cap = ProductionModifier::with_operation("cap", |factor| {
+        factor.min(ProductionFactor::new(5.into(), 4.into()))
+    });
+    let grassland = Area::new(0.5, 0.45);
+
+    for (modifiers, expected_planks) in [
+        (vec![add(), multiply()], 136),
+        (vec![multiply(), add()], 128),
+        (vec![add(), multiply(), cap], 94),
+    ] {
+        let mut simulation = scenario([grassland; 3], None, 101, |settlement| {
+            for modifier in modifiers {
+                settlement.add_production_modifier_strategy(modifier);
+            }
+        });
+        let turn = simulation.step().unwrap();
+        let inventory = &turn.settlements[&SETTLEMENT].inventory;
+        assert_eq!(inventory.produced[&material("planks")], expected_planks);
+        assert_eq!(inventory.production_consumed[&material("wood")], 3);
+        assert_eq!(inventory.production_consumed[&material("stone")], 3);
+        assert!(inventory.is_balanced());
+    }
 }
 
 #[test]

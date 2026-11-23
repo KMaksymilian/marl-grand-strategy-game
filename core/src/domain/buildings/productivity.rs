@@ -1,22 +1,53 @@
 use super::Building;
 use crate::domain::spatial::Position;
 use crate::domain::world::terrain::biome::Biome;
+use std::fmt;
+use std::sync::Arc;
 
 const BASIS_POINTS_PER_UNIT: u32 = 10_000;
 
-/// A named change to production yield. 100 basis points equal 1%.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// An exact production multiplier. A factor of 1 means unchanged yield.
+pub type ProductionFactor = num_rational::BigRational;
+
+/// A named operation on the current production factor.
+#[derive(Clone)]
 pub struct ProductionModifier {
     pub source: String,
-    pub basis_points: i32,
+    operation: Arc<dyn Fn(ProductionFactor) -> ProductionFactor + Send + Sync>,
 }
 
 impl ProductionModifier {
+    /// Adds points to the current factor. 100 basis points equal 1 percentage point.
     pub fn new(source: impl Into<String>, basis_points: i32) -> Self {
+        let change = ProductionFactor::new(basis_points.into(), BASIS_POINTS_PER_UNIT.into());
+        Self::with_operation(source, move |factor| factor + &change)
+    }
+
+    /// Multiplies the current factor. For example, 15_000 means ×1.5.
+    pub fn multiplicative(source: impl Into<String>, factor_basis_points: u32) -> Self {
+        let multiplier =
+            ProductionFactor::new(factor_basis_points.into(), BASIS_POINTS_PER_UNIT.into());
+        Self::with_operation(source, move |factor| factor * &multiplier)
+    }
+
+    /// Applies a custom operation in strategy registration order.
+    pub fn with_operation(
+        source: impl Into<String>,
+        operation: impl Fn(ProductionFactor) -> ProductionFactor + Send + Sync + 'static,
+    ) -> Self {
         Self {
             source: source.into(),
-            basis_points,
+            operation: Arc::new(operation),
         }
+    }
+}
+
+impl fmt::Debug for ProductionModifier {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProductionModifier")
+            .field("source", &self.source)
+            .finish_non_exhaustive()
     }
 }
 
@@ -26,9 +57,15 @@ pub struct ProductionModifierContext<'a> {
     pub biome: Option<Biome>,
 }
 
-/// Supplies one additive yield modifier when its conditions are met.
+/// Supplies one yield operation when its conditions are met.
 pub trait ProductionModifierStrategy: std::fmt::Debug + Send + Sync {
     fn modifier(&self, context: &ProductionModifierContext<'_>) -> Option<ProductionModifier>;
+}
+
+impl ProductionModifierStrategy for ProductionModifier {
+    fn modifier(&self, _: &ProductionModifierContext<'_>) -> Option<ProductionModifier> {
+        Some(self.clone())
+    }
 }
 
 /// Applies a yield modifier to one building type on a specific biome.
@@ -189,28 +226,30 @@ impl LocationProductivity {
         f64::from(self.numerator) / f64::from(self.denominator)
     }
 
-    pub(crate) fn scale_output(
+    pub(crate) fn apply_modifiers(
         self,
-        amount: u32,
-        work: u128,
-        capacity: u128,
-        modifier_basis_points: i128,
-    ) -> u64 {
+        modifiers: impl IntoIterator<Item = ProductionModifier>,
+    ) -> ProductionYield {
+        let zero = ProductionFactor::from_integer(0.into());
         if !self.reachable {
-            return 0;
+            return ProductionYield(zero);
         }
-        // Keep the A* penalty as an exact ratio and add other sources to it.
-        let multiplier = i128::from(self.numerator) * i128::from(BASIS_POINTS_PER_UNIT)
-            + modifier_basis_points * i128::from(self.denominator);
-        let divisor = u128::from(self.denominator) * u128::from(BASIS_POINTS_PER_UNIT);
-        let multiplier = multiplier.max(0) as u128;
-        let work_output = u128::from(amount) * work;
-        // Split the multiplier so the fractional product stays within u128.
-        // The work divisor fits in u32, so saturation only affects yields above u64::MAX.
-        let whole = work_output.saturating_mul(multiplier / divisor);
-        let fractional = work_output * (multiplier % divisor) / divisor;
-        let output = whole.saturating_add(fractional) / capacity;
-        output.min(u128::from(u64::MAX)) as u64
+
+        let initial = ProductionFactor::new(self.numerator.into(), self.denominator.into());
+        let factor = modifiers
+            .into_iter()
+            .fold(initial, |factor, modifier| (modifier.operation)(factor));
+        ProductionYield(factor.max(zero))
+    }
+}
+
+pub(crate) struct ProductionYield(ProductionFactor);
+
+impl ProductionYield {
+    pub(crate) fn scale_output(&self, amount: u32, work: u128, capacity: u128) -> u64 {
+        let numerator = self.0.numer() * amount * work;
+        let denominator = self.0.denom() * capacity;
+        u64::try_from(numerator / denominator).unwrap_or(u64::MAX)
     }
 }
 
@@ -243,7 +282,11 @@ mod tests {
         let policy = TravelCostEfficiencyPolicy::new(0, u32::MAX).unwrap();
         let ratio = policy.productivity(Some(1));
         assert_eq!(
-            ratio.scale_output(u32::MAX, u128::from(u32::MAX), u128::from(u32::MAX), 0),
+            ratio.apply_modifiers([]).scale_output(
+                u32::MAX,
+                u128::from(u32::MAX),
+                u128::from(u32::MAX)
+            ),
             u64::from(u32::MAX - 1)
         );
         assert_eq!(policy.productivity(Some(u32::MAX)).as_factor(), 0.0);
@@ -254,6 +297,6 @@ mod tests {
         let ratio = TravelCostEfficiencyPolicy::new(0, 30)
             .unwrap()
             .productivity(Some(10));
-        assert_eq!(ratio.scale_output(3, 1, 2, 0), 1);
+        assert_eq!(ratio.apply_modifiers([]).scale_output(3, 1, 2), 1);
     }
 }

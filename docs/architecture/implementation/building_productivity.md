@@ -44,7 +44,7 @@ productivity = numerator / denominator
 ```text
 work = min(granted_workers / max_workers, remaining_input / base_input, ...)
 consumed_input = ceil(base_input * work)
-yield_factor = max(0, location_productivity + sum(modifier_basis_points) / 10000)
+yield_factor = max(0, apply_modifiers_in_registration_order(location_productivity))
 produced_output = floor(base_output * work * yield_factor)
 ```
 
@@ -53,7 +53,14 @@ route at the zero-productivity threshold contributes a penalty of 100%.
 
 Register sources with `Settlement::add_production_modifier_strategy`. Each strategy
 can inspect the building, its allocated workers and the current tile biome.
+A modifier that always applies can be registered directly with the same method.
 `BiomeProductionModifier` supplies an optional rule for a building type and biome.
+Use `ProductionModifier::new("decree", 2_000)` to add 20 percentage points
+or `ProductionModifier::multiplicative("tools", 15_000)` to multiply by 1.5.
+Use `ProductionModifier::with_operation` to supply a new operation on the exact
+factor, such as capping its value. The same calculator applies all operations in
+the order their strategies were registered. For a starting factor of 1,
+adding 0.2 then multiplying by 1.5 yields 1.8. Reversing them yields 1.7.
 The rules apply after allocation and leave recipe input consumption unchanged.
 Register terrain rules when configuring a settlement. For a temporary effect
 such as a decree, the strategy should return a modifier only while it applies.

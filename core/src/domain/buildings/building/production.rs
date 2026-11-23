@@ -72,11 +72,11 @@ impl Building {
             building: self,
             biome: self.production_biome,
         };
-        let modifier_basis_points = modifier_strategies
-            .iter()
-            .filter_map(|strategy| strategy.modifier(&context))
-            .map(|modifier| i128::from(modifier.basis_points))
-            .sum();
+        let production_yield = self.location_productivity.apply_modifiers(
+            modifier_strategies
+                .iter()
+                .filter_map(|strategy| strategy.modifier(&context)),
+        );
 
         // Recipes run in definition order against the remaining material balance.
         // Exact fractions avoid floating-point rounding at the withdrawal boundary.
@@ -112,12 +112,7 @@ impl Building {
                     }
                 }
                 for (resource, amount) in outputs {
-                    let output = self.location_productivity.scale_output(
-                        *amount,
-                        numerator,
-                        denominator,
-                        modifier_basis_points,
-                    );
+                    let output = production_yield.scale_output(*amount, numerator, denominator);
                     let total = produced.entry(resource.clone()).or_insert(0_u64);
                     *total = total.saturating_add(output);
                 }

@@ -176,7 +176,8 @@ pub(super) fn run_turn(
             let id = nation.id();
             let settlements = world.nations().settlements_of(id);
             let taxes = taxes.remove(&id).unwrap_or_default();
-            let mut report = NationTurnReport::closing(nation, settlements, taxes);
+            let upkeep = upkeep.remove(&id).unwrap_or_default();
+            let mut report = NationTurnReport::closing(nation, settlements, taxes, upkeep);
             report.diplomacy = events.remove(&id).unwrap_or_default();
             (id, report)
         })

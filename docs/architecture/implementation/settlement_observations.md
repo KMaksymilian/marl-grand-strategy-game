@@ -34,7 +34,7 @@ generation: [application/queries/observe_settlement.rs](../../../core/src/applic
 | `territory` | Every tile of the own province in row-major order: elevation, moisture, optional `deposit`, occupancy and `buildable`. |
 | `trade_partners` | Other settlements as `{settlement_id, province_id, nation_id}`, ascending ID; `nation_id` is the public owner; `trade_allowed` is false during a war or embargo between the nations. |
 | `building_types` | The public catalog: name, tier, `max_workers`, construction cost and turns, recipes and optional `required_deposit`. |
-| `nation` | The owner's policy: `nation_id`, `tax_rate`, `capital`, `is_capital`, `at_war_with`. Every settlement belongs to a nation. See [Nations](nations.md). |
+| `nation` | The owner's policy: `nation_id`, `tax_rate`, `capital`, `is_capital`, `active_decrees`, `at_war_with`. Every settlement belongs to a nation. See [Nations](nations.md). |
 
 `buildable` covers province membership, land and vacancy. For a particular
 blueprint, the command also checks that the tile has its `required_deposit`,

@@ -23,8 +23,9 @@ transport boundaries are not separate `TurnPhase` entries. New caravans first
 move next turn. Caravans between nations at war or under an embargo do not
 leave, or turn back without trading.
 
-Before the settlement phases, nations apply their decisions (including
-diplomacy). After the turn, national timers, truces and proposals advance. See [trading](../systems/trading.md).
+Before the settlement phases, nations apply their decisions (including decrees
+and diplomacy) and pay decree upkeep. After the turn, national timers, decree
+states, truces and proposals advance. See [trading](../systems/trading.md).
 
 ## Global sequence
 

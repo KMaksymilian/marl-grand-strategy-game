@@ -10,8 +10,8 @@ use super::contract::{NationAction, NationActionError, NationActionKind, NationD
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::Nation;
-use crate::domain::nation::diplomacy::DiplomaticAction;
 use crate::domain::nation::decree::{DecreeId, DecreeState};
+use crate::domain::nation::diplomacy::DiplomaticAction;
 use crate::domain::world::{World, WorldError};
 use std::collections::BTreeMap;
 
@@ -27,6 +27,9 @@ pub(crate) enum NationCommand {
     },
     EnactDecree(DecreeId),
     RevokeDecree(DecreeId),
+    /// Checked again when it runs: an earlier action of the same decision
+    /// (e.g. a war that draws in allies) may have changed the relations.
+    Diplomacy(DiplomaticAction),
 }
 
 /// Policies and objects that at most one action of a decision may change.
@@ -34,6 +37,8 @@ pub(crate) enum NationCommand {
 enum Target {
     TaxRate,
     Decree(DecreeId),
+    /// At most one diplomatic action towards each other nation per decision.
+    Nation(NationId),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -131,7 +136,7 @@ fn check_action(
 ) -> Result<NationCommand, NationActionError> {
     if let Some(diplomatic) = action.diplomatic() {
         let target = Target::Nation(diplomatic.other());
-        batch.ensure_free(target)?;
+        batch.ensure_free(&target)?;
         world
             .check_diplomatic_action(nation_id, diplomatic)
             .map_err(|error| NationActionError::Diplomacy { error })?;

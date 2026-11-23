@@ -2,8 +2,8 @@
 use super::contract::NationActionKind;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
-use crate::domain::nation::diplomacy::{DiplomacyError, DiplomaticOutcome};
 use crate::domain::nation::decree::DecreeId;
+use crate::domain::nation::diplomacy::{DiplomacyError, DiplomaticOutcome};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -73,6 +73,7 @@ pub enum NationActionEffect {
     /// A diplomatic action took effect (§8).
     Diplomacy {
         outcome: DiplomaticOutcome,
+    },
     /// Pending this turn, active from the next; `upkeep` is the gold it will
     /// cost every active turn (for the current number of settlements).
     DecreeEnacted {

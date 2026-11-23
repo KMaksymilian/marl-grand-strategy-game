@@ -26,8 +26,8 @@ pub use super::response::{
 };
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
-use crate::domain::nation::diplomacy::{DiplomaticAction, Treaty};
 use crate::domain::nation::decree::DecreeId;
+use crate::domain::nation::diplomacy::{DiplomaticAction, Treaty};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -162,7 +162,7 @@ pub enum NationActionKind {
 
 impl NationActionKind {
     /// Every kind in a fixed order, e.g. for a fixed-size mask vector.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 11] = [
         Self::SetTaxRate,
         Self::Subsidize,
         Self::DeclareWar,
@@ -172,6 +172,8 @@ impl NationActionKind {
         Self::BreakAlliance,
         Self::ProposeTreaty,
         Self::RespondToProposal,
+        Self::EnactDecree,
+        Self::RevokeDecree,
     ];
 }
 
@@ -270,7 +272,7 @@ mod tests {
                 {"type": "break_trade_agreement", "target": 1},
                 {"type": "break_alliance", "target": 1},
                 {"type": "propose_treaty", "target": 2, "treaty": "trade_agreement"},
-                {"type": "respond_to_proposal", "proposer": 2, "treaty": "peace", "accept": true}
+                {"type": "respond_to_proposal", "proposer": 2, "treaty": "peace", "accept": true},
                 {"type": "enact_decree", "decree": "agricultural_decree"},
                 {"type": "revoke_decree", "decree": "games"}
             ]
@@ -318,7 +320,6 @@ mod tests {
             wrap(r#"{"type": "declare_war", "nation": 2}"#),
             wrap(r#"{"type": "propose_treaty", "target": 2, "treaty": "marriage"}"#),
             wrap(r#"{"type": "respond_to_proposal", "proposer": 2, "treaty": "peace"}"#),
-            wrap(r#"{"type": "declare_war", "target": 2}"#),
             wrap(r#"{"type": "enact_decree", "decree": "Free Beer"}"#),
             wrap(r#"{"type": "enact_decree"}"#),
             wrap(r#"{"type": "revoke_decree", "decree": 3}"#),

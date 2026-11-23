@@ -5,9 +5,9 @@
 //! Which nation owns which settlement is recorded once, in
 //! [`registry::NationRegistry`]. Rules that need settlements as well (capital
 //! succession, extinction, subsidies) are coordinated by World.
-pub mod diplomacy;
 pub mod decree;
 pub mod decree_catalog;
+pub mod diplomacy;
 pub mod registry;
 pub mod report;
 pub mod taxation;

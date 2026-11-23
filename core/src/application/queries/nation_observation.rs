@@ -3,8 +3,8 @@
 //! see the owner of each trade partner.
 use super::observation::ResourceAmounts;
 use crate::domain::ids::{NationId, SettlementId};
-use crate::domain::nation::diplomacy::{Proposal, Relation};
 use crate::domain::nation::decree::{DecreeEffects, DecreeId, DecreeState};
+use crate::domain::nation::diplomacy::{Proposal, Relation};
 use crate::domain::nation::report::NationTurnReport;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -67,6 +67,8 @@ pub struct DiplomacyObservation {
     pub outgoing_proposals: Vec<Proposal>,
     /// Broken treaties of every nation, this one included (public, §8.4).
     pub reputation: BTreeMap<NationId, u32>,
+}
+
 /// What a nation agent needs to choose decrees (§7).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

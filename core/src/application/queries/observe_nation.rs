@@ -4,7 +4,7 @@
 //! summary, not their full observations) and the IDs of other nations are read.
 //! Another nation's treasury, stock and policy never enter the result.
 use super::nation_observation::{
-    DiplomacyObservation, NationObservation, OwnedSettlementObservation,
+    DecreesObservation, DiplomacyObservation, NationObservation, OwnedSettlementObservation,
 };
 use crate::domain::ids::NationId;
 use crate::domain::nation::report::NationTurnReport;
@@ -98,6 +98,8 @@ fn diplomacy(world: &World, nation_id: NationId) -> DiplomacyObservation {
             .map(|nation| (nation.id(), diplomacy.reputation(nation.id())))
             .collect(),
     }
+}
+
 fn observe_decrees(world: &World, nation_id: NationId) -> Result<DecreesObservation, WorldError> {
     let nation = world
         .nation(nation_id)

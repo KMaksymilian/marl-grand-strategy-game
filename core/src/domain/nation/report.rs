@@ -1,6 +1,6 @@
-//! One nation's turn, written for the nation agent. Later systems (decrees)
-//! add their parts here.
+//! One nation's turn, written for the nation agent.
 use super::Nation;
+use super::decree::{DecreeId, DecreeState, DecreeUpkeepReport};
 use super::diplomacy::DiplomaticEvent;
 use super::taxation::NationTaxReport;
 use crate::domain::economy::ResourceType;

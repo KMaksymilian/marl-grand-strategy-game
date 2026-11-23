@@ -113,6 +113,7 @@ impl ObservationQuery<'_> {
             tax_rate: nation.tax_rate(),
             capital: nation.capital(),
             is_capital: nation.capital() == settlement_id,
+            active_decrees: nation.decrees().active().cloned().collect(),
         })
     }
 

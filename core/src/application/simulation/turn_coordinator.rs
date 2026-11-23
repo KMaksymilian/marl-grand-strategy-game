@@ -51,6 +51,11 @@ pub(super) fn run_turn(
         }
     }
 
+    // Upkeep of active decrees, right after the decisions (a decree revoked
+    // above pays nothing). A decree that cannot be paid is revoked (cooldown)
+    // and has no effect this turn.
+    let mut upkeep = world.pay_decree_upkeep();
+
     let mut execution = Vec::new();
     let mut decisions = Vec::new();
     let mut pending = std::mem::take(pending_decisions);
@@ -165,7 +170,11 @@ pub(super) fn run_turn(
             let id = nation.id();
             let settlements = world.nations().settlements_of(id);
             let taxes = taxes.remove(&id).unwrap_or_default();
-            (id, NationTurnReport::closing(nation, settlements, taxes))
+            let upkeep = upkeep.remove(&id).unwrap_or_default();
+            (
+                id,
+                NationTurnReport::closing(nation, settlements, taxes, upkeep),
+            )
         })
         .collect();
     Ok(SimulationTurnReport {

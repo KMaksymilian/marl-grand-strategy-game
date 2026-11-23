@@ -109,6 +109,5 @@ impl WorldBuilder {
             .generate_deposits(&deposits)
             .expect("generated terrain and standard ore rules must be valid");
         world
-        World::with_resource_catalog(builder.map, provinces, resources)
     }
 }

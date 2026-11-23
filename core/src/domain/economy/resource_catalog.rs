@@ -1,9 +1,9 @@
 use super::{ResourceId, ResourceType};
+use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fmt;
 use std::num::NonZeroU32;
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::OnceLock;
 

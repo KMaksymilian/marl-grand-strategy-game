@@ -229,6 +229,7 @@ mod tests {
                 proposer: NationId(2),
                 treaty: Treaty::Peace,
                 accept: true,
+            },
             NationAction::EnactDecree {
                 decree: DecreeId::new("agricultural_decree").unwrap(),
             },

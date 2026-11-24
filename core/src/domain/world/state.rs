@@ -11,6 +11,7 @@ mod resource_sites;
 mod taxation;
 mod trade;
 pub use inspection::TileView;
+pub(crate) use nations::NationOperationError;
 pub use nations::{OwnershipChange, SubsidyTransfer};
 pub use taxation::TaxCollection;
 

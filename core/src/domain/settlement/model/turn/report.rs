@@ -27,7 +27,7 @@ pub struct InventoryLoss {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct InventoryTurnReport {
-    /// Main inventory and pending buffer together; excludes Labour.
+    /// Main inventory, pending production and goods in orders accepted for this turn.
     pub opening_stock: MaterialTotals,
     pub closing_stock: MaterialTotals,
     pub produced: MaterialTotals,
@@ -35,7 +35,7 @@ pub struct InventoryTurnReport {
     pub population_consumed: MaterialTotals,
     pub project_consumed: MaterialTotals,
     pub production_consumed: MaterialTotals,
-    /// Materials moved out of `main` into the market book or caravans.
+    /// Materials reserved by the market or carried by the turn's funded orders.
     pub trade_reserved: MaterialTotals,
     /// Materials coming back from trade (purchases, unsold stock, caravans), before losses.
     pub trade_received: MaterialTotals,
@@ -178,12 +178,23 @@ pub struct MarketTrade {
     pub execution: TradeExecution,
 }
 
-/// A caravan funded and sent out this turn.
+/// Funded cargo presented for routing at the end of the turn.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DispatchedCaravan {
     pub receiver_id: SettlementId,
     pub cargo: MaterialTotals,
     pub gold: u64,
+    /// Isolated settlement turns do not assign routes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub route: Option<CaravanDepartureRoute>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CaravanDepartureRoute {
+    Routed,
+    NoRoute,
+    ReceiverMissing,
 }
 
 /// A caravan unloaded this turn.
@@ -214,7 +225,7 @@ pub struct TradeTurnReport {
     pub market_bought: MaterialTotals,
     pub market_unsold: MaterialTotals,
     pub caravans_dispatched: Vec<DispatchedCaravan>,
-    /// Receiver IDs of caravan orders skipped because nothing could be funded.
+    /// Retained for report compatibility. Unfundable orders are rejected at acceptance.
     pub unfunded_caravan_orders: Vec<SettlementId>,
     pub caravans_returned: Vec<ReturnedCaravan>,
     /// All materials returned from trade this turn, before warehouse losses.
@@ -224,6 +235,13 @@ pub struct TradeTurnReport {
 }
 
 impl TradeTurnReport {
+    pub(crate) fn record_departure_routes(&mut self, routes: Vec<CaravanDepartureRoute>) {
+        debug_assert_eq!(self.caravans_dispatched.len(), routes.len());
+        for (departure, route) in self.caravans_dispatched.iter_mut().zip(routes) {
+            departure.route = Some(route);
+        }
+    }
+
     /// Executions at the local market plus those of caravans unloaded this turn.
     pub fn trade_count(&self) -> usize {
         self.market_trades.len()

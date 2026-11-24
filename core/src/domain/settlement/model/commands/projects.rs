@@ -76,7 +76,7 @@ impl Settlement {
         space
             .reserve_construction(position, reference)
             .map_err(ProjectError::Territory)?;
-        // ID uniqueness was checked before reserving; rollback if registration fails.
+        // The project ID was checked before reserving. Keep both stores consistent.
         self.project_manager.add_project(project).map_err(|id| {
             space
                 .cancel_construction(position, reference)

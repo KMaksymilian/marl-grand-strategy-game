@@ -1,9 +1,11 @@
 //! Serializable decisions submitted by nation agents (gameplay specification §5.2).
 //!
-//! The contract holds the policy and orders implemented so far; decrees,
-//! diplomacy, recruitment and army orders are added as new action variants.
-//! Values are checked against the world before execution; deserialization checks
-//! only the shape and the numeric types.
+//! The contract holds the policy and orders implemented so far; diplomacy,
+//! recruitment and army orders are added as new action variants. Decrees are
+//! named by their ID from `decrees.toml`; whether the ID exists is checked by
+//! validation, not by parsing.
+//! Each action is checked against the current world as it executes.
+//! Deserialization checks only the shape and numeric types.
 //!
 //! JSON shape:
 //! ```json
@@ -11,7 +13,9 @@
 //!   "nation_id": 0,
 //!   "actions": [
 //!     { "type": "set_tax_rate", "rate": 0.15 },
-//!     { "type": "subsidize", "settlement_id": 2, "gold": 50, "resources": { "Wood": 20 } }
+//!     { "type": "subsidize", "settlement_id": 2, "gold": 50, "resources": { "Wood": 20 } },
+//!     { "type": "enact_decree", "decree": "agricultural_decree" },
+//!     { "type": "revoke_decree", "decree": "games" }
 //!   ]
 //! }
 //! ```
@@ -21,6 +25,7 @@ pub use super::response::{
 };
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::nation::decree::DecreeId;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -65,6 +70,12 @@ pub enum NationAction {
         #[serde(default)]
         resources: BTreeMap<ResourceType, u32>,
     },
+    /// Start a decree: it takes a slot now, works from the next turn and costs
+    /// its upkeep every active turn (§7). Enacting itself costs nothing.
+    EnactDecree { decree: DecreeId },
+    /// End a decree active for the minimum duration; it can be enacted again
+    /// after the cooldown. Nothing is refunded.
+    RevokeDecree { decree: DecreeId },
 }
 
 impl NationAction {
@@ -72,6 +83,8 @@ impl NationAction {
         match self {
             Self::SetTaxRate { .. } => NationActionKind::SetTaxRate,
             Self::Subsidize { .. } => NationActionKind::Subsidize,
+            Self::EnactDecree { .. } => NationActionKind::EnactDecree,
+            Self::RevokeDecree { .. } => NationActionKind::RevokeDecree,
         }
     }
 }
@@ -82,11 +95,18 @@ impl NationAction {
 pub enum NationActionKind {
     SetTaxRate,
     Subsidize,
+    EnactDecree,
+    RevokeDecree,
 }
 
 impl NationActionKind {
     /// Every kind in a fixed order, e.g. for a fixed-size mask vector.
-    pub const ALL: [Self; 2] = [Self::SetTaxRate, Self::Subsidize];
+    pub const ALL: [Self; 4] = [
+        Self::SetTaxRate,
+        Self::Subsidize,
+        Self::EnactDecree,
+        Self::RevokeDecree,
+    ];
 }
 
 /// The JSON text is malformed or does not match the nation decision contract.
@@ -120,6 +140,12 @@ mod tests {
                     (crate::test_support::material("stone"), 5),
                 ]),
             },
+            NationAction::EnactDecree {
+                decree: DecreeId::new("agricultural_decree").unwrap(),
+            },
+            NationAction::RevokeDecree {
+                decree: DecreeId::new("games").unwrap(),
+            },
         ]
     }
 
@@ -147,7 +173,9 @@ mod tests {
             "actions": [
                 {"type": "set_tax_rate", "rate": 0.15},
                 {"type": "subsidize", "settlement_id": 2, "gold": 50,
-                 "resources": {"Stone": 5, "Wood": 20}}
+                 "resources": {"Stone": 5, "Wood": 20}},
+                {"type": "enact_decree", "decree": "agricultural_decree"},
+                {"type": "revoke_decree", "decree": "games"}
             ]
         });
         // Compared as the text an agent receives: `to_value` would widen the f32
@@ -191,6 +219,10 @@ mod tests {
             wrap(r#"{"type": "subsidize", "settlement_id": 1, "resources": {"Gold": 1}}"#),
             wrap(r#"{"type": "subsidize", "settlement_id": 1, "army": 3}"#),
             wrap(r#"{"type": "declare_war", "target": 2}"#),
+            wrap(r#"{"type": "enact_decree", "decree": "Free Beer"}"#),
+            wrap(r#"{"type": "enact_decree"}"#),
+            wrap(r#"{"type": "revoke_decree", "decree": 3}"#),
+            wrap(r#"{"type": "relocate_capital", "settlement_id": 3}"#),
             r#"{"nation_id": -1}"#.to_owned(),
             r#"{"nation_id": 1, "turn": 2}"#.to_owned(),
             r#"{"actions": []}"#.to_owned(),

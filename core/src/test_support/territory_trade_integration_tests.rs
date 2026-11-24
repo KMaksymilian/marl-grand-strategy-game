@@ -326,7 +326,7 @@ fn canceling_a_project_preserves_trade_and_return_overflow_is_reported() {
 }
 
 #[test]
-fn invalid_membership_blocks_the_whole_turn_before_funding_or_movement() {
+fn invalid_membership_blocks_the_turn_without_consuming_accepted_escrow() {
     let (mut world, locations, mut finder) = scenario(100);
     let site = Position { x: 0, y: 0 };
     world
@@ -347,7 +347,9 @@ fn invalid_membership_blocks_the_whole_turn_before_funding_or_movement() {
         Err(WorldError::SettlementOutsideProvince { .. })
     ));
     assert!(world.caravans.is_empty());
-    assert_eq!(world.settlement(SettlementId(1)).unwrap().gold(), 20);
+    let sender = world.settlement(SettlementId(1)).unwrap();
+    assert_eq!(sender.gold(), 12);
+    assert_eq!(sender.caravan_orders().len(), 1);
     assert_eq!(
         world
             .settlement(SettlementId(1))

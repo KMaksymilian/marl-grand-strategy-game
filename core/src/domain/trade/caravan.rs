@@ -25,6 +25,8 @@ pub enum CaravanOutcome {
     ReceiverMissing,
     /// No route between sender and receiver; the caravan never left.
     NoRoute,
+    /// The sender canceled a funded order before departure.
+    OrderCanceled,
 }
 
 /// Funded book leaving a settlement, before a route is assigned.

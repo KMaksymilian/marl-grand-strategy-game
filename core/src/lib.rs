@@ -9,18 +9,14 @@ extern crate self as simulation_core;
 mod test_support;
 
 pub use application::simulation;
-pub use domain::{buildings, economy, ids, nation, spatial, trade};
+pub use domain::{buildings, economy, ids, military, nation, spatial, trade};
 
 pub mod settlement {
     pub use crate::application::commands::settlement::contract as decision;
-    #[cfg(test)]
-    pub(crate) use crate::application::commands::settlement::prepared as command;
     pub use crate::application::queries::observation;
     pub use crate::domain::settlement::*;
 }
 
 pub mod world {
-    #[cfg(test)]
-    pub(crate) use crate::application::commands::settlement::ValidatedDecision;
     pub use crate::domain::world::*;
 }

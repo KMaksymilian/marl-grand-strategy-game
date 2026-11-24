@@ -25,6 +25,8 @@ impl World {
             return Err(WorldError::CapitalSiteProtected(position));
         }
         self.map.terrain[index] = terrain;
+        // Land and ocean decide which provinces border each other.
+        self.rebuild_province_graph();
         Ok(())
     }
 
@@ -65,6 +67,7 @@ impl World {
         if !province.territory.contains(&point) {
             province.territory.push(point);
         }
+        self.rebuild_province_graph();
         Ok(())
     }
 }

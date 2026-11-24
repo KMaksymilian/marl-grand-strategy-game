@@ -364,14 +364,26 @@ See [Nations](nations.md) for rules and the decision contract.
 
 | File | Contents |
 | --- | --- |
-| [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) | `Nation`: treasury, stock (`ResourceInventory` with one shared capacity), `f32` tax rate (`is_valid_tax_rate`), capital; `deposit_resource`, `withdraw_resource`, `take_stock`, `set_stock_capacity`, `replace_lost_capital`, `advance_turn`. |
+| [domain/nation/mod.rs](../../../core/src/domain/nation/mod.rs) | `Nation`: treasury, stock (`ResourceInventory` with one shared capacity), `f32` tax rate (`is_valid_tax_rate`), capital; `deposit_resource`, `withdraw_resource`, `take_stock`, `set_stock_capacity`, `replace_lost_capital`, `decrees`, `advance_turn`. |
+| [domain/nation/decree.rs](../../../core/src/domain/nation/decree.rs) | `DecreeId`, `ProductionChange`, `DecreeEffects` (`production_change`), `DecreeState`, `DecreeUpkeepReport`, `DecreeBook` (one nation's decree lifecycle). |
+| [domain/nation/decree_catalog.rs](../../../core/src/domain/nation/decree_catalog.rs) | `DecreeCatalog` loaded from `decrees.toml` (`standard`, `load`, `from_toml`, `get`, `upkeep`, `effects_of`), `DecreeRules` (`upkeep`, `slots`), `DecreeDefinition`, `DecreeCatalogError`. |
+| [domain/world/state/decrees.rs](../../../core/src/domain/world/state/decrees.rs) | `World::decree_catalog`, `set_decree_catalog`, `decree_effects`, `nation_decree_effects`, `decree_slots`, `decree_upkeep`, `enact_decree`, `revoke_decree`, `pay_decree_upkeep`. |
 | [domain/nation/registry.rs](../../../core/src/domain/nation/registry.rs) | `Ownership` (nation, conquest turns, under attack) and `NationRegistry`: nations and the single ownership record; `owner_of`, `ownership`, `settlements_of`, `stock_capacity`, `can_found`, `found`, `add_member`, `capture` (all update stock capacities), `set_under_attack`, `remove`, `advance_turn`. |
 | [domain/nation/report.rs](../../../core/src/domain/nation/report.rs) | `NationTurnReport` (`closing`). |
 | [domain/nation/taxation.rs](../../../core/src/domain/nation/taxation.rs) | `tax_amount` (rounded-down share of an amount), `TaxStatus` (`effective_rate`), `SettlementTaxReport`, `NationTaxReport`. |
 | [domain/world/state/taxation.rs](../../../core/src/domain/world/state/taxation.rs) | `World::collect_taxes` (status, production tax, shared capacity); `TaxCollection`. |
 | [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) | `World::nations`, `nation`, `settlement_owner`, `province_owner`, `nation_settlements`, `nation_stock_capacity`, `transfer_settlement` (capital succession, extinction), `deposit_nation_gold`, `deposit_nation_resource`, `set_tax_rate`, `subsidize`, `set_settlement_under_attack`, `advance_nations_turn`; `OwnershipChange`, `SubsidyTransfer`. Registration in `state.rs` founds or joins a nation (`add_settlement_to_nation`). |
-| [application/commands/nation/](../../../core/src/application/commands/nation/) | `contract.rs` (`NationDecision`, `NationAction`, `NationActionKind`), `response.rs` (errors, effects, outcomes), `preparation.rs` (read-only validation with a shared subsidy budget), `handler.rs` (execution). |
-| [application/queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) | `NationObservation`, `OwnedSettlementObservation` and their builder. |
+| [application/commands/nation/](../../../core/src/application/commands/nation/) | `contract.rs` (decision types), `response.rs` (errors, effects, outcomes), `handler.rs` (live validation and ordered execution). |
+| [application/queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) | `NationObservation`, `OwnedSettlementObservation`, `DecreesObservation` and their builder. |
+
+## Military
+
+See [Military](military.md) for rules and content.
+
+| File | Contents |
+| --- | --- |
+| [domain/military/unit_catalog.rs](../../../core/src/domain/military/unit_catalog.rs) | `UnitTypeId`, `MilitaryRules`, `UnitDefinition`, `UnitCatalog` loaded from `units.toml` (`standard`, `load`, `from_toml`, `get`, `definitions`, `garrison_unit`, `has_advantage`), `UnitCatalogError`. `World::unit_catalog` and `set_unit_catalog` live in `state.rs`. |
+| [domain/world/province_graph.rs](../../../core/src/domain/world/province_graph.rs) | `ProvinceGraph` (`from_map`, `neighbors`, `are_neighbors`, `route`); `World::province_graph`, rebuilt by `set_tile_province` and `set_tile_terrain`. |
 
 ## Trade and transport
 
@@ -647,14 +659,12 @@ projects outside their settlement's province after a membership change.
 | [domain/economy/cost.rs](../../../core/src/domain/economy/cost.rs) | `ProjectCost::normalize` removes zero entries; `is_fully_paid` checks materials and elapsed time. |
 | [domain/buildings/effects.rs](../../../core/src/domain/buildings/effects.rs) | `StatType`: shared housing, inventory and trade modifier targets. |
 | [domain/buildings/productivity.rs](../../../core/src/domain/buildings/productivity.rs) | `TravelCostSource::travel_cost` supplies a directed optional cost to the calculator. |
-| [application/commands/settlement/prepared.rs](../../../core/src/application/commands/settlement/prepared.rs) | `SettlementCommand`: resolved commands for construction, upgrade, cancellation, building settings, storage order and trade. |
 | [application/commands/settlement/handler.rs](../../../core/src/application/commands/settlement/handler.rs) | `handle_decision` validates, executes accepted actions and returns `DecisionOutcome`. |
 | [application/queries/observe_settlement.rs](../../../core/src/application/queries/observe_settlement.rs) | `observe_settlement` projects a `SettlementObservation` from the world and latest report. |
 | [application/queries/observation.rs](../../../core/src/application/queries/observation.rs) | Serializable observation types. See [settlement observations](settlement_observations.md). |
 | [application/commands/settlement/contract.rs](../../../core/src/application/commands/settlement/contract.rs) | Agent contract: `SettlementDecision`, `SettlementAction`, `ActionKind`, `OfferSpec`; `to_json`/`from_json`. See [settlement decisions](settlement_decisions.md). |
 | [domain/world/settlement_environment.rs](../../../core/src/domain/world/settlement_environment.rs) | `AStarTravelCosts::new/travel_cost`, `MapConstructionSpace::new` and its construction operations, `MapSettlementEnvironment::new` and delegation of both ports. |
 | [application/commands/settlement/dispatch.rs](../../../core/src/application/commands/settlement/dispatch.rs) | Internal dispatcher maps prepared commands to domain operations. |
-| [application/commands/settlement/preparation.rs](../../../core/src/application/commands/settlement/preparation.rs) | `DecisionPreparation::validate_decision`: read-only check of a `SettlementDecision`, returning `ValidatedDecision` with resolved `AcceptedAction`s and `RejectedAction`s. See [settlement decisions](settlement_decisions.md#validation). |
 
 `World::settlement_turn_parts` borrows a target and temporary map adapter;
 `World::settlement_mut` is a checked internal lookup for nonspatial phases.
@@ -667,7 +677,7 @@ shares checked mouse-to-tile conversion between pathfinding overlays.
 | --- | --- |
 | [domain/settlement/model/commands/trade.rs](../../../core/src/domain/settlement/model/commands/trade.rs) | `publish_trade_offers`, `clear_trade_offers`, `order_caravan`, `cancel_caravan_orders`, treasury/views and cargo handoff. |
 | [domain/settlement/model/trading/mod.rs](../../../core/src/domain/settlement/model/trading/mod.rs) | `TradeManager` and `CaravanOrder`: templates, orders, funded departures and queued returns. |
-| [domain/settlement/model/trading/lifecycle.rs](../../../core/src/domain/settlement/model/trading/lifecycle.rs) | `reserve_market`, `fund_caravan_orders`, `trade_with_visitors`, `collect_trade_returns`. |
+| [domain/settlement/model/trading/lifecycle.rs](../../../core/src/domain/settlement/model/trading/lifecycle.rs) | Market funding, visitor matching, returns and end-of-turn caravan realization. |
 | [domain/world/state/trade.rs](../../../core/src/domain/world/state/trade.rs) | `begin_trade_turn`, `prepare_settlement_turn`, `capital_trade_locations`, `finish_trade_turn`: transport and participant resolution. |
 | [test_support/trade_network.rs](../../../core/src/test_support/trade_network.rs) | Test runner with explicit caravan endpoints. |
 

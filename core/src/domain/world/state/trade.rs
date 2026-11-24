@@ -1,11 +1,33 @@
 //! Caravan transport coordinates the same settlement instances as construction.
 use super::World;
+use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
+use crate::domain::settlement::TradeCommandError;
+use crate::domain::settlement::turn_report::CaravanDepartureRoute;
 use crate::domain::trade::caravan::{Caravan, CaravanOutcome, CaravanReturn, CaravanState};
+use crate::domain::trade::offer::TradeOffer;
 use crate::domain::world::{Point, pathfinding::path_finder::PathFinder};
 use std::collections::HashMap;
 
 impl World {
+    /// Funds a caravan to another registered settlement. Routes are assigned at turn end.
+    pub fn order_caravan(
+        &mut self,
+        sender_id: SettlementId,
+        receiver_id: SettlementId,
+        offers: HashMap<ResourceType, TradeOffer>,
+    ) -> Result<(), TradeCommandError> {
+        if self.settlement(sender_id).is_none() {
+            return Err(TradeCommandError::UnknownSender(sender_id));
+        }
+        if self.settlement(receiver_id).is_none() {
+            return Err(TradeCommandError::UnknownReceiver(receiver_id));
+        }
+        self.settlement_mut(sender_id)
+            .expect("validated caravan sender")
+            .order_caravan(receiver_id, offers)
+    }
+
     pub(crate) fn prepare_settlement_turn(
         &mut self,
         id: SettlementId,
@@ -74,36 +96,43 @@ impl World {
         &mut self,
         locations: &HashMap<SettlementId, Point>,
         finder: &mut PathFinder,
-    ) {
+    ) -> HashMap<SettlementId, Vec<CaravanDepartureRoute>> {
+        let mut routes = HashMap::new();
         for id in self.settlement_ids() {
             let departures = self
                 .settlement_mut(id)
                 .expect("registered settlement")
                 .take_dispatched_caravans();
             for cargo in departures {
-                let outcome = if self.settlement(cargo.receiver_id).is_none() {
-                    Some(CaravanOutcome::ReceiverMissing)
-                } else {
-                    None
-                };
                 let route = locations
                     .get(&cargo.sender_id)
                     .zip(locations.get(&cargo.receiver_id));
-                let returned = if let Some(outcome) = outcome {
-                    Some(CaravanReturn::undelivered(cargo, outcome))
+                let (status, returned) = if self.settlement(cargo.receiver_id).is_none() {
+                    (
+                        CaravanDepartureRoute::ReceiverMissing,
+                        Some(CaravanReturn::undelivered(
+                            cargo,
+                            CaravanOutcome::ReceiverMissing,
+                        )),
+                    )
                 } else if let Some((&start, &end)) = route {
                     match Caravan::from_cargo(&self.map, finder, cargo, start, end) {
                         Ok(caravan) => {
                             self.caravans.push(caravan);
-                            None
+                            (CaravanDepartureRoute::Routed, None)
                         }
-                        Err(cargo) => {
-                            Some(CaravanReturn::undelivered(cargo, CaravanOutcome::NoRoute))
-                        }
+                        Err(cargo) => (
+                            CaravanDepartureRoute::NoRoute,
+                            Some(CaravanReturn::undelivered(cargo, CaravanOutcome::NoRoute)),
+                        ),
                     }
                 } else {
-                    Some(CaravanReturn::undelivered(cargo, CaravanOutcome::NoRoute))
+                    (
+                        CaravanDepartureRoute::NoRoute,
+                        Some(CaravanReturn::undelivered(cargo, CaravanOutcome::NoRoute)),
+                    )
                 };
+                routes.entry(id).or_insert_with(Vec::new).push(status);
                 if let Some(returned) = returned {
                     self.settlement_mut(id)
                         .expect("registered sender")
@@ -111,5 +140,6 @@ impl World {
                 }
             }
         }
+        routes
     }
 }

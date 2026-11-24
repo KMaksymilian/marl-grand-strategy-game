@@ -1,6 +1,7 @@
-//! One nation's turn, written for the nation agent. Later systems (decrees,
-//! diplomacy) add their parts here.
+//! One nation's turn, written for the nation agent. Later systems (diplomacy)
+//! add their parts here.
 use super::Nation;
+use super::decree::{DecreeId, DecreeState, DecreeUpkeepReport};
 use super::taxation::NationTaxReport;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
@@ -20,15 +21,21 @@ pub struct NationTurnReport {
     pub closing_stock: BTreeMap<ResourceType, u32>,
     /// What the nation's settlements paid this turn (§6).
     pub taxes: NationTaxReport,
+    /// Decrees at the end of the turn: pending, active or cooling down (§7).
+    pub decrees: BTreeMap<DecreeId, DecreeState>,
+    /// Decree upkeep paid this turn, and decrees revoked because the treasury
+    /// could not pay them.
+    pub decree_upkeep: DecreeUpkeepReport,
 }
 
 impl NationTurnReport {
     /// The end-of-turn state of a nation owning `settlements`, with this
-    /// turn's taxes.
+    /// turn's taxes and decree upkeep.
     pub(crate) fn closing(
         nation: &Nation,
         settlements: Vec<SettlementId>,
         taxes: NationTaxReport,
+        decree_upkeep: DecreeUpkeepReport,
     ) -> Self {
         Self {
             tax_rate: nation.tax_rate(),
@@ -38,6 +45,8 @@ impl NationTurnReport {
             closing_treasury: nation.treasury(),
             closing_stock: nation.stock_amounts(),
             taxes,
+            decrees: nation.decrees().states().clone(),
+            decree_upkeep,
         }
     }
 }

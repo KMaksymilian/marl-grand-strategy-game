@@ -51,6 +51,11 @@ pub(super) fn run_turn(
         }
     }
 
+    // Upkeep of active decrees, right after the decisions (a decree revoked
+    // above pays nothing). A decree that cannot be paid is revoked (cooldown)
+    // and has no effect this turn.
+    let mut upkeep = world.pay_decree_upkeep();
+
     let mut execution = Vec::new();
     let mut decisions = Vec::new();
     let mut pending = std::mem::take(pending_decisions);
@@ -154,7 +159,13 @@ pub(super) fn run_turn(
         settlements.insert(id, report);
     }
     let locations = world.capital_trade_locations();
-    world.finish_trade_turn(&locations, finder);
+    for (sender, routes) in world.finish_trade_turn(&locations, finder) {
+        settlements
+            .get_mut(&sender)
+            .expect("every caravan sender has a report")
+            .trade
+            .record_departure_routes(routes);
+    }
     // National timers count completed turns, so they tick once, after every
     // phase; the nation reports show the state at the end of the turn.
     world.advance_nations_turn();
@@ -165,7 +176,11 @@ pub(super) fn run_turn(
             let id = nation.id();
             let settlements = world.nations().settlements_of(id);
             let taxes = taxes.remove(&id).unwrap_or_default();
-            (id, NationTurnReport::closing(nation, settlements, taxes))
+            let upkeep = upkeep.remove(&id).unwrap_or_default();
+            (
+                id,
+                NationTurnReport::closing(nation, settlements, taxes, upkeep),
+            )
         })
         .collect();
     Ok(SimulationTurnReport {

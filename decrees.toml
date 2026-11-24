@@ -1,0 +1,132 @@
+# Decrees (gameplay specification §7): nation-wide policies.
+#
+# Each decree costs `base_upkeep_per_settlement × owned settlements ×
+# cost_multiplier` gold from the national treasury every turn it is active.
+# Enacted in turn T it waits (pending) until turn T+1, must stay active for
+# `minimum_active_turns` before it can be revoked, and then cannot be enacted
+# again for `cooldown_turns`. Unpaid upkeep revokes it automatically.
+#
+# Effects are data only. Each system applies the fields it owns; a field left
+# out has no effect (fractions 0.0, multipliers 1.0, flags false). Fractions
+# add up across decrees, multipliers multiply, flags combine with "or".
+#
+# `production` lists changes of output as fractions (+0.2 = +20%) for the
+# materials of resources.toml that match `categories` and `tiers`; an empty or
+# missing filter matches every material.
+
+[rules]
+base_upkeep_per_settlement = 10
+minimum_active_turns = 5
+cooldown_turns = 5
+# Slots: `base_slots`, one more at `extra_slot_happiness` average happiness and
+# one more for every further `extra_slot_happiness_step` points, at most `max_slots`.
+base_slots = 2
+max_slots = 6
+extra_slot_happiness = 70.0
+extra_slot_happiness_step = 10.0
+
+[[decrees]]
+id = "agricultural_decree"
+name = "Agricultural Decree"
+cost_multiplier = 1
+[decrees.effects]
+production = [
+    { categories = ["raw_food"], tiers = [1], change = 0.2 },
+    { categories = ["construction_material"], tiers = [1], change = -0.1 },
+]
+
+[[decrees]]
+id = "craft_reform"
+name = "Craft Reform"
+cost_multiplier = 1
+[decrees.effects]
+production = [
+    { tiers = [2, 3], change = 0.2 },
+    { tiers = [1], change = -0.1 },
+]
+
+[[decrees]]
+id = "state_mining"
+name = "State Mining"
+cost_multiplier = 1
+[decrees.effects]
+production = [{ categories = ["metal"], tiers = [1], change = 0.3 }]
+happiness = -5.0
+
+[[decrees]]
+id = "great_construction"
+name = "Great Construction"
+cost_multiplier = 2
+[decrees.effects]
+construction_cost = -0.2
+
+[[decrees]]
+id = "free_trade"
+name = "Free Trade"
+cost_multiplier = 1
+[decrees.effects]
+tariff_multiplier = 0.5
+caravan_speed = 0.25
+
+[[decrees]]
+id = "protectionism"
+name = "Protectionism"
+cost_multiplier = 1
+[decrees.effects]
+tariff_multiplier = 2.0
+
+[[decrees]]
+id = "military_levy"
+name = "Military Levy"
+cost_multiplier = 1
+[decrees.effects]
+military_levy_multiplier = 2.0
+happiness = -5.0
+
+[[decrees]]
+id = "mobilization"
+name = "Mobilization"
+cost_multiplier = 1
+[decrees.effects]
+conscription_pool_multiplier = 2.0
+instant_recruitment = true
+production = [{ change = -0.15 }]
+happiness = -10.0
+
+[[decrees]]
+id = "discipline"
+name = "Discipline"
+cost_multiplier = 1
+[decrees.effects]
+morale_loss_multiplier = 0.5
+army_upkeep_multiplier = 1.25
+
+[[decrees]]
+id = "food_rationing"
+name = "Food Rationing"
+cost_multiplier = 1
+[decrees.effects]
+food_consumption = -0.25
+happiness = -15.0
+
+[[decrees]]
+id = "games"
+name = "Games"
+cost_multiplier = 4
+[decrees.effects]
+happiness = 15.0
+
+[[decrees]]
+id = "art_patronage"
+name = "Art Patronage"
+cost_multiplier = 3
+[decrees.effects]
+monument_happiness_multiplier = 2.0
+
+[[decrees]]
+id = "national_fortification"
+name = "National Fortification"
+cost_multiplier = 4
+[decrees.effects]
+wall_bonus_points = 10.0
+wall_cost = -0.3

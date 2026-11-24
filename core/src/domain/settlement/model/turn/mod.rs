@@ -145,10 +145,18 @@ impl Settlement {
         }
     }
 
-    pub(crate) fn consume_turn(&mut self, allocated: AllocatedTurn) -> ConsumedTurn {
-        let consumption = self
-            .population_manager
-            .process_allocation(allocated.allocations.get(&AllocationRecipient::Population));
+    pub(crate) fn consume_turn(&mut self, mut allocated: AllocatedTurn) -> ConsumedTurn {
+        let (consumption, substitutions) = self.population_manager.consume_turn(
+            allocated.allocations.get(&AllocationRecipient::Population),
+            &mut self.inventory_manager.main,
+        );
+        for (resource, units) in substitutions {
+            *allocated
+                .inventory
+                .population_consumed
+                .entry(resource)
+                .or_default() += u64::from(units);
+        }
         ConsumedTurn {
             allocated,
             consumption,

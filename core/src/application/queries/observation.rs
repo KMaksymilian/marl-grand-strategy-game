@@ -168,6 +168,12 @@ pub struct KnownMarketOffer {
 pub struct LastTurnObservation {
     /// Share of the population's needs met, in percent.
     pub satisfaction_percent: f32,
+    #[serde(default)]
+    pub food_required: u64,
+    #[serde(default)]
+    pub food_eaten: u64,
+    #[serde(default)]
+    pub people_unfed: u32,
     pub missing_needs: Vec<ResourceType>,
     pub produced: ResourceTotals,
     pub population_consumed: ResourceTotals,

@@ -1,0 +1,40 @@
+# Integer amounts per resident per turn. Diet rows replace the previous diet.
+# Diet shares sum to 100. Material rows accumulate across all unlocked tiers.
+food_units_per_person = 100
+food_items = ["grain", "bread", "fish", "meat", "dates", "smoked_fish", "date_syrup", "cattle"]
+
+[[tiers]]
+min_population = 1
+materials = { wood = 20 }
+diet = [{ resource = "bread", percent = 100 }]
+
+[[tiers]]
+min_population = 100
+materials = { beer = 5 }
+diet = [{ resource = "grain", percent = 75 }, { resource = "bread", percent = 25 }]
+
+[[tiers]]
+min_population = 250
+materials = { tools = 5 }
+diet = [
+    { resource = "grain", percent = 60 }, { resource = "bread", percent = 25 },
+    { resource = "fish", percent = 10 }, { resource = "meat", percent = 5 },
+]
+
+[[tiers]]
+min_population = 500
+materials = { furniture = 3 }
+diet = [
+    { resource = "grain", percent = 50 }, { resource = "bread", percent = 25 },
+    { resource = "fish", percent = 10 }, { resource = "meat", percent = 10 },
+    { resource = "dates", percent = 5 },
+]
+
+[[tiers]]
+min_population = 800
+diet = [
+    { resource = "grain", percent = 35 }, { resource = "bread", percent = 20 },
+    { resource = "fish", percent = 10 }, { resource = "meat", percent = 15 },
+    { resource = "dates", percent = 10 }, { resource = "smoked_fish", percent = 5 },
+    { resource = "date_syrup", percent = 5 },
+]

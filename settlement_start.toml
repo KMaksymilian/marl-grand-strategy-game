@@ -1,0 +1,5 @@
+# Material stock and capacity are displayed units, converted to integer stock at load.
+population = 1000
+warehouse_capacity = 10000
+food_turns = 5
+materials = { wood = 600, stone = 300 }

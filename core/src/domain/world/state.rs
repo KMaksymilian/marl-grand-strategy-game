@@ -40,6 +40,7 @@ pub enum WorldError {
     SettlementNotEmpty(SettlementId),
     SettlementResourceCatalogMismatch(SettlementId),
     UnknownPopulationMaterial(ResourceType),
+    InvalidStartingMaterial(ResourceType),
     MissingProvince(usize),
     ProvinceOccupied {
         province_id: usize,
@@ -219,6 +220,33 @@ impl World {
             .iter()
             .find(|province| province.id == id)
             .ok_or(WorldError::MissingProvince(id))
+    }
+
+    /// Found a settlement using the configured population, capacity and supplies.
+    pub fn found_settlement(
+        &mut self,
+        province_id: usize,
+        capital: Option<Position>,
+        start: &crate::domain::settlement::start::SettlementStart,
+    ) -> Result<SettlementId, WorldError> {
+        let id = self
+            .settlements
+            .next_id()
+            .ok_or(WorldError::SettlementIdExhausted)?;
+        let mut settlement = Settlement::with_resource_catalog(
+            id,
+            start.capacity,
+            start.population,
+            Arc::clone(&start.needs),
+            self.resource_catalog(),
+        );
+        for (resource, &units) in &start.stock {
+            if settlement.deposit(resource.clone(), units).rejected > 0 {
+                return Err(WorldError::InvalidStartingMaterial(resource.clone()));
+            }
+        }
+        self.register_settlement(province_id, capital, settlement, None)?;
+        Ok(id)
     }
 
     /// Initializes and registers an empty settlement with an unused ID.

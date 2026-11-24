@@ -23,8 +23,8 @@ Child modules add methods to their owning types rather than extra service object
 | [domain/settlement/model.rs](../../../core/src/domain/settlement/model.rs) | Owns treasury, funded market book and private `TradeManager`; exports `CaravanOrder` and `TradeCommandError`. |
 | [domain/settlement/model/commands/trade.rs](../../../core/src/domain/settlement/model/commands/trade.rs) | Public commands/views on Settlement, listed below. |
 | [domain/settlement/model/trading/mod.rs](../../../core/src/domain/settlement/model/trading/mod.rs) | `CaravanOrder`: receiver ID and offers. Private `TradeManager`: templates, pending orders, funded departures and pending returns. |
-| [domain/settlement/model/trading/lifecycle.rs](../../../core/src/domain/settlement/model/trading/lifecycle.rs) | `reserve_market` rebuilds/funds the market; `fund_caravan_orders` drains the queue after market funding; `trade_with_visitors` matches eligible arrivals and starts return journeys; `collect_trade_returns` credits gold and combines market/caravan materials for storage. Includes lifecycle unit tests. |
-| [domain/settlement/model/turn/mod.rs](../../../core/src/domain/settlement/model/turn/mod.rs) | `prepare_turn(environment, visitors)` reserves/funds/matches before allocation. `finish_turn` merges trade receipts with output before admission/closing snapshots. Public `process_turn(environment, visitors)` runs the same phases locally. Map operations remain behind capabilities. |
+| [domain/settlement/model/trading/lifecycle.rs](../../../core/src/domain/settlement/model/trading/lifecycle.rs) | Funds the market during preparation, matches visitors, collects returns, and realizes reserved orders in FIFO order at the end of the local turn. |
+| [domain/settlement/model/turn/mod.rs](../../../core/src/domain/settlement/model/turn/mod.rs) | The opening material snapshot includes caravan reservations already held at decision time. The closing snapshot follows normal storage admission. The report accounts for outgoing reservations and returned materials. |
 | [domain/settlement/model/turn/report.rs](../../../core/src/domain/settlement/model/turn/report.rs) | `TurnReport.trade`, `TradeTurnReport`, `MarketTrade`, `DispatchedCaravan`, `ReturnedCaravan`. `TradeTurnReport::reserved` totals outgoing market/departure materials. `InventoryTurnReport::is_balanced` accounts for reservations/receipts. Report records do not own runtime cargo. |
 | [domain/settlement/model/economy/inventory.rs](../../../core/src/domain/settlement/model/economy/inventory.rs) | `process_production_results` admits internal returns and produced/trade goods in storage order. `commit_pending_production` transfers buffered materials; both report rejected quantities. |
 | [domain/economy/gold_inventory.rs](../../../core/src/domain/economy/gold_inventory.rs) | Currency counter: `amount`, `add`, `consume`, `consume_available`; no warehouse capacity. |
@@ -37,7 +37,7 @@ Child modules add methods to their owning types rather than extra service object
 | `publish_trade_offers(offers)` | Reject labour, remove previous purchase progress and replace persistent templates. |
 | `clear_trade_offers()`, `market_offers()` | Clear/read published templates. |
 | `order_caravan(receiver_id, offers)` | Reject self-trade, empty open demand and labour; queue a normalized one-shot order. Registry membership/routes are checked later by World. |
-| `cancel_caravan_orders()`, `caravan_orders()` | Clear/read unfunded orders; do not cancel funded or traveling cargo. |
+| `cancel_caravan_orders()`, `caravan_orders()` | Cancel or read orders waiting for end-of-turn realization. Canceling restores their held resources. Travelling cargo has its own lifecycle. |
 | `trade_book()` | Read funded market state, normally drained between turns. |
 | `take_dispatched_caravans()` | Drain funded cargo for routing by the coordinator. |
 | `receive_caravan(returned)` | Queue cargo for unloading/reporting at the next local economic update. |
@@ -68,15 +68,15 @@ selection. Use exactly one whole-world runner for an intended turn.
 | Situation | Result |
 | --- | --- |
 | Invalid command | Immediate `TradeCommandError`; existing templates/orders unchanged. |
-| Entire order unfunded | Order consumed; receiver recorded in `unfunded_caravan_orders`. |
-| Partial funding | Available cargo/funds can leave; unfulfilled quantities are not requeued. |
+| Insufficient stock or gold | Reject at acceptance. Existing orders and held resources remain unchanged. |
 | Missing receiver at dispatch | Queue unchanged cargo with `ReceiverMissing`. |
 | Missing endpoint or A* route | Queue unchanged cargo with `NoRoute`. |
 | Missing receiver on arrival | Start return journey; later report `ReceiverMissing`. |
 | No compatible trades | Normal return with `Traded` and empty executions. |
 | Material capacity exceeded | Storage order decides admission; rejected quantities become inventory losses. |
 
-Routing occurs after local reports are assembled. A failed departure is reported
-as funded now and as a return when unloaded next turn. Market executions are seen
-from the host; returned caravan logs use the sender's perspective. The material
-balance excludes gold and cargo outside warehouse/buffer snapshots.
+An applied `CaravanOrdered` action confirms acceptance and funding. The local
+report records realization at the end of the settlement turn. The coordinator
+then adds the route result and sends the caravan or queues its unchanged cargo
+for return. A failed departure remains visible in the outgoing material report
+and returns on the next turn. Market executions use the host's perspective.

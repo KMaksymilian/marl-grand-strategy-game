@@ -5,17 +5,17 @@ use std::sync::Arc;
 use super::{World, WorldError};
 use crate::domain::buildings::{Building, definition::BuildingDefinition};
 use crate::domain::ids::{BuildingId, ProjectId};
+use crate::domain::settlement::BuildingCommandError;
 use crate::domain::settlement::projects::{ProjectCost, ProjectError, ProjectResult};
 #[cfg(test)]
 use crate::domain::settlement::turn_report::TurnReport;
-use crate::domain::settlement::{BuildingCommandError, Settlement};
 use crate::domain::world::settlement_environment::{
     MapConstructionSpace, MapSettlementEnvironment,
 };
 use crate::domain::world::{Position, pathfinding::path_finder::PathFinder};
 
 impl World {
-    /// Read-only placement check for previews and command preparation.
+    /// Read-only placement check for display and observations.
     pub(crate) fn validate_construction_site(
         &self,
         settlement_id: SettlementId,
@@ -28,18 +28,7 @@ impl World {
             .map_err(|error| WorldError::Project(ProjectError::Territory(error)))
     }
 
-    pub(crate) fn validate_blueprint_site(
-        &self,
-        settlement_id: SettlementId,
-        position: Position,
-        definition: &BuildingDefinition,
-    ) -> Result<(), WorldError> {
-        self.validate_construction_site(settlement_id, position)?;
-        self.validate_blueprint_materials(settlement_id, definition)?;
-        self.validate_site_requirements(position, definition)
-    }
-
-    pub(crate) fn validate_upgrade_site(
+    fn validate_upgrade_site(
         &self,
         settlement_id: SettlementId,
         position: Position,
@@ -49,36 +38,6 @@ impl World {
         self.map
             .validate_building_position(position)
             .map_err(|error| WorldError::Project(ProjectError::Territory(error)))?;
-        self.validate_blueprint_materials(settlement_id, definition)?;
-        self.validate_site_requirements(position, definition)
-    }
-
-    fn validate_blueprint_materials(
-        &self,
-        settlement_id: SettlementId,
-        definition: &BuildingDefinition,
-    ) -> Result<(), WorldError> {
-        let settlement = self
-            .settlement(settlement_id)
-            .ok_or(WorldError::MissingSettlement(settlement_id))?;
-        match settlement.first_unknown_building_material(definition) {
-            Some(resource) => Err(WorldError::Project(ProjectError::UnknownMaterial(resource))),
-            None => Ok(()),
-        }
-    }
-
-    fn validate_site_requirements(
-        &self,
-        position: Position,
-        definition: &BuildingDefinition,
-    ) -> Result<(), WorldError> {
-        Settlement::validate_building_terrain(
-            definition,
-            position,
-            self.map.biome_at(position),
-            || self.map.is_coastal(position),
-        )
-        .map_err(|error| WorldError::Project(ProjectError::Territory(error)))?;
         self.validate_building_deposit(position, definition)
     }
 
@@ -106,7 +65,13 @@ impl World {
         definition: Arc<BuildingDefinition>,
         cost: ProjectCost,
     ) -> Result<(), WorldError> {
-        self.validate_blueprint_site(settlement_id, position, &definition)?;
+        self.validate_settlement_position(settlement_id, position)?;
+        if definition.required_deposit().is_some() {
+            self.map
+                .validate_building_position(position)
+                .map_err(|error| WorldError::Project(ProjectError::Territory(error)))?;
+        }
+        self.validate_building_deposit(position, &definition)?;
         self.settlements
             .get_mut(settlement_id)
             .expect("settlement was validated")

@@ -22,7 +22,7 @@ Diplomacy extends this contract.
 | Tax collection | [domain/world/state/taxation.rs](../../../core/src/domain/world/state/taxation.rs) |
 | Ownership changes, capital succession, extinction, subsidies | [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) |
 | Decision contract and results | [application/commands/nation/contract.rs](../../../core/src/application/commands/nation/contract.rs), [response.rs](../../../core/src/application/commands/nation/response.rs) |
-| Validation and execution | [preparation.rs](../../../core/src/application/commands/nation/preparation.rs), [handler.rs](../../../core/src/application/commands/nation/handler.rs) |
+| Validation and execution | [handler.rs](../../../core/src/application/commands/nation/handler.rs) |
 | Observation | [queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [queries/observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) |
 | `DecreeId`, `DecreeEffects`, `DecreeState`, `DecreeBook` | [domain/nation/decree.rs](../../../core/src/domain/nation/decree.rs) |
 | `DecreeCatalog`, `DecreeRules` (loaded from [decrees.toml](../../../decrees.toml)) | [domain/nation/decree_catalog.rs](../../../core/src/domain/nation/decree_catalog.rs) |
@@ -164,11 +164,11 @@ catalogue is checked by validation (`unknown_decree`), so the contract does not
 change when the file does. Decrees of one decision share the slots: a
 revocation frees its slot for a later enactment of the same decision.
 
-Actions are checked in order and each one is accepted or rejected on its own; a
-rejected action changes and claims nothing. Subsidies of one decision share the
-treasury and stock, so `available` in an error is what earlier accepted subsidies
-left. Materials that do not fit the settlement's warehouse stay in the national
-stock (`returned`): a subsidy neither creates nor destroys goods.
+Each action is checked and executed on the live state after the previous one.
+A rejected action changes and claims nothing. Later subsidies can use the
+materials that an earlier recipient could not store. The result reports those
+materials as `returned`, and the national stock is debited only for what the
+settlement actually received.
 
 ## Global turn
 

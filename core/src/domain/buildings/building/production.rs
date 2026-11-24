@@ -5,6 +5,7 @@ use super::{Building, ProductionResult};
 use crate::domain::buildings::definition::BuildingBehavior;
 use crate::domain::buildings::productivity::{
     ProductionModifier, ProductionModifierContext, ProductionModifierStrategy, ProductionYield,
+    TurnProductionModifiers,
 };
 use crate::domain::economy::ResourceType;
 use std::collections::HashMap;
@@ -60,7 +61,12 @@ impl Building {
             })
             .map(|(index, _)| index)
         });
-        self.resolve_planned_allocation(granted, modifier_strategies, recipe, None)
+        self.resolve_planned_allocation(
+            granted,
+            modifier_strategies,
+            recipe,
+            TurnProductionModifiers::default(),
+        )
     }
 
     pub(crate) fn resolve_planned_allocation(
@@ -68,7 +74,7 @@ impl Building {
         granted: Option<&HashMap<ResourceType, u32>>,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
         cycle_recipe: Option<usize>,
-        turn_modifier: Option<&ProductionModifier>,
+        turn_modifiers: TurnProductionModifiers<'_>,
     ) -> ProductionResult {
         let mut material_grants = granted.cloned().unwrap_or_default();
 
@@ -85,17 +91,17 @@ impl Building {
                 cycle_recipe,
                 material_grants,
                 modifier_strategies,
-                turn_modifier,
+                turn_modifiers,
             );
         }
-        self.execute_production(material_grants, modifier_strategies, turn_modifier)
+        self.execute_production(material_grants, modifier_strategies, turn_modifiers)
     }
 
     fn production_yield(
         &self,
         biome_efficiency: u8,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
-        turn_modifier: Option<&ProductionModifier>,
+        global_modifier: Option<&ProductionModifier>,
     ) -> ProductionYield {
         let context = ProductionModifierContext {
             building: self,
@@ -108,7 +114,7 @@ impl Building {
                 modifier_strategies
                     .iter()
                     .filter_map(|strategy| strategy.modifier(&context))
-                    .chain(turn_modifier.cloned()),
+                    .chain(global_modifier.cloned()),
             ),
         )
     }
@@ -117,7 +123,7 @@ impl Building {
         &self,
         mut unused: HashMap<ResourceType, u32>,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
-        turn_modifier: Option<&ProductionModifier>,
+        turn_modifiers: TurnProductionModifiers<'_>,
     ) -> ProductionResult {
         let mut produced = HashMap::new();
 
@@ -125,7 +131,8 @@ impl Building {
             return ProductionResult { produced, unused };
         }
 
-        let production_yield = self.production_yield(100, modifier_strategies, turn_modifier);
+        let production_yield =
+            self.production_yield(100, modifier_strategies, turn_modifiers.global);
 
         // Recipes run in definition order against the remaining material balance.
         // Exact fractions avoid floating-point rounding at the withdrawal boundary.
@@ -161,7 +168,12 @@ impl Building {
                     }
                 }
                 for (resource, amount) in outputs {
-                    let output = production_yield.scale_output(*amount, numerator, denominator);
+                    let output = production_yield.scale_output(
+                        *amount,
+                        numerator,
+                        denominator,
+                        turn_modifiers.material_multiplier(resource),
+                    );
                     let total = produced.entry(resource.clone()).or_insert(0_u64);
                     *total = total.saturating_add(output);
                 }

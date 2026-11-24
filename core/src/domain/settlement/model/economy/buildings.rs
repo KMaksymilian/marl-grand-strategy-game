@@ -1,8 +1,8 @@
 use crate::domain::buildings::Building;
 use crate::domain::buildings::definition::BuildingDefinition;
 use crate::domain::buildings::productivity::{
-    BuildingProductivityCalculator, LocationProductivity, ProductionModifier,
-    ProductionModifierStrategy, TravelCostSource,
+    BuildingProductivityCalculator, LocationProductivity, ProductionModifierStrategy,
+    TravelCostSource, TurnProductionModifiers,
 };
 use crate::domain::economy::ResourceType;
 use crate::domain::economy::allocation::{AllocationRecipient, AllocationResult, DemandRequest};
@@ -53,10 +53,13 @@ impl BuildingManager {
     pub(in crate::domain::settlement) fn use_capital(
         &mut self,
         capital: crate::domain::spatial::Position,
+        default_policy: Option<crate::domain::buildings::productivity::TravelCostEfficiencyPolicy>,
     ) {
         self.productivity_calculator = self
             .productivity_calculator
-            .map(|calculator| BuildingProductivityCalculator::new(capital, calculator.policy()));
+            .map(|calculator| calculator.policy())
+            .or(default_policy)
+            .map(|policy| BuildingProductivityCalculator::new(capital, policy));
     }
 
     pub fn set_productivity_calculator(
@@ -204,7 +207,7 @@ impl BuildingManager {
         &mut self,
         allocations: &AllocationResult,
         recipes: &HashMap<BuildingId, usize>,
-        turn_modifier: Option<&ProductionModifier>,
+        turn_modifiers: TurnProductionModifiers<'_>,
     ) -> (HashMap<ResourceType, u64>, HashMap<ResourceType, u64>) {
         let mut all_produced = HashMap::new();
         let mut all_returned = HashMap::new();
@@ -216,7 +219,7 @@ impl BuildingManager {
                 grants,
                 &self.production_modifier_strategies,
                 recipes.get(&id).copied(),
-                turn_modifier,
+                turn_modifiers,
             );
 
             for (res, amount) in update_result.produced {
@@ -487,7 +490,11 @@ mod tests {
         allocations.insert(AllocationRecipient::Building(BuildingId(2)), b2_grants);
 
         // Act
-        let (produced, returned) = manager.process_allocations(&allocations, &HashMap::new(), None);
+        let (produced, returned) = manager.process_allocations(
+            &allocations,
+            &HashMap::new(),
+            TurnProductionModifiers::default(),
+        );
 
         // Assert
         // Both buildings worked at 100% capacity (10 labour, enough wood).

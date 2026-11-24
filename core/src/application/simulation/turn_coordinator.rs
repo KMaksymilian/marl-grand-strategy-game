@@ -155,11 +155,11 @@ pub(super) fn run_turn(
             phase: TurnPhase::EconomicUpdates,
             settlement_id: id,
         });
-        let (settlement, mut environment) = world
+        let (settlement, mut environment, rules) = world
             .settlement_turn_parts(id, finder)
             .expect("registered settlement");
-        let mut report = settlement.finish_turn(state, &mut environment);
-        world.finish_settlement_happiness(id, happiness, &mut report);
+        let mut report =
+            settlement.finish_turn(state, &mut environment, rules.zip(happiness.as_ref()));
         report.taxation = taxes
             .values()
             .find_map(|nation| nation.settlements.get(&id))

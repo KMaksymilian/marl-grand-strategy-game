@@ -83,6 +83,15 @@ struct RawBuildingProductivity {
 }
 
 impl Configuration {
+    /// Installs the world settings used by a configured game before founding settlements.
+    pub fn configure_world(&self, world: &mut crate::domain::world::World) {
+        world.set_default_building_productivity(self.economy.building_productivity);
+        world.set_base_trade_limits(self.economy.trade_limits);
+        if let Some(capacity) = self.economy.national_stock_capacity_per_settlement {
+            world.set_national_stock_capacity_per_settlement(capacity);
+        }
+    }
+
     pub fn load(path: impl AsRef<Path>) -> Result<Self, ConfigurationError> {
         let source = std::fs::read_to_string(path).map_err(ConfigurationError::Read)?;
         Self::from_toml(&source)

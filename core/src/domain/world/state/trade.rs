@@ -45,6 +45,7 @@ impl World {
             .settlement_province(id)
             .expect("registered settlement province");
         let usage = self.active_caravan_usage(id);
+        let decrees = self.decree_effects(id);
         let mut visitors: Vec<_> = self
             .caravans
             .iter_mut()
@@ -63,6 +64,8 @@ impl World {
             &mut visitors,
             turn,
             province_id,
+            &decrees,
+            &self.resource_catalog,
         )
     }
 

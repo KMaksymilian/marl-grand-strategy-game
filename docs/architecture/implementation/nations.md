@@ -136,10 +136,10 @@ Production changes name `categories` and `tiers` of `resources.toml`
 (`{ categories = ["raw_food"], tiers = [1], change = 0.2 }`; an empty filter
 matches every material), so `DecreeEffects::production_change(definition)`
 gives the total change for one material. `World::decree_effects(settlement)`
-returns the owner's combined effects; places for the economy are marked
-`ECONOMY` (production, construction cost, caravan speed, happiness, monument
-multiplier, food consumption, slots from average happiness). Tariffs, the
-military levy, army and walls fields wait for their systems.
+returns the owner's combined effects. Production, the food plan, happiness,
+monument bonuses and decree slots use the active effects. Construction costs,
+caravan speed, tariffs, military levy, army and wall effects have their own
+integration points.
 
 ## Decisions
 

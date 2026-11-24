@@ -102,9 +102,13 @@ impl Settlement {
     }
 
     /// Registration accepts empty settlements, so no building cache needs updating.
-    pub(crate) fn assign_capital(&mut self, capital: Position) {
+    pub(crate) fn assign_capital(
+        &mut self,
+        capital: Position,
+        default_policy: Option<crate::domain::buildings::productivity::TravelCostEfficiencyPolicy>,
+    ) {
         self.capital = Some(capital);
-        self.building_manager.use_capital(capital);
+        self.building_manager.use_capital(capital, default_policy);
     }
 
     pub fn population(&self) -> u32 {
@@ -114,6 +118,13 @@ impl Settlement {
     /// Materials the population requests every turn at its current size.
     pub fn needs_per_turn(&self) -> std::collections::HashMap<ResourceType, u32> {
         self.population_manager.calculate_demand()
+    }
+
+    pub(crate) fn needs_with_food_multiplier(
+        &self,
+        multiplier: u32,
+    ) -> std::collections::HashMap<ResourceType, u32> {
+        self.population_manager.plan(multiplier).demand()
     }
 
     pub(crate) fn first_unknown_population_material(&self) -> Option<ResourceType> {

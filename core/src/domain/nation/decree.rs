@@ -19,9 +19,9 @@
 //! The effects are only data (`DecreeEffects`): every system that a decree
 //! changes reads the combined effects of the owner's active decrees
 //! (`World::decree_effects`) and applies them itself.
-use crate::domain::economy::{ResourceCategory, ResourceDefinition};
+use crate::domain::economy::{ResourceCatalog, ResourceCategory, ResourceDefinition, ResourceType};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 /// Identifier of a decree, as written in `decrees.toml` and in agent JSON:
@@ -158,10 +158,31 @@ impl Default for DecreeEffects {
 }
 
 impl DecreeEffects {
+    pub(crate) fn food_multiplier_basis_points(&self) -> u32 {
+        multiplier_basis_points(self.food_consumption)
+    }
+
+    /// Resolves output filters against the shared material catalog once per turn.
+    pub(crate) fn production_multipliers(
+        &self,
+        catalog: &ResourceCatalog,
+    ) -> HashMap<ResourceType, u32> {
+        if self.production.is_empty() {
+            return HashMap::new();
+        }
+        catalog
+            .materials()
+            .iter()
+            .filter_map(|id| {
+                let material = catalog.get(id).expect("listed material exists");
+                let multiplier = multiplier_basis_points(self.production_change(material));
+                (multiplier != 10_000).then(|| (id.clone(), multiplier))
+            })
+            .collect()
+    }
+
     /// Total change of output of one material, as a fraction: the sum of every
     /// production change that applies to it (0.0 when none does).
-    // ECONOMY (production): call with the material's catalogue definition,
-    // e.g. `output × (1 + effects.production_change(definition))`.
     pub fn production_change(&self, material: &ResourceDefinition) -> f32 {
         self.production
             .iter()
@@ -207,6 +228,10 @@ impl DecreeEffects {
         .into_iter()
         .chain(self.production.iter().map(|change| change.change))
     }
+}
+
+fn multiplier_basis_points(change: f32) -> u32 {
+    (10_000.0 + f64::from(change) * 10_000.0).round().max(0.0) as u32
 }
 
 /// Where one decree is in its lifecycle.

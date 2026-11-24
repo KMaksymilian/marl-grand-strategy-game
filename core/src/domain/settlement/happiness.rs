@@ -221,21 +221,32 @@ impl HappinessRules {
         happiness: &HappinessOutcome,
         inputs: DemographicInputs,
     ) -> DemographicOutcome {
-        let opening = inputs.opening_population;
-        let starved = apply_rate(
-            inputs.unfed_people.min(opening),
-            self.0.starvation_basis_points,
-        );
+        let food_room = inputs
+            .surplus_food
+            .checked_div(u64::from(inputs.food_units_per_person))
+            .unwrap_or(0);
+        self.demographics_with_growth_limit(
+            happiness,
+            inputs.opening_population,
+            inputs.unfed_people,
+            food_room,
+        )
+    }
+
+    pub(crate) fn demographics_with_growth_limit(
+        &self,
+        happiness: &HappinessOutcome,
+        opening: u32,
+        unfed_people: u32,
+        food_room: u64,
+    ) -> DemographicOutcome {
+        let starved = apply_rate(unfed_people.min(opening), self.0.starvation_basis_points);
         let survivors = opening - starved;
         let rate = happiness.population_change_basis_points;
         let change = apply_rate(opening, rate.unsigned_abs());
         let (emigrated, grew) = if rate < 0 {
             (change.min(survivors), 0)
         } else {
-            let food_room = inputs
-                .surplus_food
-                .checked_div(u64::from(inputs.food_units_per_person))
-                .unwrap_or(0);
             (0, u64::from(change).min(food_room) as u32)
         };
         let grew = grew.min(u32::MAX - survivors);

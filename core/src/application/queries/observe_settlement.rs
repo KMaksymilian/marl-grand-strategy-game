@@ -82,7 +82,14 @@ impl ObservationQuery<'_> {
                     .map(|building| u64::from(building.current_workers))
                     .sum(),
             },
-            needs_per_turn: settlement.needs_per_turn().into_iter().collect(),
+            needs_per_turn: settlement
+                .needs_with_food_multiplier(
+                    self.world
+                        .decree_effects(settlement_id)
+                        .food_multiplier_basis_points(),
+                )
+                .into_iter()
+                .collect(),
             buildings,
             projects: projects(settlement),
             next_project_id: settlement.next_project_id(),

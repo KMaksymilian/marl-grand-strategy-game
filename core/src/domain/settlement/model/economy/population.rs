@@ -9,6 +9,33 @@ use std::sync::Arc;
 
 pub use config::NeedsConfigError;
 
+const BASIS_POINTS: u128 = 10_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FoodRation(u64);
+
+impl FoodRation {
+    fn required(self, population: u32) -> u64 {
+        let units = (u128::from(self.0) * u128::from(population)).div_ceil(BASIS_POINTS);
+        u64::try_from(units).unwrap_or(u64::MAX)
+    }
+
+    fn unfed(self, missing: u64, population: u32) -> u32 {
+        if self.0 == 0 {
+            return 0;
+        }
+        (u128::from(missing) * BASIS_POINTS)
+            .div_ceil(u128::from(self.0))
+            .min(u128::from(population)) as u32
+    }
+
+    fn supported(self, food: u64) -> u64 {
+        (u128::from(food) * BASIS_POINTS)
+            .checked_div(u128::from(self.0))
+            .map_or(0, |people| u64::try_from(people).unwrap_or(u64::MAX))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ConsumptionResult {
     pub satisfaction_percent: f32,
@@ -76,21 +103,25 @@ impl NeedRegistry {
 
     /// One turn of the desired diet, using the same whole-unit rounding as consumption.
     pub fn starting_food(&self, population: u32) -> HashMap<ResourceType, u32> {
-        self.food_demand(population)
+        self.food_demand(population, self.food_ration(10_000))
             .into_iter()
             .filter(|(_, amount)| *amount > 0)
             .map(|(resource, amount)| (resource, inventory_quantity(amount)))
             .collect()
     }
 
-    fn food_demand(&self, population: u32) -> Vec<(ResourceType, u64)> {
+    fn food_ration(&self, multiplier: u32) -> FoodRation {
+        FoodRation(u64::from(self.food_units_per_person().unwrap_or(0)) * u64::from(multiplier))
+    }
+
+    fn food_demand(&self, population: u32, ration: FoodRation) -> Vec<(ResourceType, u64)> {
         let Some(food) = &self.food else {
             return Vec::new();
         };
         let Some((_, diet)) = food.diets.range(..=population).next_back() else {
             return Vec::new();
         };
-        let total = u64::from(food.units_per_person) * u64::from(population);
+        let total = ration.required(population);
         let mut shares = Vec::with_capacity(diet.len());
         let mut remainders = Vec::with_capacity(diet.len());
         let mut rounded_total = 0;
@@ -112,6 +143,36 @@ impl NeedRegistry {
     }
 }
 
+pub(in crate::domain::settlement) struct PopulationNeeds {
+    population: u32,
+    ration: FoodRation,
+    materials: HashMap<ResourceType, u64>,
+    food: Vec<(ResourceType, u64)>,
+}
+
+impl PopulationNeeds {
+    pub(in crate::domain::settlement) fn supported_growth(&self, surplus_food: u64) -> u64 {
+        self.ration.supported(surplus_food)
+    }
+
+    pub(in crate::domain::settlement) fn request(&self) -> Option<DemandRequest> {
+        let demand = self.demand();
+        (!demand.is_empty()).then_some(DemandRequest {
+            recipient: AllocationRecipient::Population,
+            demand,
+        })
+    }
+
+    pub(in crate::domain::settlement) fn demand(&self) -> HashMap<ResourceType, u32> {
+        self.materials
+            .iter()
+            .chain(self.food.iter().map(|(resource, units)| (resource, units)))
+            .filter(|(_, amount)| **amount > 0)
+            .map(|(resource, &amount)| (resource.clone(), inventory_quantity(amount)))
+            .collect()
+    }
+}
+
 #[derive(Debug)]
 pub struct PopulationManager {
     pub population: u32,
@@ -126,26 +187,25 @@ impl PopulationManager {
         }
     }
 
+    #[cfg(test)]
     pub fn generate_requests(&self) -> Vec<DemandRequest> {
-        let demand = self.calculate_demand();
-        if demand.is_empty() {
-            return Vec::new();
-        }
-        vec![DemandRequest {
-            recipient: AllocationRecipient::Population,
-            demand,
-        }]
+        self.plan(10_000).request().into_iter().collect()
     }
 
     /// Use the same whole resource units as inventories, recipes and projects.
     /// Request generation and satisfaction evaluation share this demand.
     pub(crate) fn calculate_demand(&self) -> HashMap<ResourceType, u32> {
-        self.material_demand()
-            .into_iter()
-            .chain(self.registry.food_demand(self.population))
-            .filter(|(_, amount)| *amount > 0)
-            .map(|(resource, amount)| (resource, inventory_quantity(amount)))
-            .collect()
+        self.plan(10_000).demand()
+    }
+
+    pub(in crate::domain::settlement) fn plan(&self, food_multiplier: u32) -> PopulationNeeds {
+        let ration = self.registry.food_ration(food_multiplier);
+        PopulationNeeds {
+            population: self.population,
+            ration,
+            materials: self.material_demand(),
+            food: self.registry.food_demand(self.population, ration),
+        }
     }
 
     fn material_demand(&self) -> HashMap<ResourceType, u64> {
@@ -183,13 +243,18 @@ impl PopulationManager {
         &self,
         granted_resources: Option<&HashMap<ResourceType, u32>>,
     ) -> ConsumptionResult {
-        self.consume_turn(granted_resources, &mut ResourceInventory::new(0))
-            .0
+        self.consume_turn(
+            &self.plan(10_000),
+            granted_resources,
+            &mut ResourceInventory::new(0),
+        )
+        .0
     }
 
     /// Uses the allocation first, then covers any food shortfall from remaining stock.
     pub fn consume_turn(
         &self,
+        plan: &PopulationNeeds,
         grants: Option<&HashMap<ResourceType, u32>>,
         remaining_stock: &mut ResourceInventory,
     ) -> (ConsumptionResult, HashMap<ResourceType, u32>) {
@@ -205,24 +270,28 @@ impl PopulationManager {
             )
         };
 
-        for (resource, required) in self.material_demand() {
+        for (resource, &required) in &plan.materials {
             material_required += u128::from(required);
-            let satisfied = received(&resource).min(required);
+            let satisfied = received(resource).min(required);
             material_satisfied += u128::from(satisfied);
             if satisfied < required {
-                missing_resources.push(resource);
+                missing_resources.push(resource.clone());
             }
         }
 
         let mut food_required = 0;
         let mut food_shortfall = 0;
         let mut missing_food = Vec::new();
-        for (resource, required) in self.registry.food_demand(self.population) {
+        for (resource, required) in &plan.food {
+            let required = *required;
+            if required == 0 {
+                continue;
+            }
             food_required += required;
-            let deficit = required.saturating_sub(received(&resource));
+            let deficit = required.saturating_sub(received(resource));
             if deficit > 0 {
                 food_shortfall += deficit;
-                missing_food.push((resource, deficit));
+                missing_food.push((resource.clone(), deficit));
             }
         }
         let substituted =
@@ -238,10 +307,7 @@ impl PopulationManager {
         }
         missing_resources.sort_unstable();
         let food_eaten = food_required - uncovered;
-        let people_unfed = self.registry.food_units_per_person().map_or(0, |units| {
-            u32::try_from(uncovered.div_ceil(u64::from(units)))
-                .expect("unfed people cannot outnumber the population")
-        });
+        let people_unfed = plan.ration.unfed(uncovered, plan.population);
         let total_demanded = material_required + u128::from(food_required);
         let total_satisfied = material_satisfied + u128::from(food_eaten);
         let satisfaction_percent = if total_demanded > 0 {
@@ -314,6 +380,15 @@ mod tests {
         materials = { wood = 2 }
         diet = [{ resource = "bread", percent = 100 }]
     "#;
+
+    #[test]
+    fn fractional_rations_are_applied_before_rounding_population_demand() {
+        let ration = FoodRation(7_500);
+        assert_eq!(ration.required(4), 3);
+        assert_eq!(ration.required(5), 4);
+        assert_eq!(ration.unfed(4, 5), 5);
+        assert_eq!(ration.supported(3), 4);
+    }
 
     #[test]
     fn diet_rounding_preserves_total_and_breaks_equal_remainders_in_row_order() {

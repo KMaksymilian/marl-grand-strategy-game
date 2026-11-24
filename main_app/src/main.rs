@@ -52,10 +52,7 @@ async fn main() {
             .unwrap_or_else(|error| panic!("settlement_happiness.toml: {error}")),
     );
     world.set_building_catalog(buildings);
-    world.set_base_trade_limits(configuration.economy.trade_limits);
-    if let Some(capacity) = configuration.economy.national_stock_capacity_per_settlement {
-        world.set_national_stock_capacity_per_settlement(capacity);
-    }
+    configuration.configure_world(&mut world);
     let initial_province = world
         .map()
         .terrain

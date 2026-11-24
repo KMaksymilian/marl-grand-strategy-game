@@ -1,5 +1,5 @@
 use super::{
-    Building, ProductionModifier, ProductionModifierStrategy, ProductionResult, ResourceType,
+    Building, ProductionModifierStrategy, ProductionResult, ResourceType, TurnProductionModifiers,
 };
 use crate::domain::buildings::definition::{CycleProduction, CycleRecipe};
 use std::cmp::Reverse;
@@ -58,7 +58,7 @@ impl Building {
         recipe_index: Option<usize>,
         mut unused: HashMap<ResourceType, u32>,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
-        turn_modifier: Option<&ProductionModifier>,
+        turn_modifiers: TurnProductionModifiers<'_>,
     ) -> ProductionResult {
         let mut produced = HashMap::new();
         if let Some(recipe) = recipe_index.and_then(|index| production.recipes.get(index))
@@ -76,11 +76,16 @@ impl Building {
                         .expect("cycle input must be granted") -= cycles * units;
                 }
                 let production_yield =
-                    self.production_yield(efficiency, modifier_strategies, turn_modifier);
+                    self.production_yield(efficiency, modifier_strategies, turn_modifiers.global);
                 produced.extend(recipe.outputs.iter().map(|(resource, units)| {
                     (
                         resource.clone(),
-                        production_yield.scale_output(*units, u128::from(cycles), 1),
+                        production_yield.scale_output(
+                            *units,
+                            u128::from(cycles),
+                            1,
+                            turn_modifiers.material_multiplier(resource),
+                        ),
                     )
                 }));
             }

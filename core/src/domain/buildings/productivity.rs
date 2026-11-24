@@ -1,6 +1,8 @@
 use super::Building;
+use crate::domain::economy::ResourceType;
 use crate::domain::spatial::Position;
 use crate::domain::world::terrain::biome::Biome;
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
@@ -246,10 +248,35 @@ impl LocationProductivity {
 pub(crate) struct ProductionYield(ProductionFactor);
 
 impl ProductionYield {
-    pub(crate) fn scale_output(&self, amount: u32, work: u128, capacity: u128) -> u64 {
-        let numerator = self.0.numer() * amount * work;
-        let denominator = self.0.denom() * capacity;
+    pub(crate) fn scale_output(
+        &self,
+        amount: u32,
+        work: u128,
+        capacity: u128,
+        multiplier: u32,
+    ) -> u64 {
+        let mut numerator = self.0.numer() * amount * work;
+        let mut denominator = self.0.denom() * capacity;
+        if multiplier != BASIS_POINTS_PER_UNIT {
+            numerator *= multiplier;
+            denominator *= BASIS_POINTS_PER_UNIT;
+        }
         u64::try_from(numerator / denominator).unwrap_or(u64::MAX)
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct TurnProductionModifiers<'a> {
+    pub global: Option<&'a ProductionModifier>,
+    pub material_multipliers: Option<&'a HashMap<ResourceType, u32>>,
+}
+
+impl TurnProductionModifiers<'_> {
+    pub(crate) fn material_multiplier(&self, resource: &ResourceType) -> u32 {
+        self.material_multipliers
+            .and_then(|multipliers| multipliers.get(resource))
+            .copied()
+            .unwrap_or(BASIS_POINTS_PER_UNIT)
     }
 }
 
@@ -285,7 +312,8 @@ mod tests {
             ratio.apply_modifiers([]).scale_output(
                 u32::MAX,
                 u128::from(u32::MAX),
-                u128::from(u32::MAX)
+                u128::from(u32::MAX),
+                BASIS_POINTS_PER_UNIT,
             ),
             u64::from(u32::MAX - 1)
         );
@@ -297,6 +325,11 @@ mod tests {
         let ratio = TravelCostEfficiencyPolicy::new(0, 30)
             .unwrap()
             .productivity(Some(10));
-        assert_eq!(ratio.apply_modifiers([]).scale_output(3, 1, 2), 1);
+        assert_eq!(
+            ratio
+                .apply_modifiers([])
+                .scale_output(3, 1, 2, BASIS_POINTS_PER_UNIT),
+            1
+        );
     }
 }

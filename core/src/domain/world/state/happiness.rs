@@ -2,7 +2,6 @@
 use super::{World, WorldError};
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::settlement::happiness::{HappinessInputs, HappinessOutcome, HappinessRules};
-use crate::domain::settlement::turn_report::TurnReport;
 
 impl World {
     pub fn set_happiness_rules(&mut self, rules: HappinessRules) {
@@ -48,19 +47,5 @@ impl World {
                 capital_loss_turns: nation.capital_loss_turns(),
             })
         }))
-    }
-
-    pub(crate) fn finish_settlement_happiness(
-        &mut self,
-        id: SettlementId,
-        happiness: Option<HappinessOutcome>,
-        report: &mut TurnReport,
-    ) {
-        if let (Some(rules), Some(happiness)) = (&self.happiness_rules, happiness) {
-            self.settlements
-                .get_mut(id)
-                .expect("registered settlement")
-                .finish_happiness_turn(rules, happiness, report);
-        }
     }
 }

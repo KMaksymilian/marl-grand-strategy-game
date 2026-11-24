@@ -62,5 +62,8 @@ factor, such as capping its value. The same calculator applies all operations in
 the order their strategies were registered. For a starting factor of 1,
 adding 0.2 then multiplying by 1.5 yields 1.8. Reversing them yields 1.7.
 The rules apply after allocation and leave recipe input consumption unchanged.
+Active production decrees match each output's resource category and tier. Their
+matching changes add together for that output, then multiply its yield before
+the final rounding. This applies to all recipe output paths.
 Register terrain rules when configuring a settlement. For a temporary effect
 such as a decree, the strategy should return a modifier only while it applies.

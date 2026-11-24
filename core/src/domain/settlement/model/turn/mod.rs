@@ -1,16 +1,19 @@
 //! Settlement phases shared by local turns and the global coordinator.
 pub mod report;
 use super::Settlement;
-use super::economy::BuildingRequests;
+use super::economy::{BuildingRequests, PopulationNeeds};
 use super::projects::ProjectOutcome;
 use super::turn_report::TradeTurnReport;
 use super::turn_report::{ConsumptionResult, InventoryTurnReport, MaterialTotals, TurnReport};
-use crate::domain::buildings::productivity::{ProductionModifier, TravelCostSource};
-use crate::domain::economy::ResourceType;
+use crate::domain::buildings::productivity::{
+    ProductionModifier, TravelCostSource, TurnProductionModifiers,
+};
 use crate::domain::economy::allocation::{AllocationEngine, AllocationRecipient, AllocationResult};
+use crate::domain::economy::{ResourceCatalog, ResourceType};
 use crate::domain::ids::BuildingId;
+use crate::domain::nation::decree::DecreeEffects;
 use crate::domain::nation::taxation::tax_amount;
-use crate::domain::settlement::happiness::{DemographicInputs, HappinessOutcome, HappinessRules};
+use crate::domain::settlement::happiness::{HappinessOutcome, HappinessRules};
 use crate::domain::settlement::turn_report::HappinessTurnReport;
 use crate::domain::spatial::ConstructionSpace;
 use crate::domain::trade::caravan::Caravan;
@@ -22,6 +25,8 @@ pub(crate) struct PreparedTurn {
     opening_stock: MaterialTotals,
     retained_stock_limit: Option<u32>,
     building_requests: BuildingRequests,
+    population_needs: PopulationNeeds,
+    material_multipliers: HashMap<ResourceType, u32>,
 }
 
 pub(crate) struct AllocatedTurn {
@@ -31,6 +36,8 @@ pub(crate) struct AllocatedTurn {
     cycle_recipes: HashMap<BuildingId, usize>,
     retained_stock_limit: Option<u32>,
     inventory: InventoryTurnReport,
+    population_needs: PopulationNeeds,
+    material_multipliers: HashMap<ResourceType, u32>,
 }
 
 pub(crate) struct ConsumedTurn {
@@ -73,12 +80,19 @@ impl Settlement {
         environment: &mut (impl ConstructionSpace + TravelCostSource),
         visitors: &mut [&mut Caravan],
     ) -> TurnReport {
-        let prepared = self.prepare_turn(environment, visitors, 1, 0);
+        let prepared = self.prepare_turn(
+            environment,
+            visitors,
+            1,
+            0,
+            &DecreeEffects::default(),
+            ResourceCatalog::standard(),
+        );
         let allocated = self.allocate_turn(prepared);
         let consumed = self.consume_turn(allocated);
         self.progress_construction(&consumed);
         let produced = self.produce_turn(consumed, None);
-        self.finish_turn(produced, environment)
+        self.finish_turn(produced, environment, None)
     }
 
     pub(crate) fn prepare_turn(
@@ -87,6 +101,8 @@ impl Settlement {
         visitors: &mut [&mut Caravan],
         turn: u64,
         province_id: usize,
+        decrees: &DecreeEffects,
+        resources: &ResourceCatalog,
     ) -> PreparedTurn {
         self.building_manager.refresh_productivity(environment);
         self.building_manager.refresh_production_biomes(environment);
@@ -127,12 +143,16 @@ impl Settlement {
             opening_stock,
             retained_stock_limit,
             building_requests,
+            population_needs: self
+                .population_manager
+                .plan(decrees.food_multiplier_basis_points()),
+            material_multipliers: decrees.production_multipliers(resources),
         }
     }
 
     pub(crate) fn allocate_turn(&mut self, prepared: PreparedTurn) -> AllocatedTurn {
         let mut requests = Vec::new();
-        requests.extend(self.population_manager.generate_requests());
+        requests.extend(prepared.population_needs.request());
         requests.extend(self.project_manager.generate_requests());
         requests.extend(prepared.building_requests.demands);
         let allocations = AllocationEngine::execute(&mut self.inventory_manager.main, requests);
@@ -144,11 +164,15 @@ impl Settlement {
             cycle_recipes: prepared.building_requests.recipes,
             retained_stock_limit: prepared.retained_stock_limit,
             inventory,
+            population_needs: prepared.population_needs,
+            material_multipliers: prepared.material_multipliers,
         }
     }
 
     pub(crate) fn consume_turn(&mut self, mut allocated: AllocatedTurn) -> ConsumedTurn {
+        let plan = &allocated.population_needs;
         let (consumption, substitutions) = self.population_manager.consume_turn(
+            plan,
             allocated.allocations.get(&AllocationRecipient::Population),
             &mut self.inventory_manager.main,
         );
@@ -186,7 +210,10 @@ impl Settlement {
         let (produced, returned) = self.building_manager.process_allocations(
             &consumed.allocated.allocations,
             &consumed.allocated.cycle_recipes,
-            modifier.as_ref(),
+            TurnProductionModifiers {
+                global: modifier.as_ref(),
+                material_multipliers: Some(&consumed.allocated.material_multipliers),
+            },
         );
         consumed
             .allocated
@@ -203,6 +230,7 @@ impl Settlement {
         &mut self,
         produced: ProducedTurn,
         environment: &mut (impl ConstructionSpace + TravelCostSource),
+        happiness: Option<(&HappinessRules, &HappinessOutcome)>,
     ) -> TurnReport {
         let ProducedTurn {
             consumed,
@@ -218,6 +246,7 @@ impl Settlement {
             mut projects,
             mut inventory,
             retained_stock_limit,
+            population_needs,
             ..
         } = allocated;
         let mut incoming = produced;
@@ -251,20 +280,25 @@ impl Settlement {
             &self.inventory_manager.pending_production,
         );
         projects.extend(self.resolve_completed_projects(environment));
-        TurnReport {
+        let mut report = TurnReport {
             trade,
             consumption,
             projects,
             inventory,
             taxation: None,
             happiness: None,
+        };
+        if let Some((rules, outcome)) = happiness {
+            self.finish_happiness_turn(rules, outcome, &population_needs, &mut report);
         }
+        report
     }
 
-    pub(crate) fn finish_happiness_turn(
+    fn finish_happiness_turn(
         &mut self,
         rules: &HappinessRules,
-        happiness: HappinessOutcome,
+        happiness: &HappinessOutcome,
+        population_needs: &PopulationNeeds,
         report: &mut TurnReport,
     ) {
         let food_in_storage: u64 = self
@@ -286,20 +320,13 @@ impl Settlement {
             .food_required
             .saturating_sub(report.consumption.food_eaten);
         let opening_population = self.population();
-        let demographics = rules.demographics(
-            &happiness,
-            DemographicInputs {
-                opening_population,
-                unfed_people: report.consumption.people_unfed,
-                surplus_food: food_in_storage.saturating_sub(unmet_food),
-                food_units_per_person: self
-                    .population_manager
-                    .registry
-                    .food_units_per_person()
-                    .unwrap_or(0),
-            },
+        let demographics = rules.demographics_with_growth_limit(
+            happiness,
+            opening_population,
+            report.consumption.people_unfed,
+            population_needs.supported_growth(food_in_storage.saturating_sub(unmet_food)),
         );
-        let gold_income = rules.gross_gold_income(opening_population, &happiness);
+        let gold_income = rules.gross_gold_income(opening_population, happiness);
         let gold_credited = gold_income.min(u64::from(u32::MAX - self.gold())) as u32;
         self.deposit_gold(gold_credited);
         self.population_manager.population = demographics.closing_population;

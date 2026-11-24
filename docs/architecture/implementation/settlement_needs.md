@@ -14,6 +14,12 @@ remainders in row order. After normal allocation, available food may replace
 missing food one for one in `food_items` order. Only the remaining shortfall
 counts toward the number of people without a full ration.
 
+Active food decrees change the ration for the turn. Combined changes are rounded
+to basis points and the multiplier has a lower bound of zero. The exact
+adjusted ration determines total demand (rounded up to an integer material
+unit), substitutions, the number of unfed residents and food-supported growth.
+The founding stock uses the base diet.
+
 The supplied excerpt specifies the Tier 2 grain, bread and wood rates. The
 other diet shares and material rates are editable balance defaults. Beer,
 tools and furniture are cumulative material needs. Monument components and

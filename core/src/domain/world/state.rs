@@ -121,6 +121,8 @@ pub struct World {
     /// Building types agents may construct or upgrade to.
     building_catalog: BuildingCatalog,
     base_trade_limits: Option<crate::domain::buildings::passive::TradeLimitBonuses>,
+    default_building_productivity:
+        Option<crate::domain::buildings::productivity::TravelCostEfficiencyPolicy>,
     happiness_rules: Option<crate::domain::settlement::happiness::HappinessRules>,
     resource_catalog: Arc<ResourceCatalog>,
     /// Unit types and military rules (`units.toml`).
@@ -134,6 +136,14 @@ pub struct World {
     nations: NationRegistry,
 }
 impl World {
+    /// Applies to subsequently registered settlements, including new foundations.
+    pub fn set_default_building_productivity(
+        &mut self,
+        policy: crate::domain::buildings::productivity::TravelCostEfficiencyPolicy,
+    ) {
+        self.default_building_productivity = Some(policy);
+    }
+
     pub(crate) fn completed_turn(&self) -> u64 {
         self.completed_turn
     }
@@ -322,6 +332,7 @@ impl World {
     ) -> Option<(
         &'a mut Settlement,
         crate::domain::world::settlement_environment::MapSettlementEnvironment<'a>,
+        Option<&'a crate::domain::settlement::happiness::HappinessRules>,
     )> {
         Some((
             self.settlements.get_mut(settlement_id)?,
@@ -330,6 +341,7 @@ impl World {
                 finder,
                 &mut self.territory,
             ),
+            self.happiness_rules.as_ref(),
         ))
     }
 
@@ -357,6 +369,7 @@ impl World {
             province_settlements: HashMap::new(),
             building_catalog: BuildingCatalog::default(),
             base_trade_limits: None,
+            default_building_productivity: None,
             happiness_rules: None,
             resource_catalog,
             unit_catalog: Arc::new(UnitCatalog::standard().clone()),
@@ -450,7 +463,7 @@ impl World {
                 .find(|&position| self.validate_capital_site(province_id, position).is_ok())
                 .ok_or(WorldError::NoCapitalSite(province_id))?,
         };
-        settlement.assign_capital(capital);
+        settlement.assign_capital(capital, self.default_building_productivity);
         if self.base_trade_limits.is_some() {
             settlement.set_base_trade_limits(self.base_trade_limits);
         }

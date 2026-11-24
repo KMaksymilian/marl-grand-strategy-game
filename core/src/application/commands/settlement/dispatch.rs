@@ -1,18 +1,15 @@
-//! Single command facade: scheduling never borrows world internals to dispatch actions.
-use crate::application::commands::settlement::prepared::SettlementCommand;
-use crate::domain::economy::storage_order::StorageOrderError;
-use crate::domain::ids::SettlementId;
-use crate::domain::settlement::TradeCommandError;
+//! Maps decision values to live domain operations and their reported outcomes.
+use super::{ActionEffect, ActionError, OfferSpec, SettlementAction};
+use crate::domain::buildings::definition::BuildingDefinition;
+use crate::domain::economy::ResourceType;
+use crate::domain::ids::{BuildingTypeId, ProjectId, SettlementId};
+use crate::domain::settlement::{BuildingCommandError, TradeCommandError, projects::ProjectError};
+use crate::domain::spatial::{Position, TerritoryError};
+use crate::domain::trade::offer::TradeOffer;
 use crate::domain::world::{World, WorldError};
+use std::collections::{HashMap, hash_map::Entry};
+use std::sync::Arc;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum CommandError {
-    World(WorldError),
-    StorageOrder(StorageOrderError),
-    Trade(TradeCommandError),
-}
-
-/// The handler can read the world and execute prepared domain operations.
 pub(crate) struct CommandDispatch<'a> {
     world: &'a mut World,
 }
@@ -22,72 +19,260 @@ impl<'a> CommandDispatch<'a> {
         Self { world }
     }
 
-    pub(super) fn world(&self) -> &World {
+    pub(super) fn require_settlement(&self, id: SettlementId) -> Result<(), WorldError> {
         self.world
+            .settlement(id)
+            .map(|_| ())
+            .ok_or(WorldError::MissingSettlement(id))
     }
 
     pub(super) fn execute(
         &mut self,
         id: SettlementId,
-        command: &SettlementCommand,
-    ) -> Result<(), CommandError> {
-        let world = &mut *self.world;
-        match command {
-            SettlementCommand::Construct {
-                project_id,
+        action: &SettlementAction,
+    ) -> Result<ActionEffect, ActionError> {
+        match action {
+            SettlementAction::Construct {
+                building_type,
                 position,
-                definition,
-                cost,
-            } => world
-                .queue_construction(id, *project_id, *position, definition.clone(), cost.clone())
-                .map_err(CommandError::World),
-            SettlementCommand::Upgrade {
-                project_id,
-                building_id,
-                definition,
-                cost,
-            } => world
-                .queue_upgrade(
-                    id,
-                    *project_id,
-                    *building_id,
-                    definition.clone(),
-                    cost.clone(),
-                )
-                .map_err(CommandError::World),
-            SettlementCommand::CancelProject(project_id) => world
-                .cancel_project(id, *project_id)
-                .map_err(CommandError::World),
-            SettlementCommand::SetBuildingStaff { building_id, load } => world
-                .settlement_mut(id)
-                .map_err(CommandError::World)?
-                .set_building_staff(*building_id, *load)
-                .map_err(|error| CommandError::World(WorldError::Building(error))),
-            SettlementCommand::SetStorageOrder(materials) => world
-                .settlement_mut(id)
-                .map_err(CommandError::World)?
-                .set_storage_order(materials)
-                .map_err(CommandError::StorageOrder),
-            SettlementCommand::PublishMarketOffers(offers) => world
-                .settlement_mut(id)
-                .map_err(CommandError::World)?
-                .publish_trade_offers(offers.clone())
-                .map_err(CommandError::Trade),
-            SettlementCommand::ClearMarketOffers => {
-                world
-                    .settlement_mut(id)
-                    .map_err(CommandError::World)?
-                    .clear_trade_offers();
-                Ok(())
+            } => {
+                if position.x < 0 || position.y < 0 {
+                    return Err(ActionError::InvalidPosition {
+                        position: *position,
+                    });
+                }
+                let definition = self.definition(building_type)?;
+                let project_id = self.next_project_id(id)?;
+                let cost = definition.construction_cost().clone();
+                self.world
+                    .queue_construction(id, project_id, *position, definition, cost)
+                    .map_err(|error| project_error(error, Some(*position)))?;
+                Ok(ActionEffect::ProjectQueued { project_id })
             }
-            SettlementCommand::OrderCaravan {
+            SettlementAction::Upgrade {
+                building_id,
+                building_type,
+            } => {
+                let building = self
+                    .world
+                    .settlement(id)
+                    .expect("settlement checked")
+                    .buildings()
+                    .find(|building| building.instance_id() == *building_id)
+                    .ok_or(ActionError::UnknownBuilding {
+                        building_id: *building_id,
+                    })?;
+                let definition = self.definition(building_type)?;
+                if building.definition().id() == definition.id() {
+                    return Err(ActionError::SameBuildingType {
+                        building_id: *building_id,
+                    });
+                }
+                let position = building.position();
+                let project_id = self.next_project_id(id)?;
+                let cost = definition.construction_cost().clone();
+                self.world
+                    .queue_upgrade(id, project_id, *building_id, definition, cost)
+                    .map_err(|error| project_error(error, Some(position)))?;
+                Ok(ActionEffect::ProjectQueued { project_id })
+            }
+            SettlementAction::CancelProject { project_id } => {
+                self.world
+                    .cancel_project(id, *project_id)
+                    .map_err(|error| project_error(error, None))?;
+                Ok(ActionEffect::ProjectCanceled {
+                    project_id: *project_id,
+                })
+            }
+            SettlementAction::SetBuildingWorkers {
+                building_id,
+                workers,
+            } => {
+                self.world
+                    .settlement_mut(id)
+                    .expect("settlement checked")
+                    .set_building_worker_count(*building_id, *workers)
+                    .map_err(building_error)?;
+                Ok(ActionEffect::WorkersSet {
+                    building_id: *building_id,
+                    workers: *workers,
+                })
+            }
+            SettlementAction::SetStorageOrder { order } => {
+                self.world
+                    .settlement_mut(id)
+                    .expect("settlement checked")
+                    .set_storage_order(order)
+                    .map_err(|error| ActionError::InvalidStorageOrder { error })?;
+                Ok(ActionEffect::StorageOrderSet)
+            }
+            SettlementAction::PublishMarketOffers { offers } => {
+                let offers = resolve_offers(offers)?;
+                self.world
+                    .settlement_mut(id)
+                    .expect("settlement checked")
+                    .publish_trade_offers(offers)
+                    .map_err(trade_error)?;
+                Ok(ActionEffect::MarketOffersPublished)
+            }
+            SettlementAction::ClearMarketOffers => {
+                self.world
+                    .settlement_mut(id)
+                    .expect("settlement checked")
+                    .clear_trade_offers();
+                Ok(ActionEffect::MarketOffersCleared)
+            }
+            SettlementAction::OrderCaravan {
                 receiver_id,
                 offers,
-            } => world
-                .settlement_mut(id)
-                .map_err(CommandError::World)?
-                .order_caravan(*receiver_id, offers.clone())
-                .map_err(CommandError::Trade),
+            } => {
+                let offers = resolve_offers(offers)?;
+                self.world
+                    .order_caravan(id, *receiver_id, offers)
+                    .map_err(trade_error)?;
+                Ok(ActionEffect::CaravanOrdered {
+                    receiver_id: *receiver_id,
+                })
+            }
         }
     }
+
+    fn definition(&self, id: &BuildingTypeId) -> Result<Arc<BuildingDefinition>, ActionError> {
+        self.world
+            .building_catalog()
+            .get_blueprint(id.as_str())
+            .ok_or_else(|| ActionError::UnknownBuildingType {
+                building_type: id.clone(),
+            })
+    }
+
+    fn next_project_id(&self, id: SettlementId) -> Result<ProjectId, ActionError> {
+        self.world
+            .settlement(id)
+            .expect("settlement checked")
+            .next_project_id()
+            .ok_or(ActionError::ProjectIdsExhausted)
+    }
+}
+
+fn project_error(error: WorldError, site: Option<Position>) -> ActionError {
+    match error {
+        WorldError::Project(ProjectError::UnknownMaterial(resource)) => {
+            ActionError::UnknownMaterial { resource }
+        }
+        WorldError::Project(ProjectError::MissingBuilding(building_id)) => {
+            ActionError::UnknownBuilding { building_id }
+        }
+        WorldError::Project(ProjectError::BuildingAlreadyUpgrading(building_id)) => {
+            ActionError::BuildingAlreadyUpgrading { building_id }
+        }
+        WorldError::Project(ProjectError::MissingProject(project_id)) => {
+            ActionError::UnknownProject { project_id }
+        }
+        WorldError::RequiredDepositMissing { position, resource } => {
+            ActionError::RequiredDepositMissing { position, resource }
+        }
+        WorldError::InvalidMapPosition(position)
+        | WorldError::Project(ProjectError::Territory(TerritoryError::InvalidMapPosition(
+            position,
+        ))) => ActionError::InvalidPosition { position },
+        WorldError::Project(ProjectError::Territory(TerritoryError::OceanTile(position))) => {
+            ActionError::OceanTile { position }
+        }
+        WorldError::Project(ProjectError::Territory(TerritoryError::CoastRequired(position))) => {
+            ActionError::CoastRequired { position }
+        }
+        WorldError::Project(ProjectError::Territory(TerritoryError::ForbiddenBiome(position))) => {
+            ActionError::ForbiddenBiome { position }
+        }
+        WorldError::Project(ProjectError::Territory(TerritoryError::Occupied {
+            position, ..
+        })) => ActionError::TileOccupied { position },
+        WorldError::MissingProvince(_) | WorldError::SettlementOutsideProvince { .. } => {
+            ActionError::OutsideOwnProvince {
+                position: site.expect("placement has a site"),
+            }
+        }
+        _ => ActionError::ExecutionFailed,
+    }
+}
+
+fn building_error(error: BuildingCommandError) -> ActionError {
+    match error {
+        BuildingCommandError::MissingBuilding(building_id) => {
+            ActionError::UnknownBuilding { building_id }
+        }
+        BuildingCommandError::WorkersAboveCapacity {
+            building_id,
+            workers,
+            max_workers,
+        } => ActionError::WorkersAboveCapacity {
+            building_id,
+            workers,
+            max_workers,
+        },
+        BuildingCommandError::UnsupportedWorkerCount {
+            building_id,
+            workers,
+        } => ActionError::UnsupportedWorkerCount {
+            building_id,
+            workers,
+        },
+        BuildingCommandError::InsufficientWorkers {
+            requested,
+            available,
+        } => ActionError::InsufficientWorkers {
+            requested,
+            available,
+        },
+        _ => ActionError::ExecutionFailed,
+    }
+}
+
+fn trade_error(error: TradeCommandError) -> ActionError {
+    match error {
+        TradeCommandError::UnknownMaterial(resource) => ActionError::UnknownMaterial { resource },
+        TradeCommandError::LabourIsNotTradable => ActionError::LabourIsNotTradable,
+        TradeCommandError::ZeroUnits(resource) => ActionError::ZeroUnits { resource },
+        TradeCommandError::EmptyOrder => ActionError::EmptyOrder,
+        TradeCommandError::NothingToCarry => ActionError::NothingToCarry,
+        TradeCommandError::TradeWithSelf => ActionError::TradeWithSelf,
+        TradeCommandError::UnknownSender(settlement_id)
+        | TradeCommandError::UnknownReceiver(settlement_id) => {
+            ActionError::UnknownSettlement { settlement_id }
+        }
+        TradeCommandError::InsufficientStock {
+            resource,
+            requested,
+            available,
+        } => ActionError::InsufficientStock {
+            resource,
+            requested,
+            available,
+        },
+        TradeCommandError::InsufficientGold {
+            requested,
+            available,
+        } => ActionError::InsufficientGold {
+            requested,
+            available,
+        },
+    }
+}
+
+fn resolve_offers(offers: &[OfferSpec]) -> Result<HashMap<ResourceType, TradeOffer>, ActionError> {
+    let mut resolved = HashMap::with_capacity(offers.len());
+    for offer in offers {
+        match resolved.entry(offer.resource.clone()) {
+            Entry::Occupied(_) => {
+                return Err(ActionError::DuplicateOffer {
+                    resource: offer.resource.clone(),
+                });
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(offer.to_offer());
+            }
+        }
+    }
+    Ok(resolved)
 }

@@ -1,48 +1,87 @@
-//! Applies validated agent decisions through the existing settlement commands.
-use super::{CommandDispatch, preparation::DecisionPreparation};
-use crate::application::commands::settlement::contract::{
-    ActionError, ActionOutcome, ActionResult, DecisionOutcome, SettlementDecision,
+//! Applies each action to the current state before starting the next one.
+use super::{
+    ActionEffect, ActionError, ActionOutcome, ActionResult, CommandDispatch, DecisionOutcome,
+    SettlementAction, SettlementDecision,
 };
+use crate::domain::ids::{BuildingId, ProjectId};
+use crate::domain::spatial::Position;
 use crate::domain::world::WorldError;
+use std::collections::HashMap;
 
-/// Validates the decision, then executes the accepted actions in submission
-/// order. Rejected actions change nothing. Fails as a whole only when the
-/// deciding settlement does not exist; then nothing changes either.
+/// Objects that successful actions may claim once within one decision.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Target {
+    Tile(Position),
+    Upgrade(BuildingId),
+    Project(ProjectId),
+    Workers(BuildingId),
+    StorageOrder,
+    Market,
+}
+
+impl Target {
+    fn of(action: &SettlementAction) -> Option<Self> {
+        Some(match action {
+            SettlementAction::Construct { position, .. } => Self::Tile(*position),
+            SettlementAction::Upgrade { building_id, .. } => Self::Upgrade(*building_id),
+            SettlementAction::CancelProject { project_id } => Self::Project(*project_id),
+            SettlementAction::SetBuildingWorkers { building_id, .. } => Self::Workers(*building_id),
+            SettlementAction::SetStorageOrder { .. } => Self::StorageOrder,
+            SettlementAction::PublishMarketOffers { .. } | SettlementAction::ClearMarketOffers => {
+                Self::Market
+            }
+            SettlementAction::OrderCaravan { .. } => return None,
+        })
+    }
+}
+
+/// Rejected actions leave the world unchanged. A missing deciding settlement
+/// rejects the entire decision before dispatch.
 pub(crate) fn handle_decision(
     mut dispatch: CommandDispatch<'_>,
     decision: &SettlementDecision,
 ) -> Result<DecisionOutcome, WorldError> {
-    let validated = DecisionPreparation::new(dispatch.world()).validate_decision(decision)?;
-    let mut results: Vec<ActionResult> = validated
-        .rejected
-        .into_iter()
-        .map(|rejected| ActionResult {
-            index: rejected.index,
-            kind: rejected.kind,
-            outcome: ActionOutcome::Rejected {
-                error: rejected.error,
-            },
+    let settlement_id = decision.settlement_id;
+    dispatch.require_settlement(settlement_id)?;
+    let mut claimed = HashMap::new();
+    let mut project_targets = HashMap::new();
+    let results = decision
+        .actions
+        .iter()
+        .enumerate()
+        .map(|(index, action)| {
+            let target = Target::of(action);
+            let outcome = match target.and_then(|target| claimed.get(&target).copied()) {
+                Some(with_index) => ActionOutcome::Rejected {
+                    error: ActionError::Conflict { with_index },
+                },
+                None => match dispatch.execute(settlement_id, action) {
+                    Ok(effect) => {
+                        if let ActionEffect::ProjectCanceled { project_id } = effect
+                            && let Some(released) = project_targets.remove(&project_id)
+                        {
+                            claimed.remove(&released);
+                        }
+                        if let Some(target) = target {
+                            claimed.insert(target, index);
+                            if let ActionEffect::ProjectQueued { project_id } = effect {
+                                project_targets.insert(project_id, target);
+                            }
+                        }
+                        ActionOutcome::Applied { effect }
+                    }
+                    Err(error) => ActionOutcome::Rejected { error },
+                },
+            };
+            ActionResult {
+                index,
+                kind: action.kind(),
+                outcome,
+            }
         })
         .collect();
-    for accepted in validated.accepted {
-        let action = &decision.actions[accepted.index];
-        let outcome = match dispatch.execute(validated.settlement_id, &accepted.command) {
-            Ok(()) => ActionOutcome::Applied {
-                effect: accepted.effect,
-            },
-            Err(_) => ActionOutcome::Rejected {
-                error: ActionError::ExecutionFailed,
-            },
-        };
-        results.push(ActionResult {
-            index: accepted.index,
-            kind: action.kind(),
-            outcome,
-        });
-    }
-    results.sort_by_key(|result| result.index);
     Ok(DecisionOutcome {
-        settlement_id: validated.settlement_id,
+        settlement_id,
         results,
     })
 }

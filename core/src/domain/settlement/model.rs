@@ -31,6 +31,19 @@ pub enum BuildingCommandError {
     DuplicateBuilding(BuildingId),
     Territory(crate::domain::spatial::TerritoryError),
     MissingBuilding(BuildingId),
+    WorkersAboveCapacity {
+        building_id: BuildingId,
+        workers: u32,
+        max_workers: u32,
+    },
+    UnsupportedWorkerCount {
+        building_id: BuildingId,
+        workers: u32,
+    },
+    InsufficientWorkers {
+        requested: u64,
+        available: u32,
+    },
     InvalidLoad,
 }
 

@@ -14,7 +14,7 @@ use crate::domain::world::settlement_environment::{
 use crate::domain::world::{Position, pathfinding::path_finder::PathFinder};
 
 impl World {
-    /// Read-only placement check for previews and command preparation.
+    /// Read-only placement check for display and observations.
     pub(crate) fn validate_construction_site(
         &self,
         settlement_id: SettlementId,
@@ -27,19 +27,7 @@ impl World {
             .map_err(|error| WorldError::Project(ProjectError::Territory(error)))
     }
 
-    pub(crate) fn validate_blueprint_site(
-        &self,
-        settlement_id: SettlementId,
-        position: Position,
-        definition: &BuildingDefinition,
-    ) -> Result<(), WorldError> {
-        self.validate_construction_site(settlement_id, position)?;
-        self.validate_blueprint_materials(settlement_id, definition)?;
-        self.validate_coast_requirement(position, definition)?;
-        self.validate_building_deposit(position, definition.required_deposit())
-    }
-
-    pub(crate) fn validate_upgrade_site(
+    fn validate_upgrade_site(
         &self,
         settlement_id: SettlementId,
         position: Position,
@@ -49,36 +37,7 @@ impl World {
         self.map
             .validate_building_position(position)
             .map_err(|error| WorldError::Project(ProjectError::Territory(error)))?;
-        self.validate_blueprint_materials(settlement_id, definition)?;
-        self.validate_coast_requirement(position, definition)?;
         self.validate_building_deposit(position, definition.required_deposit())
-    }
-
-    fn validate_blueprint_materials(
-        &self,
-        settlement_id: SettlementId,
-        definition: &BuildingDefinition,
-    ) -> Result<(), WorldError> {
-        let settlement = self
-            .settlement(settlement_id)
-            .ok_or(WorldError::MissingSettlement(settlement_id))?;
-        match settlement.first_unknown_building_material(definition) {
-            Some(resource) => Err(WorldError::Project(ProjectError::UnknownMaterial(resource))),
-            None => Ok(()),
-        }
-    }
-
-    fn validate_coast_requirement(
-        &self,
-        position: Position,
-        definition: &BuildingDefinition,
-    ) -> Result<(), WorldError> {
-        if definition.requires_coast() && !self.map.is_coastal(position) {
-            return Err(WorldError::Project(ProjectError::Territory(
-                crate::domain::spatial::TerritoryError::CoastRequired(position),
-            )));
-        }
-        Ok(())
     }
 
     /// Cancellation belongs to the settlement and also works after map edits.
@@ -105,7 +64,14 @@ impl World {
         definition: Arc<BuildingDefinition>,
         cost: ProjectCost,
     ) -> Result<(), WorldError> {
-        self.validate_blueprint_site(settlement_id, position, &definition)?;
+        self.validate_settlement_position(settlement_id, position)?;
+        // Land errors take precedence over coastal and deposit requirements.
+        if definition.requires_coast() || definition.required_deposit().is_some() {
+            self.map
+                .validate_building_position(position)
+                .map_err(|error| WorldError::Project(ProjectError::Territory(error)))?;
+        }
+        self.validate_building_deposit(position, definition.required_deposit())?;
         self.settlements
             .get_mut(settlement_id)
             .expect("settlement was validated")

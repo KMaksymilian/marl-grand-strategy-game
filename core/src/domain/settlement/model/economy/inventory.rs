@@ -23,10 +23,9 @@ impl SettlementInventoryManager {
         &mut self,
         materials: impl AsRef<[ResourceType]>,
     ) -> Result<(), StorageOrderError> {
-        let materials = materials.as_ref();
-        self.validate_storage_order(materials)?;
         self.main.set_storage_order(materials)?;
-        self.pending_production.set_storage_order(materials)
+        self.pending_production.copy_storage_order_from(&self.main);
+        Ok(())
     }
 
     pub fn storage_order(&self) -> &[ResourceType] {
@@ -37,8 +36,7 @@ impl SettlementInventoryManager {
         &self,
         materials: &[ResourceType],
     ) -> Result<(), StorageOrderError> {
-        self.main.validate_storage_order(materials)?;
-        self.pending_production.validate_storage_order(materials)
+        self.main.validate_storage_order(materials)
     }
 
     /// Reset Labour amount at the start of turn

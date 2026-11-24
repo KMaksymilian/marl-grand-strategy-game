@@ -95,6 +95,48 @@ impl Settlement {
         Ok(())
     }
 
+    /// Requests an exact staff count for the next allocation.
+    pub(crate) fn set_building_worker_count(
+        &mut self,
+        building_id: BuildingId,
+        workers: u32,
+    ) -> Result<(), BuildingCommandError> {
+        let building = self
+            .building_manager
+            .get(building_id)
+            .ok_or(BuildingCommandError::MissingBuilding(building_id))?;
+        let max_workers = building.definition().max_workers();
+        if workers > max_workers {
+            return Err(BuildingCommandError::WorkersAboveCapacity {
+                building_id,
+                workers,
+                max_workers,
+            });
+        }
+        let load = Building::load_for_workers(workers, max_workers).ok_or(
+            BuildingCommandError::UnsupportedWorkerCount {
+                building_id,
+                workers,
+            },
+        )?;
+        if workers > building.requested_workers() {
+            let requested = self
+                .buildings()
+                .filter(|other| other.instance_id() != building_id)
+                .map(|other| u64::from(other.requested_workers()))
+                .sum::<u64>()
+                + u64::from(workers);
+            let available = self.population();
+            if requested > u64::from(available) {
+                return Err(BuildingCommandError::InsufficientWorkers {
+                    requested,
+                    available,
+                });
+            }
+        }
+        self.set_building_staff(building_id, load)
+    }
+
     /// Activates the building and sets its load in one step; on error nothing changes.
     pub fn set_building_staff(
         &mut self,

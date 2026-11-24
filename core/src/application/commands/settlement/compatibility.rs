@@ -1,19 +1,8 @@
-//! Test-only access to decision validation and execution without advancing the world.
-use super::DecisionOutcome;
-use super::{
-    CommandDispatch, SettlementDecision, ValidatedDecision, handler,
-    preparation::DecisionPreparation,
-};
+//! Test-only execution of a decision without advancing the world.
+use super::{CommandDispatch, DecisionOutcome, SettlementDecision, handler};
 use crate::domain::world::{World, WorldError};
 
 impl World {
-    pub(crate) fn validate_decision(
-        &self,
-        decision: &SettlementDecision,
-    ) -> Result<ValidatedDecision, WorldError> {
-        DecisionPreparation::new(self).validate_decision(decision)
-    }
-
     pub(crate) fn apply_decision(
         &mut self,
         decision: &SettlementDecision,

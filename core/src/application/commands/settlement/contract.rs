@@ -1,7 +1,7 @@
 //! Serializable decisions submitted by rule-based or learning settlement agents.
 //!
 //! This is the data contract only. Values are checked against the world by the
-//! action validator before execution; deserialization checks only the shape and
+//! command that applies each action; deserialization checks only the shape and
 //! the numeric types (all quantities are unsigned, so negative values never parse).
 //!
 //! JSON shape, as sent from Python:
@@ -73,7 +73,7 @@ pub enum SettlementAction {
     /// Stop an own active project. Materials already paid are not refunded.
     CancelProject { project_id: ProjectId },
     /// Requested staff of an own building, in `0..=max_workers` of its definition.
-    /// Zero switches the building off; recipe inputs scale with the staff.
+    /// Zero requests no staff; recipe inputs scale with the staff.
     SetBuildingWorkers {
         building_id: BuildingId,
         workers: u32,
@@ -86,7 +86,7 @@ pub enum SettlementAction {
     /// Remove all market offers. Visiting caravans then find nothing to trade.
     ClearMarketOffers,
     /// Send a caravan with these offers to another settlement. Goods and gold are
-    /// taken from stock when the caravan is funded during the turn.
+    /// reserved when the order succeeds.
     OrderCaravan {
         receiver_id: SettlementId,
         offers: Vec<OfferSpec>,

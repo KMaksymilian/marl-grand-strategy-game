@@ -78,6 +78,10 @@ impl World {
         Ok(self.nations.stock_capacity(nation_id))
     }
 
+    pub fn set_national_stock_capacity_per_settlement(&mut self, capacity: u32) {
+        self.nations.set_stock_capacity_per_settlement(capacity);
+    }
+
     /// The most populous settlement, lowest ID on ties.
     fn largest_settlement(&self, candidates: &[SettlementId]) -> Option<SettlementId> {
         // `max_by_key` keeps the larger key; `Reverse(id)` makes a lower ID the

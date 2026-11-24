@@ -39,7 +39,7 @@ fn produce(buildings: &[(&str, Area)], stock: &[(&str, u32)]) -> InventoryTurnRe
     world.set_building_catalog(catalog());
     let mut settlement = Settlement::new(
         SETTLEMENT,
-        10_000,
+        1_000_000,
         25 * buildings.len() as u32,
         Arc::default(),
     );
@@ -108,22 +108,47 @@ fn economic_blueprints_load_with_tier_defaults_and_deposit_variants() {
     let plantation = catalog.get_blueprint("plantation").unwrap();
     assert_eq!(
         plantation.construction_cost().needed_resources[&material("wood")],
-        200
+        20_000
     );
     let mine = catalog.get_blueprint("mine_iron_ore").unwrap();
     assert_eq!(mine.required_deposit(), Some(material("iron_ore")));
     assert_eq!(
         mine.cycle_production().unwrap().recipes[0].outputs,
-        [(material("iron_ore"), 1)]
+        [(material("iron_ore"), 100)]
     );
+}
+
+#[test]
+fn configured_material_quantities_must_fit_the_material_unit_scale() {
+    let source = include_str!("../../buildings.toml");
+    for (from, to) in [
+        ("wood = 200", "wood = 42949673"),
+        ("grain = 1", "grain = 42949673"),
+        ("warehouse_capacity = 2000", "warehouse_capacity = 42949673"),
+        ("caravan_cargo = 400", "caravan_cargo = 42949673"),
+    ] {
+        let result =
+            BuildingCatalog::from_toml(&source.replacen(from, to, 1), ResourceCatalog::standard());
+        assert!(
+            result
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("material unit limit"),
+            "{to}"
+        );
+    }
 }
 
 #[test]
 fn plantations_use_their_tile_efficiency_and_production_totals_add_up() {
     for (sites, expected) in [
-        (vec![("plantation", GRASSLAND)], 100),
-        (vec![("plantation", FOREST)], 75),
-        (vec![("plantation", GRASSLAND), ("plantation", FOREST)], 175),
+        (vec![("plantation", GRASSLAND)], 10_000),
+        (vec![("plantation", FOREST)], 7_500),
+        (
+            vec![("plantation", GRASSLAND), ("plantation", FOREST)],
+            17_500,
+        ),
     ] {
         let report = produce(&sites, &[]);
         assert_eq!(report.produced[&material("grain")], expected);
@@ -135,18 +160,18 @@ fn plantations_use_their_tile_efficiency_and_production_totals_add_up() {
 fn sawmill_and_steelworks_execute_the_worked_examples() {
     let report = produce(
         &[("sawmill", GRASSLAND), ("steelworks", FOREST)],
-        &[("wood", 150), ("coal", 50), ("iron_ore", 50)],
+        &[("wood", 15_000), ("coal", 5_000), ("iron_ore", 5_000)],
     );
-    assert_eq!(report.produced[&material("planks")], 100);
-    assert_eq!(report.produced[&material("steel")], 50);
-    for (input, expected) in [("wood", 150), ("coal", 50), ("iron_ore", 50)] {
+    assert_eq!(report.produced[&material("planks")], 10_000);
+    assert_eq!(report.produced[&material("steel")], 5_000);
+    for (input, expected) in [("wood", 15_000), ("coal", 5_000), ("iron_ore", 5_000)] {
         assert_eq!(report.production_consumed[&material(input)], expected);
     }
 }
 
 #[test]
 fn charcoal_kiln_respects_full_cycles_and_its_processing_rate() {
-    for (wood, expected_coal, wood_remaining) in [(99, 49, 1), (102, 50, 2)] {
+    for (wood, expected_coal, wood_remaining) in [(9_999, 4_900, 199), (10_001, 5_000, 1)] {
         let report = produce(&[("charcoal_kiln", GRASSLAND)], &[("wood", wood)]);
         assert_eq!(report.produced[&material("coal")], expected_coal);
         assert_eq!(
@@ -160,11 +185,11 @@ fn charcoal_kiln_respects_full_cycles_and_its_processing_rate() {
 #[test]
 fn builder_selects_one_recipe_from_available_inputs_in_configuration_order() {
     for (stock, expected_usage, expected_outputs) in [
-        ((50, 50), (50, 0), 25),  // All tie at 25 cycles.
-        ((0, 50), (0, 50), 25),   // Only the brick recipe is feasible.
-        ((25, 25), (25, 25), 25), // The mixed recipe is best.
-        ((1, 1), (1, 1), 1),      // Neither single-input recipe can run.
-        ((1, 0), (0, 0), 0),      // No complete input bundle.
+        ((5_000, 5_000), (5_000, 0), 2_500),     // All tie at 25 cycles.
+        ((0, 5_000), (0, 5_000), 2_500),         // Only the brick recipe is feasible.
+        ((2_500, 2_500), (2_500, 2_500), 2_500), // The mixed recipe is best.
+        ((100, 100), (100, 100), 100),           // Neither single-input recipe can run.
+        ((199, 99), (0, 0), 0),                  // No complete input bundle.
     ] {
         let report = produce(
             &[("builder", GRASSLAND)],
@@ -194,9 +219,12 @@ fn builder_selects_one_recipe_from_available_inputs_in_configuration_order() {
 fn builders_plan_against_the_same_stock_without_requesting_the_same_bundle_twice() {
     let report = produce(
         &[("builder", GRASSLAND), ("builder", GRASSLAND)],
-        &[("stone_bricks", 50), ("bricks", 50)],
+        &[("stone_bricks", 5_000), ("bricks", 5_000)],
     );
-    assert_eq!(report.produced[&material("fortification_components")], 50);
-    assert_eq!(report.production_consumed[&material("stone_bricks")], 50);
-    assert_eq!(report.production_consumed[&material("bricks")], 50);
+    assert_eq!(
+        report.produced[&material("fortification_components")],
+        5_000
+    );
+    assert_eq!(report.production_consumed[&material("stone_bricks")], 5_000);
+    assert_eq!(report.production_consumed[&material("bricks")], 5_000);
 }

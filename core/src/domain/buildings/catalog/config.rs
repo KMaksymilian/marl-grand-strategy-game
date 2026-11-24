@@ -1,7 +1,10 @@
 use super::BuildingCatalog;
 use crate::domain::buildings::definition::{BuildingDefinition, CycleRecipe, DefinitionError};
 use crate::domain::buildings::passive::{BuildingUpgradeRule, PassiveBuildingRules};
-use crate::domain::economy::{ResourceCatalog, ResourceType, cost::ProjectCost};
+use crate::domain::economy::{
+    MATERIAL_UNITS_PER_DISPLAY_UNIT, ResourceCatalog, ResourceType, cost::ProjectCost,
+    material_units_from_display,
+};
 use crate::domain::world::terrain::biome::Biome;
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -143,9 +146,24 @@ impl RawSpecialBuilding {
                 .collect(),
             turn_cost: self.build_turns,
         };
+        let mut rules = self.rules;
+        let effects = &mut rules.effects;
+        effects.warehouse_capacity = material_units_from_display(effects.warehouse_capacity)
+            .ok_or_else(|| {
+                BuildingCatalogError::Invalid(format!(
+                    "{}: warehouse capacity exceeds the material unit limit",
+                    self.id
+                ))
+            })?;
+        effects.trade = effects.trade.into_material_units().ok_or_else(|| {
+            BuildingCatalogError::Invalid(format!(
+                "{}: trade capacity exceeds the material unit limit",
+                self.id
+            ))
+        })?;
         let definition = BuildingDefinition::new(&self.id, self.name, 0, 0, vec![], cost)
             .map_err(|error| BuildingCatalogError::Invalid(format!("{}: {error:?}", self.id)))?
-            .with_passive_rules(self.rules);
+            .with_passive_rules(rules);
         insert(catalog, definition)
     }
 }
@@ -271,7 +289,7 @@ impl RawBuilding {
                     name,
                     vec![CycleRecipe {
                         inputs: vec![],
-                        outputs: vec![(ore.clone(), 1)],
+                        outputs: vec![(ore.clone(), MATERIAL_UNITS_PER_DISPLAY_UNIT)],
                     }],
                 )?
                 .requiring_province_deposit(ore)
@@ -316,6 +334,11 @@ fn materials(
     for (id, amount) in raw {
         let resource = resources.resolve(&id).ok_or_else(|| {
             BuildingCatalogError::Invalid(format!("{building}: unknown material {id:?}"))
+        })?;
+        let amount = material_units_from_display(amount).ok_or_else(|| {
+            BuildingCatalogError::Invalid(format!(
+                "{building}: quantity for {id:?} exceeds the material unit limit"
+            ))
         })?;
         if amount == 0 || result.insert(resource, amount).is_some() {
             return Err(BuildingCatalogError::Invalid(format!(

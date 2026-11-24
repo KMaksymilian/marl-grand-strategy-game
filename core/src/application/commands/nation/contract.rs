@@ -4,8 +4,8 @@
 //! recruitment and army orders are added as new action variants. Decrees are
 //! named by their ID from `decrees.toml`; whether the ID exists is checked by
 //! validation, not by parsing.
-//! Values are checked against the world before execution; deserialization checks
-//! only the shape and the numeric types.
+//! Each action is checked against the current world as it executes.
+//! Deserialization checks only the shape and numeric types.
 //!
 //! JSON shape:
 //! ```json

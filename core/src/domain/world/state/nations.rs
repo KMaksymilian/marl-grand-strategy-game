@@ -11,6 +11,7 @@ use super::{World, WorldError};
 use crate::domain::economy::{InventoryAddResult, ResourceType};
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::Nation;
+use crate::domain::nation::decree::DecreeId;
 use crate::domain::nation::registry::NationRegistry;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -39,6 +40,38 @@ pub struct SubsidyTransfer {
     pub delivered: BTreeMap<ResourceType, u32>,
     /// Materials that did not fit the warehouse and stayed in the national stock.
     pub returned: BTreeMap<ResourceType, u32>,
+}
+
+#[derive(Debug)]
+pub(crate) enum NationOperationError {
+    MissingNation(NationId),
+    InvalidTaxRate(f32),
+    UnknownSettlement(SettlementId),
+    SettlementNotOwned(SettlementId),
+    EmptySubsidy,
+    LabourIsNotTransferable,
+    InsufficientTreasury {
+        requested: u32,
+        available: u32,
+    },
+    InsufficientStock {
+        resource: ResourceType,
+        requested: u32,
+        available: u32,
+    },
+    SettlementTreasuryFull(SettlementId),
+    UnknownDecree(DecreeId),
+    DecreeAlreadyEnacted(DecreeId),
+    DecreeOnCooldown {
+        decree: DecreeId,
+        turns_left: u32,
+    },
+    NoFreeDecreeSlot(usize),
+    DecreeNotActive(DecreeId),
+    DecreeMinimumDuration {
+        decree: DecreeId,
+        turns_left: u32,
+    },
 }
 
 /// Read access.
@@ -184,61 +217,75 @@ impl World {
             .deposit_resource(resource.clone(), amount))
     }
 
-    /// `rate` must be a valid fraction (`Nation::is_valid_tax_rate`).
+    /// Sets the rate if it is a valid fraction.
     pub(crate) fn set_tax_rate(
         &mut self,
         nation_id: NationId,
         rate: f32,
-    ) -> Result<(), WorldError> {
-        self.nation_mut(nation_id)?.set_tax_rate(rate);
+    ) -> Result<(), NationOperationError> {
+        if !Nation::is_valid_tax_rate(rate) {
+            return Err(NationOperationError::InvalidTaxRate(rate));
+        }
+        self.nations
+            .get_mut(nation_id)
+            .ok_or(NationOperationError::MissingNation(nation_id))?
+            .set_tax_rate(rate);
         Ok(())
     }
 
-    /// Moves gold and materials from the nation to one of its settlements, all
-    /// or nothing. Materials that do not fit the warehouse stay in the national
-    /// stock, so a subsidy neither creates nor destroys goods.
+    /// Validates a funded subsidy and transfers only materials the warehouse admits.
+    /// Rejected materials never leave national stock.
     pub(crate) fn subsidize(
         &mut self,
         nation_id: NationId,
         settlement_id: SettlementId,
         gold: u32,
         resources: &BTreeMap<ResourceType, u32>,
-    ) -> Result<SubsidyTransfer, WorldError> {
-        // Phase 1: checks only. The application validator performs the same
-        // checks per action; these repeat them so World stays safe on its own.
+    ) -> Result<SubsidyTransfer, NationOperationError> {
         let settlement_gold = self
             .settlement(settlement_id)
-            .ok_or(WorldError::MissingSettlement(settlement_id))?
+            .ok_or(NationOperationError::UnknownSettlement(settlement_id))?
             .gold();
         if self.nations.owner_of(settlement_id) != Some(nation_id) {
-            return Err(WorldError::SettlementNotOwned {
-                settlement_id,
-                nation_id,
-            });
+            return Err(NationOperationError::SettlementNotOwned(settlement_id));
+        }
+        if resources.contains_key(&ResourceType::Labour) {
+            return Err(NationOperationError::LabourIsNotTransferable);
+        }
+        if gold == 0 && resources.values().all(|&amount| amount == 0) {
+            return Err(NationOperationError::EmptySubsidy);
         }
         let nation = self
             .nation(nation_id)
-            .ok_or(WorldError::MissingNation(nation_id))?;
-        let affordable = nation.treasury() >= gold
-            && resources.iter().all(|(resource, &amount)| {
-                resource != &ResourceType::Labour
-                    && nation.stock().amount(resource.clone()) >= amount
+            .ok_or(NationOperationError::MissingNation(nation_id))?;
+        if gold > nation.treasury() {
+            return Err(NationOperationError::InsufficientTreasury {
+                requested: gold,
+                available: nation.treasury(),
             });
-        // The settlement's gold counter is a u32: refuse rather than overflow.
-        if !affordable || gold > u32::MAX - settlement_gold {
-            return Err(WorldError::InsufficientNationalFunds(nation_id));
+        }
+        for (resource, &amount) in resources {
+            let available = nation.stock().amount(resource.clone());
+            if amount > available {
+                return Err(NationOperationError::InsufficientStock {
+                    resource: resource.clone(),
+                    requested: amount,
+                    available,
+                });
+            }
+        }
+        if gold > u32::MAX - settlement_gold {
+            return Err(NationOperationError::SettlementTreasuryFull(settlement_id));
         }
 
-        // Phase 2: move everything. The asserts cannot fire after phase 1.
+        // The two inventories are exclusively borrowed and each requested
+        // amount was affordable. Only accepted materials need to be debited.
         let nation = self.nations.get_mut(nation_id).expect("checked above");
-        assert!(nation.withdraw_gold(gold));
-        for (resource, &amount) in resources {
-            assert!(nation.withdraw_resource(resource.clone(), amount));
-        }
         let settlement = self
             .settlements
             .get_mut(settlement_id)
             .expect("checked above");
+        assert!(nation.withdraw_gold(gold));
         settlement.deposit_gold(gold);
         let mut transfer = SubsidyTransfer {
             gold,
@@ -249,17 +296,12 @@ impl World {
             let InventoryAddResult { accepted, rejected } =
                 settlement.deposit(resource.clone(), amount);
             if accepted > 0 {
+                assert!(nation.withdraw_resource(resource.clone(), accepted));
                 transfer.delivered.insert(resource.clone(), accepted);
             }
             if rejected > 0 {
                 transfer.returned.insert(resource.clone(), rejected);
             }
-        }
-        // What the warehouse rejected goes back; it just left this stock, so it fits.
-        let nation = self.nations.get_mut(nation_id).expect("checked above");
-        for (resource, &amount) in &transfer.returned {
-            let back = nation.deposit_resource(resource.clone(), amount);
-            debug_assert_eq!(back.rejected, 0);
         }
         Ok(transfer)
     }

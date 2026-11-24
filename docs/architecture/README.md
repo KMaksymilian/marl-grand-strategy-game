@@ -44,6 +44,7 @@ and [decisions](../decisions/0001-economy.md), respectively.
 | [Building productivity](implementation/building_productivity.md) | A* cost thresholds and exact output calculation |
 | [Economic building catalog](implementation/building_catalog.md) | Configured tiers, construction, recipes and placement |
 | [Settlement founding and needs](implementation/settlement_needs.md) | Starting stock, diets, substitutions and material units |
+| [Settlement happiness](implementation/settlement_happiness.md) | Happiness factors, demographics and gold income |
 | [Pathfinding algorithms](implementation/pathfinding_algorithms.md) | Search state, heuristic and directed movement cost |
 | [Configuration](implementation/configuration.md) | TOML parsing, validation and actual application wiring |
 

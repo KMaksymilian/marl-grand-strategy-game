@@ -78,7 +78,7 @@ before `EconomicUpdates`, for every settlement in ascending ID.
 
 | Step | Rule |
 | --- | --- |
-| Status | `under_attack`: rate 0. Freshly conquered (`Ownership::conquest_turns` above zero, 4 turns after a transfer): half the rate. Otherwise the nation's rate. |
+| Status | `under_attack`: rate 0. Freshly conquered (`Ownership::conquest_turns` above zero): half the rate. The shared conquest timer lasts four turns by default. Otherwise the nation's rate. |
 | Production tax | Every material of this turn's gross production, separately, rounded down (`tax_amount`). Taken before the buffer and warehouse, so storage losses never reduce it. Intermediate goods are taxed at every stage. Labour is not taxed. |
 | National side | Materials go to the stock up to its shared capacity; what does not fit is lost and reported. Settlements of one nation fill the stock in ascending ID. |
 | Gold | Not taxed yet (see below). |
@@ -93,20 +93,20 @@ status, nominal and effective rate, production tax) and `NationTurnReport::taxes
 
 ## For the economy: happiness and income
 
-Settlement happiness (§4.2) and gold income (§4.4) belong to the settlement
-economy. The nation layer only provides what they need; places are marked
-`ECONOMY` in the code.
+The [settlement economy](settlement_happiness.md) computes happiness and
+gold income from configured rules. The world reads fiscal and ownership
+state from the nation layer each turn.
 
 | What | Where | Rule from the specification |
 | --- | --- | --- |
 | Tax factor of happiness | `Nation::tax_rate` ([nation/mod.rs](../../../core/src/domain/nation/mod.rs)) | `10 − rate × 100` points in every settlement of the nation |
 | Capital-loss penalty | `Nation::capital_loss_turns` ([nation/mod.rs](../../../core/src/domain/nation/mod.rs)) | −10 happiness while above zero (10 turns) |
 | Conquest penalty | `Ownership::conquest_turns` ([nation/registry.rs](../../../core/src/domain/nation/registry.rs)) | `−5 × conquest_turns` happiness (−20, −15, −10, −5) |
-| Gold tax | `World::collect_taxes` ([world/state/taxation.rs](../../../core/src/domain/world/state/taxation.rs)) | take `income × effective_rate`, deposit with `Nation::deposit_gold` |
-| Gold tax in reports | `SettlementTaxReport` ([nation/taxation.rs](../../../core/src/domain/nation/taxation.rs)) | add `gold_income` and `gold_tax` |
+| War weariness | `Nation::war_weariness` | Subtract the national value from each settlement's score |
+| Gold income | Settlement economic updates | Credit income from opening population and the turn's happiness snapshot |
 
-All three penalty counters count down at the end of every turn; reading them is
-enough. Nation and settlement observations already show them.
+The capital-loss and conquest counters count down at the end of every turn.
+The nation observation also exposes the current war weariness value.
 
 ## Decrees (§7)
 

@@ -2,6 +2,7 @@ use crate::domain::ids::SettlementId;
 use std::collections::HashMap;
 mod construction;
 mod decrees;
+mod happiness;
 mod inspection;
 mod map_commands;
 mod nations;
@@ -73,6 +74,7 @@ pub enum WorldError {
         registered_settlement: Option<SettlementId>,
     },
     MissingNation(NationId),
+    InvalidWarWeariness(u8),
     NationIdExhausted,
     /// The settlement already belongs to this nation.
     SettlementAlreadyOwned {
@@ -119,6 +121,7 @@ pub struct World {
     /// Building types agents may construct or upgrade to.
     building_catalog: BuildingCatalog,
     base_trade_limits: Option<crate::domain::buildings::passive::TradeLimitBonuses>,
+    happiness_rules: Option<crate::domain::settlement::happiness::HappinessRules>,
     resource_catalog: Arc<ResourceCatalog>,
     /// Unit types and military rules (`units.toml`).
     unit_catalog: Arc<UnitCatalog>,
@@ -354,6 +357,7 @@ impl World {
             province_settlements: HashMap::new(),
             building_catalog: BuildingCatalog::default(),
             base_trade_limits: None,
+            happiness_rules: None,
             resource_catalog,
             unit_catalog: Arc::new(UnitCatalog::standard().clone()),
             province_graph,

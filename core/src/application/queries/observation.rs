@@ -31,6 +31,8 @@ pub struct SettlementObservation {
     pub settlement_id: SettlementId,
     pub province_id: usize,
     pub population: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub happiness: Option<f64>,
     pub gold: u32,
     pub inventory: InventoryObservation,
     #[serde(default)]
@@ -174,6 +176,8 @@ pub struct LastTurnObservation {
     pub food_eaten: u64,
     #[serde(default)]
     pub people_unfed: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub happiness: Option<crate::domain::settlement::turn_report::HappinessTurnReport>,
     pub missing_needs: Vec<ResourceType>,
     pub produced: ResourceTotals,
     pub population_consumed: ResourceTotals,

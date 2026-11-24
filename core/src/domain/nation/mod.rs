@@ -34,8 +34,8 @@ pub struct Nation {
     stock: ResourceInventory,
     /// Common tax rate of all own settlements, a free fraction in 0.0..=1.0.
     tax_rate: f32,
-    /// Turns left of the penalty for losing the capital (§4.2); its effect on
-    /// happiness arrives with the happiness model.
+    war_weariness: u8,
+    /// Turns left of the penalty for losing the capital (§4.2).
     capital_loss_turns: u32,
     /// Pending, active and cooling-down decrees (§7).
     decrees: DecreeBook,
@@ -62,6 +62,7 @@ impl Nation {
             treasury: GoldInventory::default(),
             stock: ResourceInventory::new(Self::STOCK_CAPACITY_PER_SETTLEMENT),
             tax_rate: Self::BASE_TAX_RATE,
+            war_weariness: 0,
             capital_loss_turns: 0,
             decrees: DecreeBook::default(),
         }
@@ -94,17 +95,21 @@ impl Nation {
             .collect()
     }
 
-    // ECONOMY (happiness, §4.2): the tax factor of happiness is
-    // `10 − tax_rate × 100` points in every settlement of the nation.
     pub fn tax_rate(&self) -> f32 {
         self.tax_rate
     }
 
     /// Remaining turns of the capital-loss penalty; zero when none applies.
-    // ECONOMY (happiness, §4.2): −10 happiness in every settlement of the
-    // nation while this is above zero.
     pub fn capital_loss_turns(&self) -> u32 {
         self.capital_loss_turns
+    }
+
+    pub fn war_weariness(&self) -> u8 {
+        self.war_weariness
+    }
+
+    pub(crate) fn set_war_weariness(&mut self, weariness: u8) {
+        self.war_weariness = weariness;
     }
 
     /// The caller checks `is_valid_tax_rate` (the action validator does).
@@ -177,9 +182,9 @@ impl Nation {
     }
 
     /// Moves the capital after the old one was lost and starts the penalty.
-    pub(crate) fn replace_lost_capital(&mut self, capital: SettlementId) {
+    pub(crate) fn replace_lost_capital(&mut self, capital: SettlementId, penalty_turns: u32) {
         self.capital = capital;
-        self.capital_loss_turns = Self::CAPITAL_LOSS_PENALTY_TURNS;
+        self.capital_loss_turns = penalty_turns;
     }
 
     /// Counts down per-turn timers at the end of a global turn.
@@ -270,7 +275,7 @@ mod tests {
     #[test]
     fn capital_loss_penalty_counts_down_to_zero() {
         let mut nation = Nation::new(NationId(1), SettlementId(1));
-        nation.replace_lost_capital(SettlementId(2));
+        nation.replace_lost_capital(SettlementId(2), Nation::CAPITAL_LOSS_PENALTY_TURNS);
         assert_eq!(nation.capital(), SettlementId(2));
         for remaining in (0..Nation::CAPITAL_LOSS_PENALTY_TURNS).rev() {
             nation.advance_turn();

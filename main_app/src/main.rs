@@ -6,6 +6,7 @@ use simulation_core::configuration::Configuration;
 use simulation_core::economy::ResourceCatalog;
 use simulation_core::military::UnitCatalog;
 use simulation_core::nation::decree_catalog::DecreeCatalog;
+use simulation_core::settlement::happiness::HappinessRules;
 use simulation_core::settlement::{NeedRegistry, start::SettlementStart};
 use simulation_core::world::World;
 use simulation_core::world::generation::world_builder::WorldBuilder;
@@ -46,6 +47,10 @@ async fn main() {
             .zero_productivity_cost()
     );
     let mut world: World = WorldBuilder::generate_default_with_resources(Arc::new(resources));
+    world.set_happiness_rules(
+        HappinessRules::load("settlement_happiness.toml")
+            .unwrap_or_else(|error| panic!("settlement_happiness.toml: {error}")),
+    );
     world.set_building_catalog(buildings);
     world.set_base_trade_limits(configuration.economy.trade_limits);
     if let Some(capacity) = configuration.economy.national_stock_capacity_per_settlement {

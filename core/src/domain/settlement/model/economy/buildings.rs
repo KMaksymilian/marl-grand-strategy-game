@@ -1,8 +1,8 @@
 use crate::domain::buildings::Building;
 use crate::domain::buildings::definition::BuildingDefinition;
 use crate::domain::buildings::productivity::{
-    BuildingProductivityCalculator, LocationProductivity, ProductionModifierStrategy,
-    TravelCostSource,
+    BuildingProductivityCalculator, LocationProductivity, ProductionModifier,
+    ProductionModifierStrategy, TravelCostSource,
 };
 use crate::domain::economy::ResourceType;
 use crate::domain::economy::allocation::{AllocationRecipient, AllocationResult, DemandRequest};
@@ -204,6 +204,7 @@ impl BuildingManager {
         &mut self,
         allocations: &AllocationResult,
         recipes: &HashMap<BuildingId, usize>,
+        turn_modifier: Option<&ProductionModifier>,
     ) -> (HashMap<ResourceType, u64>, HashMap<ResourceType, u64>) {
         let mut all_produced = HashMap::new();
         let mut all_returned = HashMap::new();
@@ -215,6 +216,7 @@ impl BuildingManager {
                 grants,
                 &self.production_modifier_strategies,
                 recipes.get(&id).copied(),
+                turn_modifier,
             );
 
             for (res, amount) in update_result.produced {
@@ -485,7 +487,7 @@ mod tests {
         allocations.insert(AllocationRecipient::Building(BuildingId(2)), b2_grants);
 
         // Act
-        let (produced, returned) = manager.process_allocations(&allocations, &HashMap::new());
+        let (produced, returned) = manager.process_allocations(&allocations, &HashMap::new(), None);
 
         // Assert
         // Both buildings worked at 100% capacity (10 labour, enough wood).

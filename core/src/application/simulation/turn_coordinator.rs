@@ -118,8 +118,15 @@ pub(super) fn run_turn(
             phase: TurnPhase::Production,
             settlement_id: id,
         });
+        let happiness = world
+            .settlement_happiness(id)
+            .expect("registered settlement");
         let settlement = world.settlement_mut(id).expect("registered settlement");
-        produced.push((id, settlement.produce_turn(state)));
+        produced.push((
+            id,
+            settlement.produce_turn(state, happiness.as_ref()),
+            happiness,
+        ));
     }
 
     // Taxation: the owner's rate × this turn's gross output of every
@@ -127,7 +134,7 @@ pub(super) fn run_turn(
     // ascending ID, which decides who meets a full capacity.
     let mut taxes: BTreeMap<NationId, NationTaxReport> = BTreeMap::new();
     let mut taxed = Vec::with_capacity(produced.len());
-    for (id, mut state) in produced {
+    for (id, mut state, happiness) in produced {
         execution.push(PhaseExecution {
             phase: TurnPhase::Taxation,
             settlement_id: id,
@@ -139,11 +146,11 @@ pub(super) fn run_turn(
         add_totals(&mut nation.stock_received, &collection.stock_received);
         add_totals(&mut nation.stock_lost, &collection.stock_lost);
         nation.settlements.insert(id, collection.report);
-        taxed.push((id, state));
+        taxed.push((id, state, happiness));
     }
 
     let mut settlements = BTreeMap::new();
-    for (id, state) in taxed {
+    for (id, state, happiness) in taxed {
         execution.push(PhaseExecution {
             phase: TurnPhase::EconomicUpdates,
             settlement_id: id,
@@ -152,6 +159,7 @@ pub(super) fn run_turn(
             .settlement_turn_parts(id, finder)
             .expect("registered settlement");
         let mut report = settlement.finish_turn(state, &mut environment);
+        world.finish_settlement_happiness(id, happiness, &mut report);
         report.taxation = taxes
             .values()
             .find_map(|nation| nation.settlements.get(&id))

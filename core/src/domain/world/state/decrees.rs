@@ -54,12 +54,15 @@ impl World {
 
     /// Decree slots of a nation, from the average happiness of its settlements.
     pub fn decree_slots(&self, nation_id: NationId) -> Result<usize, WorldError> {
-        self.nation(nation_id)
-            .ok_or(WorldError::MissingNation(nation_id))?;
-        // ECONOMY (happiness, §4.2 and §7): settlements have no happiness yet,
-        // so there is no average and every nation has the base slots. With
-        // happiness, pass the average over `nation_settlements(nation_id)` here.
-        let average_happiness = None;
+        let mut sum = 0.0;
+        let mut count = 0;
+        for id in self.nation_settlements(nation_id)? {
+            if let Some(happiness) = self.settlement_happiness(id)? {
+                sum += happiness.score();
+                count += 1;
+            }
+        }
+        let average_happiness = (count > 0).then(|| (sum / f64::from(count)) as f32);
         Ok(self.decree_catalog.rules().slots(average_happiness))
     }
 

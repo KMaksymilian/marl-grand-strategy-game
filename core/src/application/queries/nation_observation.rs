@@ -18,6 +18,8 @@ pub struct NationObservation {
     /// Remaining turns of the penalty for losing the capital; zero when none.
     pub capital_loss_turns: u32,
     pub tax_rate: f32,
+    #[serde(default)]
+    pub war_weariness: u8,
     pub treasury: u32,
     /// National stock, ascending resource; zero amounts are omitted.
     pub stock: ResourceAmounts,

@@ -529,6 +529,7 @@ version = "0.1.0"
 dependencies = [
  "noise",
  "num-rational",
+ "num-traits",
  "rand 0.10.2",
  "rayon",
  "serde",

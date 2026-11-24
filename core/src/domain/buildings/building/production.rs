@@ -60,7 +60,7 @@ impl Building {
             })
             .map(|(index, _)| index)
         });
-        self.resolve_planned_allocation(granted, modifier_strategies, recipe)
+        self.resolve_planned_allocation(granted, modifier_strategies, recipe, None)
     }
 
     pub(crate) fn resolve_planned_allocation(
@@ -68,6 +68,7 @@ impl Building {
         granted: Option<&HashMap<ResourceType, u32>>,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
         cycle_recipe: Option<usize>,
+        turn_modifier: Option<&ProductionModifier>,
     ) -> ProductionResult {
         let mut material_grants = granted.cloned().unwrap_or_default();
 
@@ -84,15 +85,17 @@ impl Building {
                 cycle_recipe,
                 material_grants,
                 modifier_strategies,
+                turn_modifier,
             );
         }
-        self.execute_production(material_grants, modifier_strategies)
+        self.execute_production(material_grants, modifier_strategies, turn_modifier)
     }
 
     fn production_yield(
         &self,
         biome_efficiency: u8,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
+        turn_modifier: Option<&ProductionModifier>,
     ) -> ProductionYield {
         let context = ProductionModifierContext {
             building: self,
@@ -104,7 +107,8 @@ impl Building {
             biome_modifier.into_iter().chain(
                 modifier_strategies
                     .iter()
-                    .filter_map(|strategy| strategy.modifier(&context)),
+                    .filter_map(|strategy| strategy.modifier(&context))
+                    .chain(turn_modifier.cloned()),
             ),
         )
     }
@@ -113,6 +117,7 @@ impl Building {
         &self,
         mut unused: HashMap<ResourceType, u32>,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
+        turn_modifier: Option<&ProductionModifier>,
     ) -> ProductionResult {
         let mut produced = HashMap::new();
 
@@ -120,7 +125,7 @@ impl Building {
             return ProductionResult { produced, unused };
         }
 
-        let production_yield = self.production_yield(100, modifier_strategies);
+        let production_yield = self.production_yield(100, modifier_strategies, turn_modifier);
 
         // Recipes run in definition order against the remaining material balance.
         // Exact fractions avoid floating-point rounding at the withdrawal boundary.

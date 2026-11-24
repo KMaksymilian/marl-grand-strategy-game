@@ -54,6 +54,6 @@ The four-monument cap counts completed monuments and pending construction.
 Monuments expose a permanent happiness bonus while standing. Wall upgrades
 replace the preceding level's defense bonus. The province defense query
 returns that bonus for the defending garrison and army. The settlement
-observation also exposes passive effects and current trade limits. Happiness
-totals and battle resolution can consume these values when those systems are
-implemented.
+observation also exposes passive effects and current trade limits. The
+[settlement happiness rules](settlement_happiness.md) consume the monument
+bonus. The defense query is available for battle resolution.

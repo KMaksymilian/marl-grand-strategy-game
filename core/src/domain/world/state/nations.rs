@@ -11,7 +11,8 @@ use super::{World, WorldError};
 use crate::domain::economy::{InventoryAddResult, ResourceType};
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::Nation;
-use crate::domain::nation::registry::NationRegistry;
+use crate::domain::nation::registry::{NationRegistry, Ownership};
+use crate::domain::settlement::happiness::HappinessRules;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -123,9 +124,17 @@ impl World {
         }
         // 2. The single ownership record changes; both stock capacities follow.
         //    The settlement starts the conquest penalty (half tax, §6).
+        let conquest_turns = self
+            .happiness_rules
+            .as_ref()
+            .map_or(Ownership::CONQUEST_TURNS, HappinessRules::conquest_duration);
+        let capital_loss_turns = self.happiness_rules.as_ref().map_or(
+            Nation::CAPITAL_LOSS_PENALTY_TURNS,
+            HappinessRules::capital_loss_duration,
+        );
         let from = self
             .nations
-            .capture(settlement_id, to)
+            .capture(settlement_id, to, conquest_turns)
             .expect("every registered settlement has an owner");
         let mut change = OwnershipChange {
             settlement_id,
@@ -152,7 +161,7 @@ impl World {
         // 5. Losing the capital moves it and starts the capital-loss penalty.
         if nation.capital() == settlement_id {
             let capital = new_capital.expect("remaining settlements exist");
-            nation.replace_lost_capital(capital);
+            nation.replace_lost_capital(capital, capital_loss_turns);
             change.new_capital = Some(capital);
         }
         Ok(change)

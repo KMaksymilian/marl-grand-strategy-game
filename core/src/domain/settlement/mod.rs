@@ -1,4 +1,5 @@
 //! Settlement aggregate and its domain operations.
+pub mod happiness;
 mod model;
 pub mod start;
 

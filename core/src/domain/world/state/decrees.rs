@@ -3,9 +3,8 @@
 //! World owns these operations because they need the decree catalogue and both
 //! aggregates: upkeep scales with the number of owned settlements and slots
 //! follow the settlements' happiness. Every method checks first and changes
-//! nothing on an error; the application validator reports the precise reasons
-//! to agents.
-use super::{World, WorldError};
+//! nothing on an error.
+use super::{NationOperationError, World, WorldError};
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::decree::{DecreeEffects, DecreeId, DecreeState, DecreeUpkeepReport};
 use crate::domain::nation::decree_catalog::DecreeCatalog;
@@ -78,14 +77,33 @@ impl World {
         &mut self,
         nation_id: NationId,
         decree: DecreeId,
-    ) -> Result<u64, WorldError> {
-        let upkeep = self.decree_upkeep(nation_id, &decree)?;
-        let slots = self.decree_slots(nation_id)?;
-        let book = self.nation_mut(nation_id)?.decrees_mut();
-        if book.state(&decree).is_some() || book.used_slots() >= slots {
-            return Err(WorldError::DecreeUnavailable { nation_id, decree });
+    ) -> Result<u64, NationOperationError> {
+        if self.decree_catalog.get(&decree).is_none() {
+            return Err(NationOperationError::UnknownDecree(decree));
         }
-        book.enact(decree);
+        let nation = self
+            .nation(nation_id)
+            .ok_or(NationOperationError::MissingNation(nation_id))?;
+        match nation.decrees().state(&decree) {
+            Some(DecreeState::Pending | DecreeState::Active { .. }) => {
+                return Err(NationOperationError::DecreeAlreadyEnacted(decree));
+            }
+            Some(DecreeState::Cooldown { turns_left }) => {
+                return Err(NationOperationError::DecreeOnCooldown { decree, turns_left });
+            }
+            None => {}
+        }
+        let slots = self.decree_slots(nation_id).expect("nation exists");
+        if nation.decrees().used_slots() >= slots {
+            return Err(NationOperationError::NoFreeDecreeSlot(slots));
+        }
+        let upkeep = self
+            .decree_upkeep(nation_id, &decree)
+            .expect("nation and decree exist");
+        self.nation_mut(nation_id)
+            .expect("nation exists")
+            .decrees_mut()
+            .enact(decree);
         Ok(upkeep)
     }
 
@@ -96,20 +114,29 @@ impl World {
         &mut self,
         nation_id: NationId,
         decree: &DecreeId,
-    ) -> Result<u32, WorldError> {
+    ) -> Result<u32, NationOperationError> {
+        if self.decree_catalog.get(decree).is_none() {
+            return Err(NationOperationError::UnknownDecree(decree.clone()));
+        }
         let rules = *self.decree_catalog.rules();
-        let book = self.nation_mut(nation_id)?.decrees_mut();
-        match book.state(decree) {
+        let nation = self
+            .nations
+            .get_mut(nation_id)
+            .ok_or(NationOperationError::MissingNation(nation_id))?;
+        match nation.decrees().state(decree) {
             Some(DecreeState::Active { turns_active })
-                if turns_active >= rules.minimum_active_turns =>
+                if turns_active < rules.minimum_active_turns =>
             {
-                book.revoke(decree, rules.cooldown_turns);
+                Err(NationOperationError::DecreeMinimumDuration {
+                    decree: decree.clone(),
+                    turns_left: rules.minimum_active_turns - turns_active,
+                })
+            }
+            Some(DecreeState::Active { .. }) => {
+                nation.decrees_mut().revoke(decree, rules.cooldown_turns);
                 Ok(rules.cooldown_turns)
             }
-            _ => Err(WorldError::DecreeUnavailable {
-                nation_id,
-                decree: decree.clone(),
-            }),
+            _ => Err(NationOperationError::DecreeNotActive(decree.clone())),
         }
     }
 

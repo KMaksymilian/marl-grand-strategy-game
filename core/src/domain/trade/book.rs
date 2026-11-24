@@ -2,10 +2,7 @@
 mod market;
 mod matching;
 
-use crate::{
-    economy::ResourceType,
-    trade::offer::{TradeDemand, TradeOffer},
-};
+use crate::{economy::ResourceType, trade::offer::TradeOffer};
 use std::collections::{BTreeMap, HashMap};
 
 /// Funded offers available for bilateral trade.
@@ -54,21 +51,32 @@ impl TradeBook {
     }
 
     pub fn calculate_demand(&self) -> (HashMap<ResourceType, u32>, u32) {
-        let mut resource_demands: HashMap<ResourceType, u32> = HashMap::new();
-        let mut gold_demand: u32 = 0;
+        let (goods, gold) = Self::funding_demand(&self.offers);
+        (
+            goods.into_iter().collect(),
+            u32::try_from(gold).unwrap_or(u32::MAX),
+        )
+    }
 
-        for (resource_type, offer) in &self.offers {
-            match offer.calculate_demand() {
-                TradeDemand::Gold(gold_amount) => {
-                    gold_demand = gold_demand.saturating_add(gold_amount)
+    /// Exact sell quantities and full purchase budget before checking the funding limit.
+    pub(crate) fn funding_demand(
+        offers: &HashMap<ResourceType, TradeOffer>,
+    ) -> (BTreeMap<ResourceType, u32>, u64) {
+        let mut goods = BTreeMap::new();
+        let mut gold = 0_u64;
+        for (resource, offer) in offers {
+            match offer {
+                TradeOffer::Sell(sell) => {
+                    goods.insert(resource.clone(), sell.get_amount_to_sell());
                 }
-                TradeDemand::ResourceType(resource_amount) => {
-                    *resource_demands.entry(resource_type.clone()).or_default() += resource_amount;
+                TradeOffer::Buy(buy) => {
+                    let budget = u64::from(buy.get_remaining_amount_to_buy())
+                        * u64::from(buy.get_maximum_price_per_unit());
+                    gold = gold.saturating_add(budget);
                 }
             }
         }
-
-        (resource_demands, gold_demand)
+        (goods, gold)
     }
 
     /// Goods still held for sale (nonzero entries only).

@@ -373,7 +373,7 @@ See [Nations](nations.md) for rules and the decision contract.
 | [domain/nation/taxation.rs](../../../core/src/domain/nation/taxation.rs) | `tax_amount` (rounded-down share of an amount), `TaxStatus` (`effective_rate`), `SettlementTaxReport`, `NationTaxReport`. |
 | [domain/world/state/taxation.rs](../../../core/src/domain/world/state/taxation.rs) | `World::collect_taxes` (status, production tax, shared capacity); `TaxCollection`. |
 | [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) | `World::nations`, `nation`, `settlement_owner`, `province_owner`, `nation_settlements`, `nation_stock_capacity`, `transfer_settlement` (capital succession, extinction), `deposit_nation_gold`, `deposit_nation_resource`, `set_tax_rate`, `subsidize`, `set_settlement_under_attack`, `advance_nations_turn`; `OwnershipChange`, `SubsidyTransfer`. Registration in `state.rs` founds or joins a nation (`add_settlement_to_nation`). |
-| [application/commands/nation/](../../../core/src/application/commands/nation/) | `contract.rs` (`NationDecision`, `NationAction`, `NationActionKind`), `response.rs` (errors, effects, outcomes), `preparation.rs` (read-only validation with a shared subsidy budget and decree slots), `handler.rs` (execution). |
+| [application/commands/nation/](../../../core/src/application/commands/nation/) | `contract.rs` (decision types), `response.rs` (errors, effects, outcomes), `handler.rs` (live validation and ordered execution). |
 | [application/queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) | `NationObservation`, `OwnedSettlementObservation`, `DecreesObservation` and their builder. |
 
 ## Military
@@ -649,14 +649,12 @@ projects outside their settlement's province after a membership change.
 | [domain/economy/cost.rs](../../../core/src/domain/economy/cost.rs) | `ProjectCost::normalize` removes zero entries; `is_fully_paid` checks materials and elapsed time. |
 | [domain/buildings/effects.rs](../../../core/src/domain/buildings/effects.rs) | `StatType`: shared housing, inventory and trade modifier targets. |
 | [domain/buildings/productivity.rs](../../../core/src/domain/buildings/productivity.rs) | `TravelCostSource::travel_cost` supplies a directed optional cost to the calculator. |
-| [application/commands/settlement/prepared.rs](../../../core/src/application/commands/settlement/prepared.rs) | `SettlementCommand`: resolved commands for construction, upgrade, cancellation, building settings, storage order and trade. |
 | [application/commands/settlement/handler.rs](../../../core/src/application/commands/settlement/handler.rs) | `handle_decision` validates, executes accepted actions and returns `DecisionOutcome`. |
 | [application/queries/observe_settlement.rs](../../../core/src/application/queries/observe_settlement.rs) | `observe_settlement` projects a `SettlementObservation` from the world and latest report. |
 | [application/queries/observation.rs](../../../core/src/application/queries/observation.rs) | Serializable observation types. See [settlement observations](settlement_observations.md). |
 | [application/commands/settlement/contract.rs](../../../core/src/application/commands/settlement/contract.rs) | Agent contract: `SettlementDecision`, `SettlementAction`, `ActionKind`, `OfferSpec`; `to_json`/`from_json`. See [settlement decisions](settlement_decisions.md). |
 | [domain/world/settlement_environment.rs](../../../core/src/domain/world/settlement_environment.rs) | `AStarTravelCosts::new/travel_cost`, `MapConstructionSpace::new` and its construction operations, `MapSettlementEnvironment::new` and delegation of both ports. |
 | [application/commands/settlement/dispatch.rs](../../../core/src/application/commands/settlement/dispatch.rs) | Internal dispatcher maps prepared commands to domain operations. |
-| [application/commands/settlement/preparation.rs](../../../core/src/application/commands/settlement/preparation.rs) | `DecisionPreparation::validate_decision`: read-only check of a `SettlementDecision`, returning `ValidatedDecision` with resolved `AcceptedAction`s and `RejectedAction`s. See [settlement decisions](settlement_decisions.md#validation). |
 
 `World::settlement_turn_parts` borrows a target and temporary map adapter;
 `World::settlement_mut` is a checked internal lookup for nonspatial phases.
@@ -669,7 +667,7 @@ shares checked mouse-to-tile conversion between pathfinding overlays.
 | --- | --- |
 | [domain/settlement/model/commands/trade.rs](../../../core/src/domain/settlement/model/commands/trade.rs) | `publish_trade_offers`, `clear_trade_offers`, `order_caravan`, `cancel_caravan_orders`, treasury/views and cargo handoff. |
 | [domain/settlement/model/trading/mod.rs](../../../core/src/domain/settlement/model/trading/mod.rs) | `TradeManager` and `CaravanOrder`: templates, orders, funded departures and queued returns. |
-| [domain/settlement/model/trading/lifecycle.rs](../../../core/src/domain/settlement/model/trading/lifecycle.rs) | `reserve_market`, `fund_caravan_orders`, `trade_with_visitors`, `collect_trade_returns`. |
+| [domain/settlement/model/trading/lifecycle.rs](../../../core/src/domain/settlement/model/trading/lifecycle.rs) | Market funding, visitor matching, returns and end-of-turn caravan realization. |
 | [domain/world/state/trade.rs](../../../core/src/domain/world/state/trade.rs) | `begin_trade_turn`, `prepare_settlement_turn`, `capital_trade_locations`, `finish_trade_turn`: transport and participant resolution. |
 | [test_support/trade_network.rs](../../../core/src/test_support/trade_network.rs) | Test runner with explicit caravan endpoints. |
 

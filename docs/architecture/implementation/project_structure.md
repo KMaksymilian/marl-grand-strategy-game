@@ -61,8 +61,6 @@ application/commands/settlement/
 ├── contract.rs                Serializable decisions, actions and outcomes
 ├── response.rs                Applied effects and rejection reasons
 ├── input_validation.rs        Input checks without world access
-├── preparation.rs              Batch preparation against current world state
-├── prepared.rs                Resolved values used for dispatch
 ├── handler.rs                 Executes accepted actions and collects results
 ├── dispatch.rs                Calls the corresponding domain operation
 └── compatibility.rs           Existing World entry points

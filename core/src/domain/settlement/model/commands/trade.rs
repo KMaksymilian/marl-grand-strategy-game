@@ -5,7 +5,7 @@ use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
 use crate::domain::intelligence::{Information, InformationSnapshot};
 use crate::domain::trade::book::TradeBook;
-use crate::domain::trade::caravan::{CaravanCargo, CaravanReturn};
+use crate::domain::trade::caravan::{CaravanCargo, CaravanOutcome, CaravanReturn};
 use crate::domain::trade::offer::TradeOffer;
 use std::collections::HashMap;
 
@@ -14,8 +14,21 @@ pub enum TradeCommandError {
     /// Labour is a per-turn capacity, not a tradable good.
     LabourIsNotTradable,
     TradeWithSelf,
+    UnknownSender(SettlementId),
+    UnknownReceiver(SettlementId),
     EmptyOrder,
     UnknownMaterial(ResourceType),
+    ZeroUnits(ResourceType),
+    NothingToCarry,
+    InsufficientStock {
+        resource: ResourceType,
+        requested: u64,
+        available: u32,
+    },
+    InsufficientGold {
+        requested: u64,
+        available: u32,
+    },
 }
 
 impl Settlement {
@@ -30,6 +43,30 @@ impl Settlement {
         offers: HashMap<ResourceType, TradeOffer>,
     ) -> Result<(), TradeCommandError> {
         self.validate_offers(&offers)?;
+        if !self.trade.orders.is_empty() {
+            let (goods, gold) = TradeBook::funding_demand(&offers);
+            let escrowed: std::collections::HashSet<_> = self
+                .trade
+                .escrowed_goods()
+                .map(|(resource, _)| resource)
+                .collect();
+            for (resource, requested) in goods {
+                let available = self.inventory_manager.main.amount(resource.clone());
+                if requested > available && escrowed.contains(&resource) {
+                    return Err(TradeCommandError::InsufficientStock {
+                        resource,
+                        requested: u64::from(requested),
+                        available,
+                    });
+                }
+            }
+            if self.trade.has_escrowed_gold() && gold > u64::from(self.gold()) {
+                return Err(TradeCommandError::InsufficientGold {
+                    requested: gold,
+                    available: self.gold(),
+                });
+            }
+        }
         self.trade.market_offers = Self::without_progress(offers);
         Ok(())
     }
@@ -38,7 +75,8 @@ impl Settlement {
         self.trade.market_offers.clear();
     }
 
-    /// Queues a caravan funded from stock and gold at the start of the next turn.
+    /// Funds a caravan immediately from stock and gold left after the published market.
+    /// Use the world-level command to require a registered receiver.
     pub fn order_caravan(
         &mut self,
         receiver_id: SettlementId,
@@ -47,22 +85,68 @@ impl Settlement {
         if receiver_id == self.id {
             return Err(TradeCommandError::TradeWithSelf);
         }
-        if offers.values().all(|offer| offer.remaining_units() == 0) {
+        if offers.is_empty() {
             return Err(TradeCommandError::EmptyOrder);
         }
         self.validate_offers(&offers)?;
-        self.trade.orders.push(CaravanOrder {
+        let (goods, gold) = TradeBook::funding_demand(&offers);
+        if goods.is_empty() && gold == 0 {
+            return Err(TradeCommandError::NothingToCarry);
+        }
+        let (market_goods, market_gold) = TradeBook::funding_demand(&self.trade.market_offers);
+        for (resource, &requested) in &goods {
+            let available = self
+                .inventory_manager
+                .main
+                .amount(resource.clone())
+                .saturating_sub(market_goods.get(resource).copied().unwrap_or(0));
+            if requested > available {
+                return Err(TradeCommandError::InsufficientStock {
+                    resource: resource.clone(),
+                    requested: u64::from(requested),
+                    available,
+                });
+            }
+        }
+        let available = self
+            .gold()
+            .saturating_sub(u32::try_from(market_gold).unwrap_or(u32::MAX));
+        if gold > u64::from(available) {
+            return Err(TradeCommandError::InsufficientGold {
+                requested: gold,
+                available,
+            });
+        }
+        let gold = u32::try_from(gold).expect("budget cannot exceed the treasury");
+        assert!(
+            self.gold_inventory.consume(gold),
+            "gold funding was validated"
+        );
+        for (resource, amount) in goods {
+            assert!(
+                self.inventory_manager.main.consume(resource, amount),
+                "goods funding was validated"
+            );
+        }
+        self.trade.orders.push(CaravanOrder::funded(
             receiver_id,
-            offers: Self::without_progress(offers),
-        });
+            Self::without_progress(offers),
+            gold,
+        ));
         Ok(())
     }
 
+    /// Releases canceled escrow immediately when possible, retaining anything that cannot fit.
     pub fn cancel_caravan_orders(&mut self) {
-        self.trade.orders.clear();
+        for order in std::mem::take(&mut self.trade.orders) {
+            self.refund_canceled_order(CaravanReturn::undelivered(
+                order.into_cargo(self.id),
+                CaravanOutcome::OrderCanceled,
+            ));
+        }
     }
 
-    /// Takes caravans funded in the last turn so a coordinator can route them.
+    /// Takes funded caravans ready to receive a route.
     pub fn take_dispatched_caravans(&mut self) -> Vec<CaravanCargo> {
         std::mem::take(&mut self.trade.dispatched)
     }
@@ -96,6 +180,13 @@ impl Settlement {
             .min()
         {
             return Err(TradeCommandError::UnknownMaterial(resource.clone()));
+        }
+        if let Some((resource, _)) = offers
+            .iter()
+            .filter(|(_, offer)| offer.remaining_units() == 0)
+            .min_by_key(|(resource, _)| *resource)
+        {
+            return Err(TradeCommandError::ZeroUnits(resource.clone()));
         }
         Ok(())
     }

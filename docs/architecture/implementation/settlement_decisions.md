@@ -29,7 +29,7 @@ pub struct SettlementDecision {
 | `SetStorageOrder` | `order` | Every material exactly once, no `Labour`. |
 | `PublishMarketOffers` | `offers` | Replace all market offers. Offers persist until replaced or cleared. |
 | `ClearMarketOffers` | none | Remove all market offers; the market book stays empty and visiting caravans find nothing to trade. |
-| `OrderCaravan` | `receiver_id`, `offers` | Send a caravan to another settlement; funded from stock and gold during the turn. |
+| `OrderCaravan` | `receiver_id`, `offers` | Reserve goods and gold for a caravan to another settlement. The order is realized at the end of the settlement turn. |
 
 `OfferSpec { resource, side: buy|sell, units, price_per_unit }` holds only order
 parameters. The price is the minimum when selling and the maximum when buying.
@@ -48,30 +48,16 @@ Negative worker counts, units and prices fail JSON parsing because those
 fields are unsigned. The input validator rejects negative coordinates,
 malformed offers and empty caravan orders.
 
-During the Decisions phase, the handler prepares actions against the current
-world. It checks catalog and entity references, tracks conflicts and resources
-committed by earlier actions in the batch, and delegates construction placement
-to the domain. World checks province and terrain. TerritoryManager checks
-vacancy both for the read-only preview and when reserving the tile.
+During the Decisions phase, the handler checks and runs each action on the
+current world, after all earlier actions have finished. A rejected action
+changes nothing and leaves its target available. The result contains one entry
+per action in input order. An unknown deciding settlement rejects the decision
+as a whole. Parsing and queuing are separate from these checks.
 
-
-`DecisionPreparation::validate_decision(&decision)`
-([application/commands/settlement/preparation.rs](../../../core/src/application/commands/settlement/preparation.rs)) reads
-the world and never changes it. It fails as a whole only for an unknown deciding
-settlement (`WorldError::MissingSettlement`).
-
-**Policy.** Actions are checked in list order and each one is accepted or
-rejected on its own. A rejected action changes nothing, claims nothing and does
-not stop later actions. Every action index appears exactly once, either in
-`accepted` (index plus resolved `SettlementCommand`) or in `rejected`
-(`RejectedAction { index, kind, error }`). The same world and decision always
-give the same result.
-
-**Resolution.** Accepted actions are turned into commands:
-construction and upgrade get the catalog definition, its `construction_cost` and
-a project ID from `Settlement::next_project_id()` (consecutive within a decision,
-never reused, rejected actions use none); `SetBuildingWorkers` becomes the exact
-load from `Building::load_for_workers`; offers become fresh `TradeOffer`s.
+Construction and upgrades resolve the catalog definition, its cost and the next
+project ID at execution. The domain checks placement and reserves the site in
+the occupancy registry. Cancellation releases the reservation or upgrade lock
+immediately. The domain also owns staffing, storage order and trade checks.
 
 | Check | Errors |
 | --- | --- |
@@ -101,21 +87,12 @@ Not checked, by design:
 - Market offer stock and gold. Published offers persist and every turn reserves
   what is available at that time.
 
-**Funding order.** At the start of the turn the market is funded first, then
-caravan orders in queue order, from the stock and gold the settlement holds at
-decision time (nothing changes them in between). The validator follows this order:
-
-- a caravan can use the current stock and gold minus what the market reserves
-  (the published offers, or the new ones if this decision publishes or clears
-  earlier) minus caravans already queued this turn or accepted earlier in the
-  decision;
-- a market action after caravans in the same decision may not take what those
-  caravans were promised; without competing caravans market offers stay
-  unlimited, since each turn reserves what is available;
-- `InsufficientStock`/`InsufficientGold` report the amount of this action as
-  `requested` and what is left for it as `available`.
-
-So every accepted caravan is funded in full.
+**Funding order.** Admission gives the currently published market priority and
+reserves the accepted order's full goods and gold. Later orders and market
+changes see the remaining resources, including reservations from earlier
+decisions of the same settlement. At the end of the settlement turn the orders
+are realized in FIFO order and handed to transport. `InsufficientStock` and
+`InsufficientGold` show the amount requested and what remained available.
 
 Errors serialize as `{"index": 1, "kind": "construct", "error": {"reason":
 "tile_occupied", "position": {"x": 0, "y": 0}}}`.
@@ -128,23 +105,22 @@ returns `ProjectQueued { project_id }`. A rejected construction returns a
 reason such as `TileOccupied` and the position.
 
 
-In the Decisions phase, `Simulation::step` calls the application handler. It
-validates the batch against the current world, then sends accepted actions to
-the dispatcher, which calls domain methods. Effects such as new staff apply to
-the same turn's allocation. The test build also exposes private helpers for
-checking and applying individual decisions in isolation. [Handler source](../../../core/src/application/commands/settlement/handler.rs)
+In the Decisions phase, `Simulation::step` runs nation decisions first and then
+settlement decisions. Each successful mutation is visible to the next action.
+Effects such as new staff apply to the same turn's allocation.
+[Handler source](../../../core/src/application/commands/settlement/handler.rs)
 
 | Action | Settlement operation | Effect reported |
 | --- | --- | --- |
 | `Construct` | `queue_construction` with catalog definition and cost; reserves the tile | `ProjectQueued { project_id }` |
 | `Upgrade` | `queue_upgrade` with catalog definition and cost | `ProjectQueued { project_id }` |
-| `CancelProject` | `cancel_project`; releases a construction reservation | `ProjectCanceled { project_id }` |
+| `CancelProject` | `cancel_project`; releases a site or upgrade lock | `ProjectCanceled { project_id }` |
 | `SetBuildingWorkers` | `set_building_staff`: activates the building and sets the exact load | `WorkersSet { building_id, workers }` |
 | `Demolish` | `demolish_building`: frees the site and removes passive effects | `BuildingDemolished { building_id }` |
 | `SetStorageOrder` | `set_storage_order` | `StorageOrderSet` |
 | `PublishMarketOffers` | `publish_trade_offers` | `MarketOffersPublished` |
 | `ClearMarketOffers` | `clear_trade_offers` | `MarketOffersCleared` |
-| `OrderCaravan` | `order_caravan`; funded later in the same turn | `CaravanOrdered { receiver_id }` (the order is queued; see the funding note below) |
+| `OrderCaravan` | `order_caravan`; reserves cargo and gold at acceptance | `CaravanOrdered { receiver_id }` confirms acceptance. The trade report records realization and routing. |
 
 Result JSON:
 
@@ -159,8 +135,7 @@ Result JSON:
 ]}
 ```
 
-The effect is determined by the validator together with the command
-(`AcceptedAction::effect`) and reported once the command has run.
+The handler reports the effect after the command succeeds.
 
 ## Design notes and open questions
 

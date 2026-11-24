@@ -88,19 +88,19 @@ impl Settlement {
     ) -> PreparedTurn {
         self.building_manager.refresh_productivity(environment);
         self.building_manager.refresh_production_biomes(environment);
-        let opening_stock = InventoryTurnReport::snapshot(
-            &self.inventory_manager.main,
-            &self.inventory_manager.pending_production,
-        );
         let main = &self.inventory_manager.main;
         let retained_stock_limit = (main.total_amount() > u64::from(main.capacity()))
             .then(|| u32::try_from(main.total_amount()).expect("stock fit the previous capacity"));
+        let mut opening_stock =
+            InventoryTurnReport::snapshot(main, &self.inventory_manager.pending_production);
+        for (resource, amount) in self.trade.escrowed_goods() {
+            *opening_stock.entry(resource.clone()).or_default() += u64::from(amount);
+        }
         let projects = self.reject_invalid_projects(environment);
         self.inventory_manager
             .refresh_labor_capacity(self.population_manager.population);
         let mut trade = TradeTurnReport::default();
         self.reserve_market(&mut trade);
-        self.fund_caravan_orders(&mut trade);
         self.trade_with_visitors(visitors, &mut trade, turn, province_id);
         let building_requests = self.building_manager.generate_requests(
             |building| {
@@ -197,6 +197,7 @@ impl Settlement {
             retained_stock_limit,
             ..
         } = allocated;
+        self.realize_caravan_orders(&mut trade);
         let mut incoming = produced;
         let mut trade_returns = self.collect_trade_returns(&mut trade);
         if let Some(limit) = retained_stock_limit {

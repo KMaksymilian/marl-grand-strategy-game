@@ -1,6 +1,5 @@
 //! Territory and natural deposits derive from the authoritative map layers.
 use super::{World, WorldError};
-use crate::domain::buildings::definition::BuildingDefinition;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
 use crate::domain::world::Position;
@@ -50,26 +49,5 @@ impl World {
                 Some((position, resource))
             })
             .collect())
-    }
-
-    pub(super) fn validate_building_deposit(
-        &self,
-        position: Position,
-        definition: &BuildingDefinition,
-    ) -> Result<(), WorldError> {
-        if let Some(resource) = definition.required_deposit() {
-            let province = self.province_at(position)?;
-            let accessible = if definition.requires_province_deposit() {
-                self.map
-                    .has_accessible_province_deposit(province, position, &resource)
-            } else {
-                self.map
-                    .has_accessible_deposit(province, position, &resource)
-            };
-            if !accessible {
-                return Err(WorldError::RequiredDepositMissing { position, resource });
-            }
-        }
-        Ok(())
     }
 }

@@ -5,9 +5,10 @@ use crate::domain::economy::{
     MATERIAL_UNITS_PER_DISPLAY_UNIT, ResourceCatalog, ResourceType, cost::ProjectCost,
     material_units_from_display,
 };
+use crate::domain::spatial::site::{RawCondition, SiteFactKind, SiteRequirements};
 use crate::domain::world::terrain::biome::Biome;
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::path::Path;
 
@@ -83,6 +84,8 @@ struct RawBuilding {
     deposits: Vec<String>,
     #[serde(default)]
     requires_coast: bool,
+    #[serde(default)]
+    site_requirements: Vec<RawCondition>,
     biome_efficiencies: Option<BTreeMap<Biome, u8>>,
 }
 
@@ -107,10 +110,18 @@ impl BuildingCatalog {
         text: &str,
         resources: &ResourceCatalog,
     ) -> Result<Self, BuildingCatalogError> {
+        Self::from_toml_with_site_facts(text, resources, &HashMap::new())
+    }
+
+    pub fn from_toml_with_site_facts(
+        text: &str,
+        resources: &ResourceCatalog,
+        site_fact_types: &HashMap<String, SiteFactKind>,
+    ) -> Result<Self, BuildingCatalogError> {
         let raw: RawCatalog = toml::from_str(text).map_err(BuildingCatalogError::Parse)?;
         let mut catalog = Self::default();
         for building in raw.buildings {
-            building.register(&mut catalog, &raw.tiers, resources)?;
+            building.register(&mut catalog, &raw.tiers, resources, site_fact_types)?;
         }
         for building in raw.special_buildings {
             building.register(&mut catalog, resources)?;
@@ -204,6 +215,7 @@ impl RawBuilding {
         catalog: &mut BuildingCatalog,
         tiers: &BTreeMap<String, MapTier>,
         resources: &ResourceCatalog,
+        site_fact_types: &HashMap<String, SiteFactKind>,
     ) -> Result<(), BuildingCatalogError> {
         let invalid =
             |reason: &str| BuildingCatalogError::Invalid(format!("{}: {reason}", self.id));
@@ -226,6 +238,9 @@ impl RawBuilding {
             turn_cost: tier.build_turns,
         };
         let rate = self.cycles_per_turn.unwrap_or(tier.cycles_per_turn);
+        let site =
+            SiteRequirements::from_conditions(self.site_requirements, resources, site_fact_types)
+                .map_err(|error| invalid(&error.to_string()))?;
         let create = |id: String, name: String, recipes: Vec<CycleRecipe>| {
             let report = |error: DefinitionError| invalid(&format!("{error:?}"));
             let mut definition = BuildingDefinition::new(
@@ -237,6 +252,7 @@ impl RawBuilding {
                 cost.clone(),
             )
             .map_err(report)?
+            .with_site_requirements(site.clone())
             .with_cycle_production(rate, recipes)
             .map_err(report)?;
             if self.requires_coast {

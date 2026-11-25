@@ -171,7 +171,7 @@ impl BuildingManager {
         for building in self.buildings.iter_mut() {
             let grants = allocations.get(&AllocationRecipient::Building(building.instance_id()));
             let update_result =
-                building.resolve_modified_allocation(grants, &self.production_modifier_strategies);
+                building.produce_from_grants(grants, &self.production_modifier_strategies);
 
             for (res, amount) in update_result.produced {
                 let total = all_produced.entry(res).or_insert(0_u64);

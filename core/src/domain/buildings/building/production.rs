@@ -31,14 +31,7 @@ impl Building {
         demand
     }
 
-    pub fn resolve_allocation(
-        &mut self,
-        granted: Option<&HashMap<ResourceType, u32>>,
-    ) -> ProductionResult {
-        self.resolve_modified_allocation(granted, &[])
-    }
-
-    pub(crate) fn resolve_modified_allocation(
+    pub(crate) fn produce_from_grants(
         &mut self,
         granted: Option<&HashMap<ResourceType, u32>>,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],

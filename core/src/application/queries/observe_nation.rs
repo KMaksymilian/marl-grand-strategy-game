@@ -44,6 +44,7 @@ pub(crate) fn observe_nation(
         capital: nation.capital(),
         capital_loss_turns: nation.capital_loss_turns(),
         tax_rate: nation.tax_rate(),
+        war_weariness: nation.war_weariness(),
         treasury: nation.treasury(),
         stock: nation.stock_amounts(),
         stock_total: nation.stock().total_amount(),

@@ -1,4 +1,7 @@
-use super::{Building, ProductionModifierStrategy, ProductionResult, ResourceType, SiteEvaluation};
+use super::{
+    Building, ProductionModifier, ProductionModifierStrategy, ProductionResult, ResourceType,
+    SiteEvaluation,
+};
 use crate::domain::buildings::definition::{CycleProduction, CycleRecipe};
 use std::cmp::Reverse;
 use std::collections::HashMap;
@@ -48,6 +51,7 @@ impl Building {
         mut unused: HashMap<ResourceType, u32>,
         site: SiteEvaluation,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
+        turn_modifier: Option<&ProductionModifier>,
     ) -> ProductionResult {
         let mut produced = HashMap::new();
         if let Some(recipe) = recipe_index.and_then(|index| production.recipes.get(index)) {
@@ -62,7 +66,8 @@ impl Building {
                         .get_mut(resource)
                         .expect("cycle input must be granted") -= cycles * units;
                 }
-                let production_yield = self.production_yield(site, modifier_strategies);
+                let production_yield =
+                    self.production_yield(site, modifier_strategies, turn_modifier);
                 produced.extend(recipe.outputs.iter().map(|(resource, units)| {
                     (
                         resource.clone(),

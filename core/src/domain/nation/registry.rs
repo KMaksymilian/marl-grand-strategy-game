@@ -36,9 +36,6 @@ impl Ownership {
     }
 
     /// Remaining turns of the conquest penalty; zero when none applies.
-    // ECONOMY (happiness, §4.2): the happiness penalty after a conquest is
-    // `-5 × conquest_turns()` (−20, −15, −10, −5, then 0). The happiness model
-    // reads it here; this counter is all the nation layer keeps.
     pub fn conquest_turns(&self) -> u32 {
         self.conquest_turns
     }
@@ -186,13 +183,14 @@ impl NationRegistry {
         &mut self,
         settlement_id: SettlementId,
         nation_id: NationId,
+        conquest_turns: u32,
     ) -> Option<NationId> {
         let previous = self.owner_of(settlement_id);
         self.owners.insert(
             settlement_id,
             Ownership {
                 nation: nation_id,
-                conquest_turns: Ownership::CONQUEST_TURNS,
+                conquest_turns,
                 under_attack: false,
             },
         );
@@ -253,7 +251,10 @@ mod tests {
         let first = registry.found(SettlementId(1)).unwrap();
         let second = registry.found(SettlementId(2)).unwrap();
         registry.add_member(SettlementId(3), first);
-        assert_eq!(registry.capture(SettlementId(3), second), Some(first));
+        assert_eq!(
+            registry.capture(SettlementId(3), second, Ownership::CONQUEST_TURNS),
+            Some(first)
+        );
         assert_eq!(registry.settlements_of(first), vec![SettlementId(1)]);
         assert_eq!(
             registry.settlements_of(second),
@@ -280,7 +281,7 @@ mod tests {
         );
 
         assert!(registry.set_under_attack(SettlementId(3), true));
-        registry.capture(SettlementId(3), second);
+        registry.capture(SettlementId(3), second, Ownership::CONQUEST_TURNS);
         let ownership = *registry.ownership(SettlementId(3)).unwrap();
         assert_eq!(ownership.conquest_turns(), 4);
         assert!(ownership.is_freshly_conquered());
@@ -303,7 +304,7 @@ mod tests {
         let mut registry = NationRegistry::default();
         let first = registry.found(SettlementId(1)).unwrap();
         let second = registry.found(SettlementId(2)).unwrap();
-        registry.capture(SettlementId(1), second);
+        registry.capture(SettlementId(1), second, Ownership::CONQUEST_TURNS);
         assert!(registry.remove(first).is_some());
         assert!(registry.get(first).is_none());
         assert_eq!(registry.found(SettlementId(3)), Some(NationId(2)));

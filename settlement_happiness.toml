@@ -1,0 +1,36 @@
+# Happiness points, except rates explicitly stated in basis points.
+base_happiness = 50
+max_monument_happiness = 20
+tax_neutral_percentage_points = 10
+conquest_initial_penalty = 20
+conquest_recovery_per_turn = 5
+capital_loss_penalty = 10
+capital_loss_duration = 10
+starvation_basis_points = 1000
+gold_per_person_basis_points = 10000
+gold_happiness_baseline = 50
+
+[[bands]]
+minimum_happiness = 0
+production_loss_basis_points = 2000
+population_change_basis_points = -200
+
+[[bands]]
+minimum_happiness = 30
+production_loss_basis_points = 0
+population_change_basis_points = -100
+
+[[bands]]
+minimum_happiness = 50
+production_loss_basis_points = 0
+population_change_basis_points = 0
+
+[[bands]]
+minimum_happiness = 55
+production_loss_basis_points = 0
+population_change_basis_points = 100
+
+[[bands]]
+minimum_happiness = 80
+production_loss_basis_points = 0
+population_change_basis_points = 200

@@ -154,9 +154,20 @@ pub struct TurnReport {
     pub projects: Vec<ProjectOutcome>,
     pub inventory: InventoryTurnReport,
     pub trade: TradeTurnReport,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub happiness: Option<HappinessTurnReport>,
     /// Taxes paid to the owning nation; set by the global turn (`None` only
     /// when a settlement runs its phases alone, e.g. in unit tests).
     pub taxation: Option<crate::domain::nation::taxation::SettlementTaxReport>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HappinessTurnReport {
+    pub score: f64,
+    pub production_loss_basis_points: u32,
+    pub demographics: crate::domain::settlement::happiness::DemographicOutcome,
+    pub gold_income: u64,
+    pub gold_credited: u64,
 }
 
 /// A trade made at this settlement's market with a visiting caravan.

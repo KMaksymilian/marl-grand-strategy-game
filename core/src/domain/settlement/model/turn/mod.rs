@@ -5,11 +5,13 @@ use super::economy::BuildingRequests;
 use super::projects::ProjectOutcome;
 use super::turn_report::TradeTurnReport;
 use super::turn_report::{ConsumptionResult, InventoryTurnReport, MaterialTotals, TurnReport};
-use crate::domain::buildings::productivity::TravelCostSource;
+use crate::domain::buildings::productivity::{ProductionModifier, TravelCostSource};
 use crate::domain::economy::ResourceType;
 use crate::domain::economy::allocation::{AllocationEngine, AllocationRecipient, AllocationResult};
 use crate::domain::ids::BuildingId;
 use crate::domain::nation::taxation::tax_amount;
+use crate::domain::settlement::happiness::{DemographicInputs, HappinessOutcome, HappinessRules};
+use crate::domain::settlement::turn_report::HappinessTurnReport;
 use crate::domain::spatial::ConstructionSpace;
 use crate::domain::spatial::site::SiteEvaluation;
 use crate::domain::trade::caravan::Caravan;
@@ -77,7 +79,7 @@ impl Settlement {
         let allocated = self.allocate_turn(prepared);
         let consumed = self.consume_turn(allocated);
         self.progress_construction(&consumed);
-        let produced = self.produce_turn(consumed);
+        let produced = self.produce_turn(consumed, None);
         self.finish_turn(produced, environment)
     }
 
@@ -164,11 +166,24 @@ impl Settlement {
             .process_allocation(&consumed.allocated.allocations);
     }
 
-    pub(crate) fn produce_turn(&mut self, mut consumed: ConsumedTurn) -> ProducedTurn {
+    pub(crate) fn produce_turn(
+        &mut self,
+        mut consumed: ConsumedTurn,
+        happiness: Option<&HappinessOutcome>,
+    ) -> ProducedTurn {
+        let modifier = happiness
+            .filter(|outcome| outcome.production_loss_basis_points > 0)
+            .map(|outcome| {
+                ProductionModifier::multiplicative(
+                    "happiness",
+                    10_000 - outcome.production_loss_basis_points,
+                )
+            });
         let (produced, returned) = self.building_manager.process_allocations(
             &consumed.allocated.allocations,
             &consumed.allocated.sites,
             &consumed.allocated.cycle_recipes,
+            modifier.as_ref(),
         );
         consumed
             .allocated
@@ -240,7 +255,58 @@ impl Settlement {
             projects,
             inventory,
             taxation: None,
+            happiness: None,
         }
+    }
+
+    pub(crate) fn finish_happiness_turn(
+        &mut self,
+        rules: &HappinessRules,
+        happiness: HappinessOutcome,
+        report: &mut TurnReport,
+    ) {
+        let food_in_storage: u64 = self
+            .population_manager
+            .registry
+            .food_items()
+            .iter()
+            .map(|resource| {
+                report
+                    .inventory
+                    .closing_stock
+                    .get(resource)
+                    .copied()
+                    .unwrap_or(0)
+            })
+            .sum();
+        let unmet_food = report
+            .consumption
+            .food_required
+            .saturating_sub(report.consumption.food_eaten);
+        let opening_population = self.population();
+        let demographics = rules.demographics(
+            &happiness,
+            DemographicInputs {
+                opening_population,
+                unfed_people: report.consumption.people_unfed,
+                surplus_food: food_in_storage.saturating_sub(unmet_food),
+                food_units_per_person: self
+                    .population_manager
+                    .registry
+                    .food_units_per_person()
+                    .unwrap_or(0),
+            },
+        );
+        let gold_income = rules.gross_gold_income(opening_population, &happiness);
+        self.gold_inventory.add(gold_income);
+        self.population_manager.population = demographics.closing_population;
+        report.happiness = Some(HappinessTurnReport {
+            score: happiness.score(),
+            production_loss_basis_points: happiness.production_loss_basis_points,
+            demographics,
+            gold_income,
+            gold_credited: gold_income,
+        });
     }
 }
 

@@ -58,6 +58,10 @@ impl ObservationQuery<'_> {
             settlement_id,
             province_id,
             population: settlement.population(),
+            happiness: self
+                .world
+                .settlement_happiness(settlement_id)?
+                .map(|happiness| happiness.score()),
             gold: settlement.gold(),
             passive_building_effects: settlement.passive_building_effects(),
             inventory: InventoryObservation {
@@ -369,6 +373,7 @@ fn last_turn_observation(report: &TurnReport) -> LastTurnObservation {
         food_required: report.consumption.food_required,
         food_eaten: report.consumption.food_eaten,
         people_unfed: report.consumption.people_unfed,
+        happiness: report.happiness.clone(),
         missing_needs: report.consumption.missing_resources.clone(),
         produced: report.inventory.produced.clone(),
         population_consumed: report.inventory.population_consumed.clone(),

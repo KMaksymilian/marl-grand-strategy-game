@@ -99,7 +99,7 @@ fn applied(outcome: &NationActionOutcome) -> bool {
     matches!(outcome, NationActionOutcome::Applied { .. })
 }
 
-fn treasury(simulation: &Simulation) -> u32 {
+fn treasury(simulation: &Simulation) -> u64 {
     simulation.world().nation(FIRST).unwrap().treasury()
 }
 

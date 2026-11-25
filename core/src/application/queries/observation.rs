@@ -31,7 +31,7 @@ pub struct SettlementObservation {
     pub settlement_id: SettlementId,
     pub province_id: usize,
     pub population: u32,
-    pub gold: u32,
+    pub gold: u64,
     pub inventory: InventoryObservation,
     #[serde(default)]
     pub passive_building_effects: PassiveBuildingEffects,

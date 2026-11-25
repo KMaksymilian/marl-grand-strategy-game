@@ -4,7 +4,7 @@
 # the recruiting settlement. Its equipment comes from the national stock when
 # it is recruited; resource IDs are those of resources.toml. Upkeep is paid
 # every turn per soldier: food from the national stock and gold from the
-# national treasury.
+# national treasury. Equipment and food quantities use material display units.
 #
 # `advantage_against` lists the unit types this one beats: its attack or
 # defence counts `advantage_multiplier` times against them.

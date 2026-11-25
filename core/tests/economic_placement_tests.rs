@@ -45,9 +45,9 @@ fn scenario() -> World {
     )
     .unwrap();
     world.set_building_catalog(buildings);
-    let mut settlement = Settlement::new(OWNER, 5_000, 25, Arc::default());
+    let mut settlement = Settlement::new(OWNER, 500_000, 25, Arc::default());
     for resource in ["wood", "stone", "clay", "limestone"] {
-        settlement.deposit(material(resource), 1_000);
+        settlement.deposit(material(resource), 100_000);
     }
     world.add_settlement_at(10, CAPITAL, settlement).unwrap();
     world
@@ -150,7 +150,7 @@ fn mine_uses_the_selected_ore_anywhere_on_land_in_its_own_province() {
     let turn = simulation.step().unwrap();
     assert_eq!(
         turn.settlements[&OWNER].inventory.produced[&material("iron_ore")],
-        100
+        10_000
     );
 
     let mut world = simulation.into_world();
@@ -213,7 +213,7 @@ fn configured_sawmill_stops_operating_after_flooding_or_loss_of_its_site() {
         let turn = simulation.step().unwrap();
         assert_eq!(
             turn.settlements[&OWNER].inventory.produced[&material("planks")],
-            100
+            10_000
         );
 
         let mut world = simulation.into_world();

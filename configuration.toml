@@ -1,3 +1,7 @@
+[economy]
+# National material stock capacity contributed by each settlement, in display units.
+national_stock_capacity_per_settlement = 500
+
 # A* movement-cost units, not geometric tile distances.
 # On flat ground a straight step costs 10 and a diagonal step costs 14.
 # These are initial balance settings; edit them to change the linear falloff.
@@ -5,7 +9,8 @@
 full_productivity_cost = 100
 zero_productivity_cost = 300
 
-# Shared trade capacity per settlement before market bonuses.
+# Shared trade capacity per settlement before market bonuses. Cargo and open
+# offer quantities use display units.
 [economy.trade_limits]
 caravan_slots = 2
 offer_slots = 4

@@ -366,6 +366,9 @@ fn last_turn_observation(report: &TurnReport) -> LastTurnObservation {
     };
     LastTurnObservation {
         satisfaction_percent: report.consumption.satisfaction_percent,
+        food_required: report.consumption.food_required,
+        food_eaten: report.consumption.food_eaten,
+        people_unfed: report.consumption.people_unfed,
         missing_needs: report.consumption.missing_resources.clone(),
         produced: report.inventory.produced.clone(),
         population_consumed: report.inventory.population_consumed.clone(),

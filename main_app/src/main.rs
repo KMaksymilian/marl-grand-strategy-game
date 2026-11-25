@@ -6,6 +6,7 @@ use simulation_core::configuration::Configuration;
 use simulation_core::economy::ResourceCatalog;
 use simulation_core::military::UnitCatalog;
 use simulation_core::nation::decree_catalog::DecreeCatalog;
+use simulation_core::settlement::{NeedRegistry, start::SettlementStart};
 use simulation_core::world::World;
 use simulation_core::world::generation::world_builder::WorldBuilder;
 use simulation_core::world::pathfinding::path_finder::PathFinder;
@@ -18,6 +19,12 @@ async fn main() {
     let resources = ResourceCatalog::load("resources.toml")
         .unwrap_or_else(|error| panic!("resources.toml: {error}"));
     info!("Loaded {} materials", resources.materials().len());
+    let needs = Arc::new(
+        NeedRegistry::load("settlement_needs.toml", &resources)
+            .unwrap_or_else(|error| panic!("settlement_needs.toml: {error}")),
+    );
+    let start = SettlementStart::load("settlement_start.toml", &resources, needs)
+        .unwrap_or_else(|error| panic!("settlement_start.toml: {error}"));
     let buildings = BuildingCatalog::load("buildings.toml", &resources)
         .unwrap_or_else(|error| panic!("buildings.toml: {error}"));
     info!("Loaded {} building types", buildings.ids().len());
@@ -41,6 +48,24 @@ async fn main() {
     let mut world: World = WorldBuilder::generate_default_with_resources(Arc::new(resources));
     world.set_building_catalog(buildings);
     world.set_base_trade_limits(configuration.economy.trade_limits);
+    if let Some(capacity) = configuration.economy.national_stock_capacity_per_settlement {
+        world.set_national_stock_capacity_per_settlement(capacity);
+    }
+    let initial_province = world
+        .map()
+        .terrain
+        .iter()
+        .zip(&world.map().territory)
+        .find(|(area, province)| {
+            area.determine_biome() != simulation_core::world::terrain::biome::Biome::Ocean
+                && world.province(**province).is_ok()
+        })
+        .map(|(_, &province)| province)
+        .expect("generated world has a land province");
+    let founder = world
+        .found_settlement(initial_province, None, &start)
+        .expect("generated land province supports a settlement");
+    info!("Founded initial settlement {:?}", founder);
     world
         .set_unit_catalog(Arc::new(units))
         .unwrap_or_else(|error| panic!("units.toml: {error:?}"));

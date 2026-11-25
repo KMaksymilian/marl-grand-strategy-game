@@ -2,7 +2,7 @@
 //! specification §10 and §11). Loaded and validated like the resource
 //! catalogue: `standard()` is the bundled file, `load` reads one from disk.
 //! Equipment names resolve against a resource catalogue.
-use crate::domain::economy::{ResourceCatalog, ResourceType};
+use crate::domain::economy::{ResourceCatalog, ResourceType, material_units_from_display};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
@@ -169,6 +169,11 @@ pub enum UnitCatalogError {
         unit: UnitTypeId,
         resource: String,
     },
+    EquipmentOverflow {
+        unit: UnitTypeId,
+        resource: String,
+    },
+    FoodUpkeepOverflow(UnitTypeId),
     /// An advantage against a type missing from the catalogue, or itself.
     InvalidAdvantage {
         unit: UnitTypeId,
@@ -195,6 +200,18 @@ impl fmt::Display for UnitCatalogError {
             }
             Self::ZeroEquipment { unit, resource } => {
                 write!(f, "unit type {unit} needs zero {resource:?}")
+            }
+            Self::EquipmentOverflow { unit, resource } => {
+                write!(
+                    f,
+                    "unit type {unit} equipment for {resource:?} exceeds the material unit limit"
+                )
+            }
+            Self::FoodUpkeepOverflow(unit) => {
+                write!(
+                    f,
+                    "unit type {unit} food upkeep exceeds the material unit limit"
+                )
             }
             Self::InvalidAdvantage { unit, against } => {
                 write!(
@@ -361,8 +378,16 @@ impl UnitCatalog {
                     resource: name.clone(),
                 });
             }
-            *equipment.entry(resource).or_insert(0) += amount;
+            let total = equipment.entry(resource).or_insert(0_u32);
+            *total = material_units_from_display(amount)
+                .and_then(|converted| total.checked_add(converted))
+                .ok_or_else(|| UnitCatalogError::EquipmentOverflow {
+                    unit: id.clone(),
+                    resource: name.clone(),
+                })?;
         }
+        let food_upkeep = material_units_from_display(raw.food_upkeep)
+            .ok_or_else(|| UnitCatalogError::FoodUpkeepOverflow(id.clone()))?;
         Ok(UnitDefinition {
             id,
             name: raw.name.clone(),
@@ -373,7 +398,7 @@ impl UnitCatalog {
             advantage_against: Vec::new(),
             wall_bonus_reduction: raw.wall_bonus_reduction,
             gold_upkeep: raw.gold_upkeep,
-            food_upkeep: raw.food_upkeep,
+            food_upkeep,
         })
     }
 

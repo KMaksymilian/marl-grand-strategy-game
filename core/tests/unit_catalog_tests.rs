@@ -53,22 +53,22 @@ fn the_bundled_catalogue_loads_from_disk_with_the_specification_table() {
     assert!(equipment("levy").is_empty());
     assert_eq!(
         equipment("spearmen"),
-        BTreeMap::from([(material("bronze"), 25), (material("planks"), 25)])
+        BTreeMap::from([(material("bronze"), 2_500), (material("planks"), 2_500)])
     );
     assert_eq!(
         equipment("archers"),
-        BTreeMap::from([(material("planks"), 50), (material("tools"), 10)])
+        BTreeMap::from([(material("planks"), 5_000), (material("tools"), 1_000)])
     );
     assert_eq!(
         equipment("cavalry"),
-        BTreeMap::from([(material("cattle"), 25), (material("steel"), 25)])
+        BTreeMap::from([(material("cattle"), 2_500), (material("steel"), 2_500)])
     );
     assert_eq!(
         equipment("siege_engines"),
-        BTreeMap::from([(material("planks"), 50), (material("tools"), 25)])
+        BTreeMap::from([(material("planks"), 5_000), (material("tools"), 2_500)])
     );
     for unit in catalog.definitions() {
-        assert_eq!(unit.food_upkeep(), 1, "{}", unit.id());
+        assert_eq!(unit.food_upkeep(), 100, "{}", unit.id());
     }
     let rules = catalog.rules();
     assert_eq!(rules.soldiers_per_unit, 50);
@@ -134,6 +134,19 @@ fn invalid_catalogues_are_rejected_when_loading() {
         parse(&unit("equipment = { steel = 0 }")),
         Err(UnitCatalogError::ZeroEquipment { .. })
     ));
+    for equipment in [
+        "equipment = { steel = 42949673 }",
+        "equipment = { coal = 42949672, charcoal = 1 }",
+    ] {
+        assert!(matches!(
+            parse(&unit(equipment)),
+            Err(UnitCatalogError::EquipmentOverflow { .. })
+        ));
+    }
+    assert!(matches!(
+        parse(&unit("").replacen("food_upkeep = 1", "food_upkeep = 42949673", 1)),
+        Err(UnitCatalogError::FoodUpkeepOverflow(_))
+    ));
     for against in ["dragons", "knights"] {
         assert!(
             matches!(
@@ -174,7 +187,7 @@ fn invalid_catalogues_are_rejected_when_loading() {
     let charcoal = parse(&unit("equipment = { charcoal = 5 }")).unwrap();
     assert_eq!(
         charcoal.get(&id("knights")).unwrap().equipment(),
-        &BTreeMap::from([(material("coal"), 5)])
+        &BTreeMap::from([(material("coal"), 500)])
     );
 }
 

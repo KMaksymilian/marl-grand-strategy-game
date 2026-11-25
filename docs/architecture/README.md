@@ -43,6 +43,7 @@ and [decisions](../decisions/0001-economy.md), respectively.
 | [Resource catalog](implementation/resource_catalog.md) | Material identifiers, food classes, storage order and units |
 | [Building productivity](implementation/building_productivity.md) | A* cost thresholds and exact output calculation |
 | [Economic building catalog](implementation/building_catalog.md) | Configured tiers, construction, recipes and placement |
+| [Settlement founding and needs](implementation/settlement_needs.md) | Starting stock, diets, substitutions and material units |
 | [Pathfinding algorithms](implementation/pathfinding_algorithms.md) | Search state, heuristic and directed movement cost |
 | [Configuration](implementation/configuration.md) | TOML parsing, validation and actual application wiring |
 

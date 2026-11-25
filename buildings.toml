@@ -1,4 +1,5 @@
-# Economic building defaults. Recipe quantities are per full cycle.
+# Economic building defaults. Material costs and capacities use display units.
+# Recipe quantities use display units per full cycle.
 # Omitted biomes in an efficiency table forbid placement.
 
 [tiers.1]

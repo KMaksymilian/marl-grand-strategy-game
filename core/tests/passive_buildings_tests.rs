@@ -106,15 +106,15 @@ fn passive_warehouse_and_market_stack_and_demolition_preserves_stock() {
 
     let mut world = advance(world);
     let settlement = world.settlement(OWNER).unwrap();
-    assert_eq!(settlement.inventory().capacity(), 4100);
-    assert_eq!(settlement.pending_inventory().capacity(), 4100);
+    assert_eq!(settlement.inventory().capacity(), 400_100);
+    assert_eq!(settlement.pending_inventory().capacity(), 400_100);
     assert_eq!(
         settlement.trade_limit_bonuses(),
         TradeLimitBonuses {
             caravan_slots: 4,
             offer_slots: 8,
-            caravan_cargo: 800,
-            open_offer_units: 1600,
+            caravan_cargo: 80_000,
+            open_offer_units: 160_000,
         }
     );
     let stored = settlement.inventory().amount(material("wood"));
@@ -232,9 +232,9 @@ fn walls_upgrade_one_level_at_a_time_and_replace_the_defense_bonus() {
     let level_two = catalog.get_blueprint("wall_2").unwrap();
     let level_three = catalog.get_blueprint("wall_3").unwrap();
     for (wall, turns, cost) in [
-        (&level_one, 3, 200),
-        (&level_two, 5, 400),
-        (&level_three, 8, 800),
+        (&level_one, 3, 20_000),
+        (&level_two, 5, 40_000),
+        (&level_three, 8, 80_000),
     ] {
         assert_eq!(wall.construction_cost().turn_cost, turns);
         assert_eq!(
@@ -315,9 +315,9 @@ fn configured_market_capacity_is_enforced_and_demolition_trims_funded_offers() {
     let configuration = Configuration::from_toml(include_str!("../../configuration.toml")).unwrap();
     world.set_base_trade_limits(configuration.economy.trade_limits);
     world.set_building_catalog(catalog());
-    let mut settlement = Settlement::new(OWNER, 3_000, 1, Arc::default());
-    settlement.deposit(material("wood"), 1200);
-    settlement.deposit(material("stone"), 1000);
+    let mut settlement = Settlement::new(OWNER, 300_000, 1, Arc::default());
+    settlement.deposit(material("wood"), 120_000);
+    settlement.deposit(material("stone"), 100_000);
     world.add_settlement_at(1, position(0), settlement).unwrap();
     let trading_partner = SettlementId(2);
     world
@@ -343,7 +343,7 @@ fn configured_market_capacity_is_enforced_and_demolition_trims_funded_offers() {
         price_per_unit: 1,
     };
     let offers = || SettlementAction::PublishMarketOffers {
-        offers: vec![sell("wood", 900)],
+        offers: vec![sell("wood", 90_000)],
     };
     let caravan = |units| SettlementAction::OrderCaravan {
         receiver_id: trading_partner,
@@ -352,7 +352,7 @@ fn configured_market_capacity_is_enforced_and_demolition_trims_funded_offers() {
     simulation
         .queue_decision(SettlementDecision::new(
             OWNER,
-            vec![offers(), caravan(500), caravan(301)],
+            vec![offers(), caravan(50_000), caravan(30_001)],
         ))
         .unwrap();
     let report = simulation.step().unwrap();
@@ -367,7 +367,7 @@ fn configured_market_capacity_is_enforced_and_demolition_trims_funded_offers() {
     );
     assert_eq!(
         report.settlements[&OWNER].trade.market_reserved[&material("wood")],
-        900
+        90_000
     );
 
     simulation
@@ -391,7 +391,7 @@ fn configured_market_capacity_is_enforced_and_demolition_trims_funded_offers() {
     );
     assert_eq!(
         report.settlements[&OWNER].trade.market_reserved[&material("wood")],
-        800
+        80_000
     );
     assert_eq!(
         simulation.observe(OWNER).unwrap().trade.limits,
@@ -406,9 +406,9 @@ fn agent_construction_uses_configured_cost_and_turns() {
         vec![Province::new(1)],
     );
     world.set_building_catalog(catalog());
-    let mut settlement = Settlement::new(OWNER, 1_000, 1, Arc::default());
-    settlement.deposit(material("wood"), 200);
-    settlement.deposit(material("stone"), 150);
+    let mut settlement = Settlement::new(OWNER, 100_000, 1, Arc::default());
+    settlement.deposit(material("wood"), 20_000);
+    settlement.deposit(material("stone"), 15_000);
     world.add_settlement_at(1, position(0), settlement).unwrap();
     let mut simulation = Simulation::new(world).unwrap();
     simulation
@@ -424,15 +424,24 @@ fn agent_construction_uses_configured_cost_and_turns() {
     assert!(first.decisions[0].results[0].is_applied());
     assert_eq!(
         first.settlements[&OWNER].inventory.project_consumed[&material("wood")],
-        200
+        20_000
     );
     assert_eq!(
         first.settlements[&OWNER].inventory.project_consumed[&material("stone")],
-        150
+        15_000
     );
-    assert_eq!(simulation.observe(OWNER).unwrap().inventory.capacity, 1_000);
+    assert_eq!(
+        simulation.observe(OWNER).unwrap().inventory.capacity,
+        100_000
+    );
     simulation.step().unwrap();
-    assert_eq!(simulation.observe(OWNER).unwrap().inventory.capacity, 1_000);
+    assert_eq!(
+        simulation.observe(OWNER).unwrap().inventory.capacity,
+        100_000
+    );
     simulation.step().unwrap();
-    assert_eq!(simulation.observe(OWNER).unwrap().inventory.capacity, 3_000);
+    assert_eq!(
+        simulation.observe(OWNER).unwrap().inventory.capacity,
+        300_000
+    );
 }

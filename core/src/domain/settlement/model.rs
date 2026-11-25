@@ -9,7 +9,7 @@ mod turn;
 
 pub use commands::TradeCommandError;
 pub(crate) use commands::{CaravanUsage, offer_units};
-pub use economy::{NeedRegistry, NeedTier};
+pub use economy::{NeedRegistry, NeedTier, NeedsConfigError};
 pub use trading::CaravanOrder;
 pub use turn::report as turn_report;
 pub(crate) use turn::{PreparedTurn, ProducedTurn};

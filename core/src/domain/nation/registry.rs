@@ -71,6 +71,7 @@ pub struct NationRegistry {
     /// are never reused, so an old ID in a report or an agent's memory cannot
     /// point at a different, newer nation.
     next_id: Option<NationId>,
+    stock_capacity_per_settlement: u32,
 }
 
 impl Default for NationRegistry {
@@ -79,6 +80,7 @@ impl Default for NationRegistry {
             nations: BTreeMap::new(),
             owners: BTreeMap::new(),
             next_id: Some(NationId(0)),
+            stock_capacity_per_settlement: Nation::STOCK_CAPACITY_PER_SETTLEMENT,
         }
     }
 }
@@ -126,7 +128,15 @@ impl NationRegistry {
     /// for every owned settlement.
     pub fn stock_capacity(&self, nation_id: NationId) -> u32 {
         let settlements = u32::try_from(self.settlements_of(nation_id).len()).unwrap_or(u32::MAX);
-        settlements.saturating_mul(Nation::STOCK_CAPACITY_PER_SETTLEMENT)
+        settlements.saturating_mul(self.stock_capacity_per_settlement)
+    }
+
+    pub(crate) fn set_stock_capacity_per_settlement(&mut self, capacity: u32) {
+        self.stock_capacity_per_settlement = capacity;
+        let ids: Vec<_> = self.nations.keys().copied().collect();
+        for id in ids {
+            self.refresh_capacity(id);
+        }
     }
 
     /// Whether `found` can still assign an ID.

@@ -1,4 +1,5 @@
 //! Passive effects and settlement-wide placement rules for a building blueprint.
+use crate::domain::economy::material_units_from_display;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -11,6 +12,14 @@ pub struct TradeLimitBonuses {
 }
 
 impl TradeLimitBonuses {
+    pub(crate) fn into_material_units(self) -> Option<Self> {
+        Some(Self {
+            caravan_cargo: material_units_from_display(self.caravan_cargo)?,
+            open_offer_units: material_units_from_display(self.open_offer_units)?,
+            ..self
+        })
+    }
+
     pub(crate) fn saturating_add(self, other: Self) -> Self {
         Self {
             caravan_slots: self.caravan_slots.saturating_add(other.caravan_slots),

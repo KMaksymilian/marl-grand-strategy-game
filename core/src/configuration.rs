@@ -1,5 +1,6 @@
 use crate::buildings::passive::TradeLimitBonuses;
 use crate::buildings::productivity::{InvalidTravelCosts, TravelCostEfficiencyPolicy};
+use crate::domain::economy::material_units_from_display;
 use serde::Deserialize;
 use std::fmt;
 use std::path::Path;
@@ -13,6 +14,7 @@ pub struct Configuration {
 pub struct EconomyConfiguration {
     pub building_productivity: TravelCostEfficiencyPolicy,
     pub trade_limits: Option<TradeLimitBonuses>,
+    pub national_stock_capacity_per_settlement: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -20,6 +22,8 @@ pub enum ConfigurationError {
     Read(std::io::Error),
     Parse(toml::de::Error),
     InvalidTravelCosts(InvalidTravelCosts),
+    TradeCapacityOverflow,
+    NationalStockCapacityOverflow,
 }
 
 impl fmt::Display for ConfigurationError {
@@ -31,6 +35,16 @@ impl fmt::Display for ConfigurationError {
                 f,
                 "economy.building_productivity.full_productivity_cost must be smaller than zero_productivity_cost"
             ),
+            Self::TradeCapacityOverflow => {
+                write!(
+                    f,
+                    "economy.trade_limits material capacity exceeds the material unit limit"
+                )
+            }
+            Self::NationalStockCapacityOverflow => write!(
+                f,
+                "economy.national_stock_capacity_per_settlement exceeds the material unit limit"
+            ),
         }
     }
 }
@@ -40,7 +54,9 @@ impl std::error::Error for ConfigurationError {
         match self {
             Self::Read(error) => Some(error),
             Self::Parse(error) => Some(error),
-            Self::InvalidTravelCosts(_) => None,
+            Self::InvalidTravelCosts(_)
+            | Self::TradeCapacityOverflow
+            | Self::NationalStockCapacityOverflow => None,
         }
     }
 }
@@ -56,6 +72,7 @@ struct RawConfiguration {
 struct RawEconomy {
     building_productivity: RawBuildingProductivity,
     trade_limits: Option<TradeLimitBonuses>,
+    national_stock_capacity_per_settlement: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -82,7 +99,23 @@ impl Configuration {
         Ok(Self {
             economy: EconomyConfiguration {
                 building_productivity: policy,
-                trade_limits: raw.economy.trade_limits,
+                trade_limits: raw
+                    .economy
+                    .trade_limits
+                    .map(|limits| {
+                        limits
+                            .into_material_units()
+                            .ok_or(ConfigurationError::TradeCapacityOverflow)
+                    })
+                    .transpose()?,
+                national_stock_capacity_per_settlement: raw
+                    .economy
+                    .national_stock_capacity_per_settlement
+                    .map(|capacity| {
+                        material_units_from_display(capacity)
+                            .ok_or(ConfigurationError::NationalStockCapacityOverflow)
+                    })
+                    .transpose()?,
             },
         })
     }
@@ -97,6 +130,42 @@ mod tests {
         let config = Configuration::from_toml(include_str!("../../configuration.toml")).unwrap();
         let policy = config.economy.building_productivity;
         assert!(policy.full_productivity_cost() < policy.zero_productivity_cost());
+        let limits = config.economy.trade_limits.unwrap();
+        assert_eq!((limits.caravan_slots, limits.offer_slots), (2, 4));
+        assert_eq!(
+            (limits.caravan_cargo, limits.open_offer_units),
+            (40_000, 80_000)
+        );
+        assert_eq!(
+            config.economy.national_stock_capacity_per_settlement,
+            Some(50_000)
+        );
+    }
+
+    #[test]
+    fn trade_capacity_must_fit_the_material_unit_scale() {
+        let source = include_str!("../../configuration.toml");
+        for (from, to) in [
+            ("caravan_cargo = 400", "caravan_cargo = 42949673"),
+            ("open_offer_units = 800", "open_offer_units = 42949673"),
+        ] {
+            assert!(matches!(
+                Configuration::from_toml(&source.replace(from, to)),
+                Err(ConfigurationError::TradeCapacityOverflow)
+            ));
+        }
+    }
+
+    #[test]
+    fn national_stock_capacity_must_fit_the_material_unit_scale() {
+        let source = include_str!("../../configuration.toml").replace(
+            "national_stock_capacity_per_settlement = 500",
+            "national_stock_capacity_per_settlement = 42949673",
+        );
+        assert!(matches!(
+            Configuration::from_toml(&source),
+            Err(ConfigurationError::NationalStockCapacityOverflow)
+        ));
     }
 
     #[test]

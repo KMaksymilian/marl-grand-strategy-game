@@ -2,7 +2,20 @@ use crate::domain::buildings::effects::StatType;
 use crate::domain::economy::ResourceType;
 use crate::domain::economy::cost::ProjectCost;
 use crate::domain::spatial::site::SiteRequirements;
-use std::collections::HashMap;
+use crate::domain::world::terrain::biome::Biome;
+use std::collections::{BTreeMap, HashMap, HashSet};
+
+#[derive(Debug, Clone)]
+pub struct CycleRecipe {
+    pub inputs: Vec<(ResourceType, u32)>,
+    pub outputs: Vec<(ResourceType, u32)>,
+}
+
+#[derive(Debug)]
+pub struct CycleProduction {
+    pub cycles_per_turn: u32,
+    pub recipes: Vec<CycleRecipe>,
+}
 
 #[derive(Debug, Clone)]
 pub enum BuildingBehavior {
@@ -33,6 +46,7 @@ pub struct BuildingDefinition {
     behaviors: Vec<BuildingBehavior>,
     construction_cost: ProjectCost,
     site_requirements: SiteRequirements,
+    cycle_production: Option<CycleProduction>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +58,8 @@ pub enum DefinitionError {
     StatOverflow,
     /// `max_workers` above `BuildingDefinition::MAX_WORKERS`.
     TooManyWorkers,
+    InvalidBiomeEfficiencies,
+    InvalidCycleProduction,
 }
 impl BuildingDefinition {
     /// Largest staff for which every count `0..=max_workers` maps to an exact
@@ -66,6 +82,7 @@ impl BuildingDefinition {
             behaviors,
             construction_cost,
             site_requirements: SiteRequirements::default(),
+            cycle_production: None,
         };
         definition.validate()?;
         Ok(definition)
@@ -99,12 +116,105 @@ impl BuildingDefinition {
     }
 
     pub fn required_deposit(&self) -> Option<ResourceType> {
-        self.site_requirements.tile_deposit().cloned()
+        self.site_requirements
+            .province_deposit()
+            .or_else(|| self.site_requirements.tile_deposit())
+            .cloned()
     }
 
     pub fn requiring_coast(mut self) -> Self {
         self.site_requirements = self.site_requirements.requiring_coast();
         self
+    }
+
+    pub fn requiring_province_deposit(
+        mut self,
+        resource: ResourceType,
+    ) -> Result<Self, DefinitionError> {
+        if resource == ResourceType::Labour {
+            return Err(DefinitionError::InvalidDepositResource(resource));
+        }
+        self.site_requirements = self.site_requirements.requiring_province_deposit(resource);
+        Ok(self)
+    }
+
+    pub fn requires_province_deposit(&self) -> bool {
+        self.site_requirements.province_deposit().is_some()
+    }
+
+    pub fn with_biome_efficiencies(
+        mut self,
+        efficiencies: BTreeMap<Biome, u8>,
+    ) -> Result<Self, DefinitionError> {
+        if efficiencies.is_empty()
+            || efficiencies.contains_key(&Biome::Ocean)
+            || efficiencies
+                .values()
+                .any(|&value| value == 0 || value > 100)
+        {
+            return Err(DefinitionError::InvalidBiomeEfficiencies);
+        }
+        self.site_requirements.set_biome_efficiencies(efficiencies);
+        Ok(self)
+    }
+
+    pub fn biome_efficiencies(&self) -> Option<&BTreeMap<Biome, u8>> {
+        self.site_requirements.biome_efficiencies()
+    }
+
+    pub fn is_biome_restricted(&self) -> bool {
+        self.biome_efficiencies().is_some()
+    }
+
+    pub fn biome_efficiency(&self, biome: Biome) -> Option<u8> {
+        if biome == Biome::Ocean {
+            return None;
+        }
+        self.biome_efficiencies()
+            .map_or(Some(100), |efficiencies| efficiencies.get(&biome).copied())
+    }
+
+    pub fn with_cycle_production(
+        mut self,
+        cycles_per_turn: u32,
+        recipes: Vec<CycleRecipe>,
+    ) -> Result<Self, DefinitionError> {
+        if cycles_per_turn == 0
+            || self.max_workers == 0
+            || recipes.is_empty()
+            || self
+                .behaviors
+                .iter()
+                .any(|behavior| matches!(behavior, BuildingBehavior::Production { .. }))
+        {
+            return Err(DefinitionError::InvalidCycleProduction);
+        }
+        for recipe in &recipes {
+            if recipe.outputs.is_empty() {
+                return Err(DefinitionError::InvalidCycleProduction);
+            }
+            for materials in [&recipe.inputs, &recipe.outputs] {
+                let mut seen = HashSet::new();
+                for (resource, amount) in materials {
+                    if resource == &ResourceType::Labour
+                        || *amount == 0
+                        || !seen.insert(resource)
+                        || amount.checked_mul(cycles_per_turn).is_none()
+                    {
+                        return Err(DefinitionError::InvalidCycleProduction);
+                    }
+                }
+            }
+        }
+        self.cycle_production = Some(CycleProduction {
+            cycles_per_turn,
+            recipes,
+        });
+        Ok(self)
+    }
+
+    pub fn cycle_production(&self) -> Option<&CycleProduction> {
+        self.cycle_production.as_ref()
     }
 
     pub fn requires_coast(&self) -> bool {

@@ -52,6 +52,12 @@ impl ConstructionSpace for MapConstructionSpace<'_> {
         requirements: &SiteRequirements,
     ) -> Result<SiteEvaluation, TerritoryError> {
         self.map.validate_building_position(position)?;
+        if self
+            .province
+            .is_some_and(|province| self.map.province_at(position) != Some(province))
+        {
+            return Err(TerritoryError::SiteOutsideProvince(position));
+        }
         requirements.evaluate(position, |id| {
             self.map.site_fact(position, self.province, id)
         })

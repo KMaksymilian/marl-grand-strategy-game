@@ -220,7 +220,7 @@ mod tests {
         );
         let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
         let grants = HashMap::from([(ResourceType::Labour, 1), (material("wood"), 1)]);
-        let result = building.produce_from_grants(Some(&grants), Default::default(), &[]);
+        let result = building.produce_from_grants(Some(&grants), Default::default(), &[], None);
         assert_eq!(result.produced[&material("stone")], 1);
         assert_eq!(result.unused[&material("wood")], 0);
     }
@@ -241,7 +241,7 @@ mod tests {
             (material("wood"), 3),
             (material("grain"), 1),
         ]);
-        let result = building.produce_from_grants(Some(&grants), Default::default(), &[]);
+        let result = building.produce_from_grants(Some(&grants), Default::default(), &[], None);
         assert_eq!(result.produced[&material("stone")], 3);
         assert_eq!(result.unused[&material("wood")], 0);
         assert_eq!(result.unused[&material("grain")], 0);
@@ -260,7 +260,7 @@ mod tests {
         );
         let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
         let grants = HashMap::from([(ResourceType::Labour, 1), (material("wood"), amount)]);
-        let result = building.produce_from_grants(Some(&grants), Default::default(), &[]);
+        let result = building.produce_from_grants(Some(&grants), Default::default(), &[], None);
         assert_eq!(result.produced[&material("stone")], u64::from(amount));
         assert_eq!(result.unused[&material("wood")], 0);
     }
@@ -328,7 +328,7 @@ mod tests {
         let mut granted = HashMap::new();
         granted.insert(material("wood"), 50);
 
-        let result = building.produce_from_grants(Some(&granted), Default::default(), &[]);
+        let result = building.produce_from_grants(Some(&granted), Default::default(), &[], None);
 
         assert!(
             result.produced.is_empty(),
@@ -356,7 +356,7 @@ mod tests {
         granted.insert(ResourceType::Labour, 5); // Attempt to assign workers
         granted.insert(material("wood"), 20);
 
-        let result = building.produce_from_grants(Some(&granted), Default::default(), &[]);
+        let result = building.produce_from_grants(Some(&granted), Default::default(), &[], None);
 
         assert!(
             result.produced.is_empty(),
@@ -391,7 +391,7 @@ mod tests {
         granted.insert(ResourceType::Labour, 10);
         granted.insert(material("wood"), 10);
 
-        let result = building.produce_from_grants(Some(&granted), Default::default(), &[]);
+        let result = building.produce_from_grants(Some(&granted), Default::default(), &[], None);
 
         assert_eq!(building.current_workers, 10);
         assert_eq!(*result.produced.get(&material("stone")).unwrap_or(&0), 20);
@@ -416,7 +416,7 @@ mod tests {
         granted.insert(ResourceType::Labour, 5);
         granted.insert(material("wood"), 15);
 
-        let result = building.produce_from_grants(Some(&granted), Default::default(), &[]);
+        let result = building.produce_from_grants(Some(&granted), Default::default(), &[], None);
 
         assert_eq!(building.current_workers, 5);
         assert_eq!(
@@ -460,7 +460,7 @@ mod tests {
         granted.insert(material("wood"), 10);
         granted.insert(material("grain"), 2);
 
-        let result = building.produce_from_grants(Some(&granted), Default::default(), &[]);
+        let result = building.produce_from_grants(Some(&granted), Default::default(), &[], None);
 
         assert_eq!(building.current_workers, 10);
 

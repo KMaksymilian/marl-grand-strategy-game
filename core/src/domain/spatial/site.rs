@@ -23,6 +23,12 @@ const BIOMES: [(Biome, &str); 9] = [
     (Biome::Snow, "snow"),
 ];
 
+fn biome_from_id(id: &str) -> Option<Biome> {
+    BIOMES
+        .iter()
+        .find_map(|&(biome, name)| (name == id).then_some(biome))
+}
+
 /// Scalar facts can be added to scenarios without changing the evaluator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -79,7 +85,7 @@ impl Default for SiteEvaluation {
 #[derive(Debug, Clone, Default)]
 pub struct SiteRequirements {
     conditions: Vec<Condition>,
-    biome_efficiency: Option<BTreeMap<String, u8>>,
+    biome_efficiency: Option<BTreeMap<Biome, u8>>,
 }
 
 #[derive(Debug, Clone)]
@@ -171,7 +177,7 @@ struct RawRequirements {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawCondition {
+pub(crate) struct RawCondition {
     fact: String,
     op: Operator,
     value: toml::Value,
@@ -267,23 +273,38 @@ impl SiteRequirements {
                 }
             }
         }
+        let mut requirements =
+            Self::from_conditions(raw.site_requirements, resources, configured_fact_types)?;
+        requirements.biome_efficiency = raw.biome_efficiency.map(|efficiencies| {
+            efficiencies
+                .into_iter()
+                .map(|(id, percent)| (biome_from_id(&id).expect("validated biome"), percent))
+                .collect()
+        });
+        Ok(requirements)
+    }
+
+    pub(crate) fn from_conditions(
+        conditions: Vec<RawCondition>,
+        resources: &ResourceCatalog,
+        configured_fact_types: &HashMap<String, SiteFactKind>,
+    ) -> Result<Self, SiteConfigError> {
         // A tile has at most one deposit, one biome and one coastal status.
         let mut seen = HashSet::new();
-        for condition in &raw.site_requirements {
+        for condition in &conditions {
             let fact = condition.fact.as_str();
             if matches!(fact, TILE_COASTAL | TILE_BIOME | TILE_DEPOSITS) && !seen.insert(fact) {
                 return Err(SiteConfigError::DuplicateCondition(fact.to_owned()));
             }
         }
 
-        let conditions = raw
-            .site_requirements
+        let conditions = conditions
             .into_iter()
             .map(|condition| condition.resolve(resources, configured_fact_types))
             .collect::<Result<_, _>>()?;
         Ok(Self {
             conditions,
-            biome_efficiency: raw.biome_efficiency,
+            biome_efficiency: None,
         })
     }
 
@@ -325,21 +346,18 @@ impl SiteRequirements {
             }
         }
 
+        let biome = match biome_value {
+            Some(SiteValue::Id(id)) => biome_from_id(&id),
+            _ => None,
+        };
         let efficiency_percent = match &self.biome_efficiency {
             None => 100,
-            Some(efficiencies) => match &biome_value {
-                Some(SiteValue::Id(biome)) => *efficiencies
-                    .get(biome)
+            Some(efficiencies) => match biome {
+                Some(biome) => *efficiencies
+                    .get(&biome)
                     .ok_or(TerritoryError::ForbiddenBiome(position))?,
                 _ => return Err(TerritoryError::ForbiddenBiome(position)),
             },
-        };
-        let biome = match biome_value {
-            Some(SiteValue::Id(id)) => BIOMES
-                .iter()
-                .find(|(_, name)| *name == id)
-                .map(|(biome, _)| *biome),
-            _ => None,
         };
         Ok(SiteEvaluation {
             efficiency_percent,
@@ -357,11 +375,18 @@ impl SiteRequirements {
         self
     }
 
-    pub fn requiring_deposit(mut self, resource: ResourceType) -> Self {
-        self.conditions
-            .retain(|condition| condition.fact != TILE_DEPOSITS);
+    pub fn requiring_deposit(self, resource: ResourceType) -> Self {
+        self.with_deposit(TILE_DEPOSITS, resource)
+    }
+
+    pub(crate) fn requiring_province_deposit(self, resource: ResourceType) -> Self {
+        self.with_deposit(PROVINCE_DEPOSITS, resource)
+    }
+
+    fn with_deposit(mut self, fact: &str, resource: ResourceType) -> Self {
+        self.conditions.retain(|condition| condition.fact != fact);
         self.conditions.push(Condition {
-            fact: TILE_DEPOSITS.to_owned(),
+            fact: fact.to_owned(),
             predicate: Predicate::Contains(resource),
         });
         self
@@ -377,13 +402,29 @@ impl SiteRequirements {
         })
     }
 
+    pub(crate) fn province_deposit(&self) -> Option<&ResourceType> {
+        self.deposit_for(PROVINCE_DEPOSITS)
+    }
+
     pub fn tile_deposit(&self) -> Option<&ResourceType> {
-        self.conditions.iter().find_map(|condition| {
-            match (&*condition.fact, &condition.predicate) {
-                (TILE_DEPOSITS, Predicate::Contains(resource)) => Some(resource),
+        self.deposit_for(TILE_DEPOSITS)
+    }
+
+    fn deposit_for(&self, fact: &str) -> Option<&ResourceType> {
+        self.conditions
+            .iter()
+            .find_map(|condition| match &condition.predicate {
+                Predicate::Contains(resource) if condition.fact == fact => Some(resource),
                 _ => None,
-            }
-        })
+            })
+    }
+
+    pub(crate) fn set_biome_efficiencies(&mut self, efficiencies: BTreeMap<Biome, u8>) {
+        self.biome_efficiency = Some(efficiencies);
+    }
+
+    pub(crate) fn biome_efficiencies(&self) -> Option<&BTreeMap<Biome, u8>> {
+        self.biome_efficiency.as_ref()
     }
 
     pub fn deposits(&self) -> impl Iterator<Item = &ResourceType> {

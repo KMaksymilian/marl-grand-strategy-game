@@ -1,6 +1,7 @@
 use adapters::view::map::game_screen::GameScreen;
 use adapters::view::map::view_generator::ViewGenerator;
 use macroquad::prelude::*;
+use simulation_core::buildings::catalog::BuildingCatalog;
 use simulation_core::configuration::Configuration;
 use simulation_core::economy::ResourceCatalog;
 use simulation_core::military::UnitCatalog;
@@ -17,6 +18,9 @@ async fn main() {
     let resources = ResourceCatalog::load("resources.toml")
         .unwrap_or_else(|error| panic!("resources.toml: {error}"));
     info!("Loaded {} materials", resources.materials().len());
+    let buildings = BuildingCatalog::load("buildings.toml", &resources)
+        .unwrap_or_else(|error| panic!("buildings.toml: {error}"));
+    info!("Loaded {} building types", buildings.ids().len());
     let units = UnitCatalog::load("units.toml", &resources)
         .unwrap_or_else(|error| panic!("units.toml: {error}"));
     info!("Loaded {} unit types", units.definitions().len());
@@ -35,6 +39,7 @@ async fn main() {
             .zero_productivity_cost()
     );
     let mut world: World = WorldBuilder::generate_default_with_resources(Arc::new(resources));
+    world.set_building_catalog(buildings);
     world
         .set_unit_catalog(Arc::new(units))
         .unwrap_or_else(|error| panic!("units.toml: {error:?}"));

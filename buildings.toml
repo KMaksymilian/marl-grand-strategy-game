@@ -1,0 +1,242 @@
+# Economic building defaults. Recipe quantities are per full cycle.
+# Omitted biomes in an efficiency table forbid placement.
+
+[tiers.1]
+build_turns = 3
+cycles_per_turn = 100
+max_workers = 25
+
+[tiers.2]
+build_turns = 5
+cycles_per_turn = 50
+max_workers = 25
+
+[tiers.3]
+build_turns = 8
+cycles_per_turn = 25
+max_workers = 25
+
+[[buildings]]
+id = "plantation"
+name = "Plantation"
+tier = 1
+cost = { wood = 200 }
+biome_efficiencies = { grassland = 100, forest = 75, rainforest = 25, hills = 50, taiga = 25 }
+recipes = [
+    { outputs = { grain = 1 } },
+]
+
+[[buildings]]
+id = "ranch"
+name = "Ranch"
+tier = 1
+cost = { wood = 100, stone = 200 }
+biome_efficiencies = { desert = 25, grassland = 75, forest = 50, rainforest = 25, hills = 100, taiga = 75, tundra = 25 }
+recipes = [
+    { outputs = { cattle = 1 } },
+]
+
+[[buildings]]
+id = "waterfront"
+name = "Waterfront"
+tier = 1
+cost = { wood = 200, stone = 100 }
+site_requirements = [{ fact = "tile.coastal", op = "eq", value = true }]
+recipes = [
+    { outputs = { fish = 1 } },
+]
+
+[[buildings]]
+id = "date_dryer"
+name = "Date Dryer"
+tier = 1
+cost = { wood = 200 }
+biome_efficiencies = { desert = 100 }
+recipes = [
+    { outputs = { dates = 1 } },
+]
+
+[[buildings]]
+id = "logging_camp"
+name = "Logging Camp"
+tier = 1
+cost = { wood = 250 }
+biome_efficiencies = { forest = 100, rainforest = 100, hills = 25, taiga = 100, tundra = 50 }
+recipes = [
+    { outputs = { wood = 1 } },
+]
+
+[[buildings]]
+id = "quarry"
+name = "Quarry"
+tier = 1
+cost = { wood = 400 }
+biome_efficiencies = { desert = 25, hills = 75, taiga = 50, tundra = 75, snow = 100 }
+recipes = [
+    { outputs = { stone = 1 } },
+]
+
+[[buildings]]
+id = "clay_pit"
+name = "Clay Pit"
+tier = 1
+cost = { wood = 150, stone = 150 }
+biome_efficiencies = { desert = 25, grassland = 100, forest = 75, rainforest = 100, hills = 50, taiga = 50, tundra = 25 }
+recipes = [
+    { outputs = { clay = 1 } },
+]
+
+[[buildings]]
+id = "limestone_quarry"
+name = "Limestone Quarry"
+tier = 1
+cost = { wood = 150, stone = 150 }
+biome_efficiencies = { desert = 25, rainforest = 25, hills = 100, taiga = 50, tundra = 75, snow = 50 }
+recipes = [
+    { outputs = { limestone = 1 } },
+]
+
+[[buildings]]
+id = "mine"
+name = "Mine"
+tier = 1
+cost = { wood = 200, stone = 200, clay = 100, limestone = 100 }
+deposits = ["coal", "iron_ore", "copper_ore", "tin_ore"]
+
+[[buildings]]
+id = "charcoal_kiln"
+name = "Charcoal Kiln"
+tier = 1
+cost = { wood = 100, stone = 100 }
+cycles_per_turn = 50
+recipes = [
+    { inputs = { wood = 2 }, outputs = { coal = 1 } },
+]
+
+[[buildings]]
+id = "bakery"
+name = "Bakery"
+tier = 2
+cost = { planks = 100, stone_bricks = 100 }
+recipes = [
+    { inputs = { grain = 1 }, outputs = { bread = 1 } },
+]
+
+[[buildings]]
+id = "slaughterhouse"
+name = "Slaughterhouse"
+tier = 2
+cost = { planks = 100, bricks = 100 }
+recipes = [
+    { inputs = { cattle = 1 }, outputs = { meat = 1 } },
+]
+
+[[buildings]]
+id = "smokehouse"
+name = "Smokehouse"
+tier = 2
+cost = { planks = 100, bricks = 100 }
+recipes = [
+    { inputs = { fish = 1 }, outputs = { smoked_fish = 1 } },
+]
+
+[[buildings]]
+id = "date_press"
+name = "Date Press"
+tier = 2
+cost = { planks = 100, stone_bricks = 100 }
+recipes = [
+    { inputs = { dates = 1 }, outputs = { date_syrup = 1 } },
+]
+
+[[buildings]]
+id = "sawmill"
+name = "Sawmill"
+tier = 2
+cost = { wood = 300, stone = 300 }
+recipes = [
+    { inputs = { wood = 3 }, outputs = { planks = 2 } },
+]
+
+[[buildings]]
+id = "stonemason"
+name = "Stonemason"
+tier = 2
+cost = { planks = 200, stone = 200 }
+recipes = [
+    { inputs = { stone = 1 }, outputs = { stone_bricks = 1 } },
+]
+
+[[buildings]]
+id = "brickworks"
+name = "Brickworks"
+tier = 2
+cost = { planks = 200, stone = 200 }
+recipes = [
+    { inputs = { clay = 1, limestone = 1 }, outputs = { bricks = 1 } },
+]
+
+[[buildings]]
+id = "steelworks"
+name = "Steelworks"
+tier = 2
+cost = { stone_bricks = 250, bricks = 250 }
+recipes = [
+    { inputs = { coal = 1, iron_ore = 1 }, outputs = { steel = 1 } },
+]
+
+[[buildings]]
+id = "bronze_smelter"
+name = "Bronze Smelter"
+tier = 2
+cost = { stone_bricks = 250, bricks = 250 }
+recipes = [
+    { inputs = { copper_ore = 1, tin_ore = 1 }, outputs = { bronze = 1 } },
+]
+
+[[buildings]]
+id = "brewery"
+name = "Brewery"
+tier = 2
+cost = { planks = 200, bricks = 100 }
+recipes = [
+    { inputs = { grain = 1, wood = 1 }, outputs = { beer = 1 } },
+]
+
+[[buildings]]
+id = "carpentry"
+name = "Carpentry Workshop"
+tier = 3
+cost = { planks = 100, stone_bricks = 100, steel = 100 }
+recipes = [
+    { inputs = { planks = 2 }, outputs = { furniture = 1 } },
+]
+
+[[buildings]]
+id = "builder"
+name = "Builder"
+tier = 3
+cost = { planks = 100, bricks = 100, bronze = 100 }
+recipes = [
+    { inputs = { stone_bricks = 2 }, outputs = { fortification_components = 1 } },
+    { inputs = { bricks = 2 }, outputs = { fortification_components = 1 } },
+    { inputs = { stone_bricks = 1, bricks = 1 }, outputs = { fortification_components = 1 } },
+]
+
+[[buildings]]
+id = "blacksmith"
+name = "Blacksmith"
+tier = 3
+cost = { planks = 200, steel = 200 }
+recipes = [
+    { inputs = { steel = 1, planks = 1 }, outputs = { tools = 1 } },
+]
+
+[[buildings]]
+id = "foundry"
+name = "Foundry"
+tier = 3
+cost = { planks = 100, stone_bricks = 100, bricks = 100, steel = 100, bronze = 100 }
+recipes = [
+    { inputs = { bronze = 2 }, outputs = { monument_components = 1 } },
+]

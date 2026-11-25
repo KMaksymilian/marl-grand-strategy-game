@@ -2,7 +2,10 @@ use crate::domain::economy::ResourceType;
 use crate::domain::spatial::site::{
     PROVINCE_DEPOSITS, SiteFactKind, SiteValue, TILE_BIOME, TILE_COASTAL, TILE_DEPOSITS,
 };
-use crate::domain::world::{Position, terrain::area::Area};
+use crate::domain::world::{
+    Position,
+    terrain::{area::Area, biome::Biome},
+};
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 
@@ -86,6 +89,11 @@ impl Map {
 
     pub fn deposit_at(&self, position: Position) -> Option<ResourceType> {
         self.deposits.get(&position).cloned()
+    }
+
+    pub fn biome_at(&self, position: Position) -> Option<Biome> {
+        self.tile_index(position)
+            .map(|index| self.terrain[index].determine_biome())
     }
 
     /// Reads one live site fact. A settlement cannot use deposits outside its province.

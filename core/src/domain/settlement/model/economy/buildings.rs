@@ -18,6 +18,13 @@ pub struct BuildingManager {
     production_modifier_strategies: Vec<Box<dyn ProductionModifierStrategy>>,
 }
 
+#[derive(Default)]
+pub(crate) struct BuildingRequests {
+    pub demands: Vec<DemandRequest>,
+    pub recipes: HashMap<BuildingId, usize>,
+    pub sites: HashMap<BuildingId, SiteEvaluation>,
+}
+
 impl BuildingManager {
     pub fn new() -> Self {
         Self {
@@ -132,44 +139,75 @@ impl BuildingManager {
         }
     }
 
-    pub fn generate_requests(
+    pub(crate) fn generate_requests(
         &self,
         evaluate_site: impl Fn(&Building) -> Option<SiteEvaluation>,
-    ) -> (Vec<DemandRequest>, HashMap<BuildingId, SiteEvaluation>) {
-        let mut requests = Vec::new();
-        let mut sites = HashMap::new();
-        for building in &self.buildings {
-            if let Some(site) = evaluate_site(building) {
-                let demand = building.calculate_demand();
-                if !demand.is_empty() {
-                    let id = building.instance_id();
-                    sites.insert(id, site);
-                    requests.push(DemandRequest {
-                        recipient: AllocationRecipient::Building(id),
-                        demand,
-                    });
+        available: impl Fn(&ResourceType) -> u32,
+    ) -> BuildingRequests {
+        let mut plan = BuildingRequests::default();
+        let mut eligible: Vec<_> = self
+            .buildings
+            .iter()
+            .filter_map(|building| evaluate_site(building).map(|site| (building, site)))
+            .collect();
+        eligible.sort_unstable_by_key(|(building, _)| building.instance_id());
+        let mut alternative_requests = HashMap::<ResourceType, u32>::new();
+        for (building, site) in eligible {
+            let id = building.instance_id();
+            let demand = if let Some(production) = building.definition().cycle_production() {
+                let has_alternatives = production.recipes.len() > 1;
+                let selection = building.preferred_cycle_recipe(|resource| {
+                    let stock = available(resource);
+                    if has_alternatives {
+                        stock - alternative_requests.get(resource).copied().unwrap_or(0)
+                    } else {
+                        stock
+                    }
+                });
+                if let Some((recipe, _)) = selection {
+                    plan.recipes.insert(id, recipe);
                 }
+                let demand = building.calculate_cycle_demand(selection);
+                if has_alternatives {
+                    for (resource, &amount) in &demand {
+                        if resource != &ResourceType::Labour {
+                            *alternative_requests.entry(resource.clone()).or_default() += amount;
+                        }
+                    }
+                }
+                demand
+            } else {
+                building.calculate_demand()
+            };
+            if !demand.is_empty() {
+                plan.sites.insert(id, site);
+                plan.demands.push(DemandRequest {
+                    recipient: AllocationRecipient::Building(id),
+                    demand,
+                });
             }
         }
-        (requests, sites)
+        plan
     }
 
     pub fn process_allocations(
         &mut self,
         allocations: &AllocationResult,
         sites: &HashMap<BuildingId, SiteEvaluation>,
+        recipes: &HashMap<BuildingId, usize>,
     ) -> (HashMap<ResourceType, u64>, HashMap<ResourceType, u64>) {
         let mut all_produced = HashMap::new();
         let mut all_returned = HashMap::new();
 
         for building in self.buildings.iter_mut() {
-            let grants = allocations.get(&AllocationRecipient::Building(building.instance_id()));
-            let site = sites
-                .get(&building.instance_id())
-                .copied()
-                .unwrap_or_default();
-            let update_result =
-                building.produce_from_grants(grants, site, &self.production_modifier_strategies);
+            let id = building.instance_id();
+            let grants = allocations.get(&AllocationRecipient::Building(id));
+            let update_result = building.produce_from_grants(
+                grants,
+                sites.get(&id).copied().unwrap_or_default(),
+                &self.production_modifier_strategies,
+                recipes.get(&id).copied(),
+            );
 
             for (res, amount) in update_result.produced {
                 let total = all_produced.entry(res).or_insert(0_u64);
@@ -371,7 +409,9 @@ mod tests {
             .unwrap();
 
         // Act
-        let (requests, _) = manager.generate_requests(|_| Some(SiteEvaluation::default()));
+        let requests = manager
+            .generate_requests(|_| Some(SiteEvaluation::default()), |_| 0)
+            .demands;
 
         // Assert
         assert_eq!(
@@ -439,7 +479,8 @@ mod tests {
         allocations.insert(AllocationRecipient::Building(BuildingId(2)), b2_grants);
 
         // Act
-        let (produced, returned) = manager.process_allocations(&allocations, &HashMap::new());
+        let (produced, returned) =
+            manager.process_allocations(&allocations, &HashMap::new(), &HashMap::new());
 
         // Assert
         // Both buildings worked at 100% capacity (10 labour, enough wood).

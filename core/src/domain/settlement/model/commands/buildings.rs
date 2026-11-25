@@ -30,6 +30,13 @@ impl Settlement {
                 BuildingBehavior::StatModifier { .. } => [].iter().chain(&[]),
             });
         recipes
+            .chain(
+                definition
+                    .cycle_production()
+                    .into_iter()
+                    .flat_map(|production| &production.recipes)
+                    .flat_map(|recipe| recipe.inputs.iter().chain(&recipe.outputs)),
+            )
             .map(|(resource, _)| resource)
             .chain(definition.construction_cost().needed_resources.keys())
             .chain(definition.site_requirements().deposits())

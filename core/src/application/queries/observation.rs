@@ -251,7 +251,14 @@ pub struct BuildingTypeObservation {
     pub required_deposit: Option<ResourceType>,
     #[serde(default)]
     pub requires_coast: bool,
-    /// Inputs and outputs per turn at full staff.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub requires_province_deposit: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub biome_efficiencies:
+        Option<std::collections::BTreeMap<crate::domain::world::terrain::biome::Biome, u8>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cycles_per_turn: Option<u32>,
+    /// Quantities per cycle when a cycle rate is present, otherwise per fully staffed turn.
     pub recipes: Vec<RecipeObservation>,
 }
 

@@ -43,6 +43,7 @@ pub enum TileOccupancy {
 #[serde(rename_all = "snake_case")]
 pub enum TerritoryError {
     InvalidMapPosition(Position),
+    SiteOutsideProvince(Position),
     OceanTile(Position),
     CoastRequired(Position),
     ForbiddenBiome(Position),

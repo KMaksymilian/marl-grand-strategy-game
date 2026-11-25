@@ -1,9 +1,56 @@
 use crate::domain::economy::ResourceType;
+use crate::domain::spatial::site::{
+    PROVINCE_DEPOSITS, SiteFactKind, SiteValue, TILE_BIOME, TILE_COASTAL, TILE_DEPOSITS,
+};
 use crate::domain::world::{
     Position,
     terrain::{area::Area, biome::Biome},
 };
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
+use std::fmt;
+
+#[derive(Debug)]
+pub enum SiteFactsConfigError {
+    Parse(toml::de::Error),
+    InvalidFactName(String),
+    UnknownFact(String),
+    InvalidValue {
+        fact: String,
+        expected: SiteFactKind,
+    },
+    InvalidPosition(Position),
+    DuplicateTile(Position),
+}
+
+impl fmt::Display for SiteFactsConfigError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Parse(error) => write!(formatter, "invalid site facts TOML: {error}"),
+            Self::InvalidFactName(fact) => {
+                write!(formatter, "invalid or reserved tile fact {fact:?}")
+            }
+            Self::UnknownFact(fact) => write!(formatter, "undeclared tile fact {fact:?}"),
+            Self::InvalidValue { fact, expected } => {
+                write!(formatter, "tile fact {fact:?} must have type {expected:?}")
+            }
+            Self::InvalidPosition(position) => {
+                write!(formatter, "tile {position:?} is outside the map")
+            }
+            Self::DuplicateTile(position) => {
+                write!(formatter, "tile {position:?} is configured twice")
+            }
+        }
+    }
+}
+
+impl std::error::Error for SiteFactsConfigError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Parse(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 pub struct Map {
     pub width: usize,
@@ -11,6 +58,8 @@ pub struct Map {
     pub terrain: Vec<Area>,
     pub territory: Vec<usize>,
     pub(super) deposits: HashMap<Position, ResourceType>,
+    pub(super) site_fact_types: HashMap<String, SiteFactKind>,
+    pub(super) site_facts: HashMap<Position, HashMap<String, SiteValue>>,
 }
 
 impl Map {
@@ -47,31 +96,43 @@ impl Map {
             .map(|index| self.terrain[index].determine_biome())
     }
 
-    pub(super) fn has_accessible_province_deposit(
+    /// Reads one live site fact. A settlement cannot use deposits outside its province.
+    pub(super) fn site_fact(
         &self,
-        province_id: usize,
         position: Position,
-        resource: &ResourceType,
-    ) -> bool {
-        self.province_at(position) == Some(province_id)
-            && self.validate_building_position(position).is_ok()
-            && self.deposits().any(|(deposit_position, deposit)| {
-                deposit == resource
-                    && self.province_at(deposit_position) == Some(province_id)
-                    && self.validate_building_position(deposit_position).is_ok()
-            })
+        owned_province: Option<usize>,
+        id: &str,
+    ) -> Option<SiteValue> {
+        let index = self.tile_index(position)?;
+        match id {
+            TILE_COASTAL => Some(SiteValue::Bool(self.is_coastal(position))),
+            TILE_BIOME => Some(self.terrain[index].determine_biome().into()),
+            TILE_DEPOSITS | PROVINCE_DEPOSITS => {
+                let province = self.territory[index];
+                if owned_province.is_some_and(|owned| owned != province)
+                    || self.validate_building_position(position).is_err()
+                {
+                    return Some(SiteValue::Deposits(Vec::new()));
+                }
+                let deposits = if id == TILE_DEPOSITS {
+                    self.deposit_at(position).into_iter().collect()
+                } else {
+                    self.deposits()
+                        .filter(|(deposit, _)| {
+                            self.province_at(*deposit) == Some(province)
+                                && self.validate_building_position(*deposit).is_ok()
+                        })
+                        .map(|(_, resource)| resource.clone())
+                        .collect::<BTreeSet<_>>()
+                        .into_iter()
+                        .collect()
+                };
+                Some(SiteValue::Deposits(deposits))
+            }
+            _ => self.site_facts.get(&position)?.get(id).cloned(),
+        }
     }
 
-    pub(super) fn has_accessible_deposit(
-        &self,
-        province_id: usize,
-        position: Position,
-        resource: &ResourceType,
-    ) -> bool {
-        self.deposits.get(&position) == Some(resource)
-            && self.province_at(position) == Some(province_id)
-            && self.validate_building_position(position).is_ok()
-    }
     /// Current building types require land; use the terrain model's ocean boundary.
     pub fn validate_building_position(
         &self,
@@ -110,6 +171,8 @@ impl Map {
             terrain,
             territory,
             deposits: HashMap::new(),
+            site_fact_types: HashMap::new(),
+            site_facts: HashMap::new(),
         }
     }
 }

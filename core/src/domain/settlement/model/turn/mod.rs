@@ -11,6 +11,7 @@ use crate::domain::economy::allocation::{AllocationEngine, AllocationRecipient, 
 use crate::domain::ids::BuildingId;
 use crate::domain::nation::taxation::tax_amount;
 use crate::domain::spatial::ConstructionSpace;
+use crate::domain::spatial::site::SiteEvaluation;
 use crate::domain::trade::caravan::Caravan;
 use std::collections::HashMap;
 
@@ -26,6 +27,7 @@ pub(crate) struct AllocatedTurn {
     trade: TradeTurnReport,
     projects: Vec<ProjectOutcome>,
     allocations: AllocationResult,
+    sites: HashMap<BuildingId, SiteEvaluation>,
     cycle_recipes: HashMap<BuildingId, usize>,
     retained_stock_limit: Option<u32>,
     inventory: InventoryTurnReport,
@@ -87,7 +89,6 @@ impl Settlement {
         province_id: usize,
     ) -> PreparedTurn {
         self.building_manager.refresh_productivity(environment);
-        self.building_manager.refresh_production_biomes(environment);
         let main = &self.inventory_manager.main;
         let retained_stock_limit = (main.total_amount() > u64::from(main.capacity()))
             .then(|| u32::try_from(main.total_amount()).expect("stock fit the previous capacity"));
@@ -104,18 +105,12 @@ impl Settlement {
         self.trade_with_visitors(visitors, &mut trade, turn, province_id);
         let building_requests = self.building_manager.generate_requests(
             |building| {
-                let definition = building.definition();
-                let position = building.position();
-                (definition.cycle_production().is_none()
-                    || environment.can_operate_on_land(position))
-                    && (!definition.requires_coast() || environment.is_coastal(position))
-                    && definition.required_deposit().is_none_or(|resource| {
-                        if definition.requires_province_deposit() {
-                            environment.can_extract_in_province(position, resource)
-                        } else {
-                            environment.can_extract(position, resource)
-                        }
-                    })
+                environment
+                    .evaluate_site(
+                        building.position(),
+                        building.definition().site_requirements(),
+                    )
+                    .ok()
             },
             |resource| self.inventory_manager.main.amount(resource.clone()),
         );
@@ -139,6 +134,7 @@ impl Settlement {
             trade: prepared.trade,
             projects: prepared.projects,
             allocations,
+            sites: prepared.building_requests.sites,
             cycle_recipes: prepared.building_requests.recipes,
             retained_stock_limit: prepared.retained_stock_limit,
             inventory,
@@ -163,6 +159,7 @@ impl Settlement {
     pub(crate) fn produce_turn(&mut self, mut consumed: ConsumedTurn) -> ProducedTurn {
         let (produced, returned) = self.building_manager.process_allocations(
             &consumed.allocated.allocations,
+            &consumed.allocated.sites,
             &consumed.allocated.cycle_recipes,
         );
         consumed

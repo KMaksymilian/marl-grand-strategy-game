@@ -114,7 +114,7 @@ world/generation/
 ```
 
 Private child modules add methods to their owning type; callers still use
-`settlement.deposit(...)`, `building.resolve_allocation(...)`,
+`settlement.deposit(...)`, `building.produce_from_grants(...)`,
 `trade_book.trade(...)` and `WorldBuilder::generate(...)`. `Settlement` is the
 public settlement interface. There is no borrowed API wrapper or extra object
 needed to call these operations. Managers remain private implementation details.

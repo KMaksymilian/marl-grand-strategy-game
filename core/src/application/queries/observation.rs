@@ -192,6 +192,8 @@ pub struct TileObservation {
     pub position: Position,
     pub elevation: Elevation,
     pub moisture: Moisture,
+    #[serde(default)]
+    pub coastal: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deposit: Option<ResourceType>,
     pub occupancy: TileState,
@@ -247,6 +249,8 @@ pub struct BuildingTypeObservation {
     pub construction_turns: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub required_deposit: Option<ResourceType>,
+    #[serde(default)]
+    pub requires_coast: bool,
     /// Inputs and outputs per turn at full staff.
     pub recipes: Vec<RecipeObservation>,
 }

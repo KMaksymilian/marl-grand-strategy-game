@@ -166,9 +166,11 @@ fn project_error(error: WorldError, site: Option<Position>) -> ActionError {
         WorldError::Project(ProjectError::MissingProject(project_id)) => {
             ActionError::UnknownProject { project_id }
         }
-        WorldError::RequiredDepositMissing { position, resource } => {
-            ActionError::RequiredDepositMissing { position, resource }
-        }
+        WorldError::RequiredDepositMissing { position, resource }
+        | WorldError::Project(ProjectError::Territory(TerritoryError::TileDepositRequired {
+            position,
+            resource,
+        })) => ActionError::RequiredDepositMissing { position, resource },
         WorldError::InvalidMapPosition(position)
         | WorldError::Project(ProjectError::Territory(TerritoryError::InvalidMapPosition(
             position,
@@ -176,6 +178,20 @@ fn project_error(error: WorldError, site: Option<Position>) -> ActionError {
         WorldError::Project(ProjectError::Territory(TerritoryError::OceanTile(position))) => {
             ActionError::OceanTile { position }
         }
+        WorldError::Project(ProjectError::Territory(TerritoryError::CoastRequired(position))) => {
+            ActionError::CoastRequired { position }
+        }
+        WorldError::Project(ProjectError::Territory(TerritoryError::ForbiddenBiome(position))) => {
+            ActionError::ForbiddenBiome { position }
+        }
+        WorldError::Project(ProjectError::Territory(TerritoryError::ProvinceDepositRequired {
+            position,
+            resource,
+        })) => ActionError::ProvinceDepositRequired { position, resource },
+        WorldError::Project(ProjectError::Territory(TerritoryError::SiteRequirementNotMet {
+            position,
+            fact,
+        })) => ActionError::SiteRequirementNotMet { position, fact },
         WorldError::Project(ProjectError::Territory(TerritoryError::Occupied {
             position, ..
         })) => ActionError::TileOccupied { position },

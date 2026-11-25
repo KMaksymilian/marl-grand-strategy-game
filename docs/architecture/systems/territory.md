@@ -59,6 +59,10 @@ stateDiagram-v2
   preserves both project and tile. Canceling an upgrade leaves its building intact.
 
 Current building types require land, using `Elevation::OCEAN_LEVEL`.
+`Map::is_coastal` marks land adjacent to ocean across a tile side. A blueprint
+with `requiring_coast()` also requires this designation for placement and upgrade.
+The check applies to command preparation, scenario placement and construction
+completion. See [world generation](world_generation.md) for generated ore veins.
 Cancellation stops further costs; materials already consumed remain spent.
 If province membership changes between turns, the world rejects that settlement's
 turn before spending, preserving projects and reservations.

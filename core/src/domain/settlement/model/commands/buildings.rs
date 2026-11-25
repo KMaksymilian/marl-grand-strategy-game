@@ -23,7 +23,7 @@ impl Settlement {
         recipes
             .map(|(resource, _)| resource)
             .chain(definition.construction_cost().needed_resources.keys())
-            .chain(definition.deposit_resource())
+            .chain(definition.site_requirements().deposits())
             .filter(|resource| !self.knows_material(resource))
             .min()
             .cloned()
@@ -42,6 +42,9 @@ impl Settlement {
         if let Some(resource) = self.first_unknown_building_material(building.definition()) {
             return Err(BuildingCommandError::UnknownMaterial(resource));
         }
+        environment
+            .evaluate_site(position, building.definition().site_requirements())
+            .map_err(BuildingCommandError::Territory)?;
         environment
             .register_building(
                 position,

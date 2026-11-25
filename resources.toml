@@ -1,6 +1,10 @@
 # The order of entries is the default settlement warehouse priority.
 # Each content identifier maps to a stable simulation resource.
 
+[deposits]
+max_vein_tiles = 16 # Includes the focus tile.
+max_veins = 100 # Across the map. Set to 0 to disable generated veins.
+
 [[resources]]
 id = "wood"
 name = "Wood"
@@ -61,18 +65,21 @@ id = "iron_ore"
 name = "Iron Ore"
 tier = 1
 category = "metal"
+max_vein_tiles = 14
 
 [[resources]]
 id = "copper_ore"
 name = "Copper Ore"
 tier = 1
 category = "metal"
+max_vein_tiles = 10
 
 [[resources]]
 id = "tin_ore"
 name = "Tin Ore"
 tier = 1
 category = "metal"
+max_vein_tiles = 8
 
 [[resources]]
 id = "bread"

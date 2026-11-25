@@ -44,6 +44,7 @@ impl Settlement {
                             project_id: project.id,
                         },
                         &project.result,
+                        buildings,
                         space,
                     )
                 }) {
@@ -107,6 +108,7 @@ impl Settlement {
                 project_id,
             },
             &result,
+            &self.building_manager,
             environment,
         )?;
         match result {
@@ -154,12 +156,33 @@ impl Settlement {
     fn validate_project_site(
         reference: ProjectReference,
         result: &ProjectResult,
+        buildings: &BuildingManager,
         space: &impl ConstructionSpace,
     ) -> Result<(), ProjectError> {
-        if let ProjectResult::ConstructBuilding { position, .. } = result {
-            space
-                .validate_construction(*position, reference)
-                .map_err(ProjectError::Territory)?;
+        match result {
+            ProjectResult::ConstructBuilding {
+                position,
+                definition,
+            } => {
+                space
+                    .validate_construction(*position, reference)
+                    .map_err(ProjectError::Territory)?;
+                space
+                    .evaluate_site(*position, definition.site_requirements())
+                    .map_err(ProjectError::Territory)?;
+            }
+            ProjectResult::UpgradeBuilding {
+                target_instance_id,
+                new_definition,
+            } => {
+                let building = buildings
+                    .get(*target_instance_id)
+                    .ok_or(ProjectError::MissingBuilding(*target_instance_id))?;
+                space
+                    .evaluate_site(building.position(), new_definition.site_requirements())
+                    .map_err(ProjectError::Territory)?;
+            }
+            ProjectResult::RecruitUnit { .. } => {}
         }
         Ok(())
     }

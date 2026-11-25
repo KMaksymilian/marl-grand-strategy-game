@@ -49,7 +49,8 @@ impl Settlement {
         space: &mut impl ConstructionSpace,
     ) -> Result<(), ProjectError> {
         self.validate_project_materials(&definition, &cost)?;
-        Self::validate_coastal_site(&definition, position, space)
+        space
+            .evaluate_site(position, definition.site_requirements())
             .map_err(ProjectError::Territory)?;
         let project = Project::new(
             project_id,
@@ -92,15 +93,14 @@ impl Settlement {
         cost: ProjectCost,
     ) -> Result<(), ProjectError> {
         self.validate_project_materials(&new_definition, &cost)?;
-        if new_definition.requires_coast() {
-            let building = self
-                .building_manager
-                .get(target_instance_id)
-                .ok_or(ProjectError::MissingBuilding(target_instance_id))?;
-            return Err(ProjectError::Territory(
-                crate::domain::spatial::TerritoryError::CoastRequired(building.position()),
-            ));
-        }
+        let building = self
+            .building_manager
+            .get(target_instance_id)
+            .ok_or(ProjectError::MissingBuilding(target_instance_id))?;
+        new_definition
+            .site_requirements()
+            .evaluate(building.position(), |_| None)
+            .map_err(ProjectError::Territory)?;
         self.queue_validated_upgrade(project_id, target_instance_id, new_definition, cost)
     }
 
@@ -118,7 +118,8 @@ impl Settlement {
             .building_manager
             .get(target_instance_id)
             .ok_or(ProjectError::MissingBuilding(target_instance_id))?;
-        Self::validate_coastal_site(&new_definition, building.position(), space)
+        space
+            .evaluate_site(building.position(), new_definition.site_requirements())
             .map_err(ProjectError::Territory)?;
         self.queue_validated_upgrade(project_id, target_instance_id, new_definition, cost)
     }

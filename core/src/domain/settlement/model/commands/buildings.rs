@@ -6,20 +6,9 @@ use crate::domain::buildings::productivity::BuildingProductivityCalculator;
 use crate::domain::buildings::productivity::TravelCostSource;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::BuildingId;
-use crate::domain::spatial::{BuildingReference, ConstructionSpace, Position, TerritoryError};
+use crate::domain::spatial::{BuildingReference, ConstructionSpace};
 
 impl Settlement {
-    pub(crate) fn validate_coastal_site(
-        definition: &BuildingDefinition,
-        position: Position,
-        space: &impl ConstructionSpace,
-    ) -> Result<(), TerritoryError> {
-        if definition.requires_coast() && !space.is_coastal(position) {
-            return Err(TerritoryError::CoastRequired(position));
-        }
-        Ok(())
-    }
-
     pub fn first_unknown_building_material(
         &self,
         definition: &BuildingDefinition,
@@ -34,7 +23,7 @@ impl Settlement {
         recipes
             .map(|(resource, _)| resource)
             .chain(definition.construction_cost().needed_resources.keys())
-            .chain(definition.deposit_resource())
+            .chain(definition.site_requirements().deposits())
             .filter(|resource| !self.knows_material(resource))
             .min()
             .cloned()
@@ -53,7 +42,8 @@ impl Settlement {
         if let Some(resource) = self.first_unknown_building_material(building.definition()) {
             return Err(BuildingCommandError::UnknownMaterial(resource));
         }
-        Self::validate_coastal_site(building.definition(), position, environment)
+        environment
+            .evaluate_site(position, building.definition().site_requirements())
             .map_err(BuildingCommandError::Territory)?;
         environment
             .register_building(

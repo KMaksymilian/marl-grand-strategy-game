@@ -7,7 +7,7 @@ use super::{
     },
 };
 use crate::domain::buildings::productivity::TravelCostSource;
-use crate::domain::economy::ResourceType;
+use crate::domain::spatial::site::{SiteEvaluation, SiteRequirements};
 use crate::domain::spatial::{ConstructionSpace, Position};
 
 pub struct AStarTravelCosts<'a> {
@@ -32,17 +32,29 @@ impl TravelCostSource for AStarTravelCosts<'_> {
 pub struct MapConstructionSpace<'a> {
     map: &'a Map,
     territory: &'a mut TerritoryManager,
+    province: Option<usize>,
 }
 
 impl<'a> MapConstructionSpace<'a> {
     pub fn new(map: &'a Map, territory: &'a mut TerritoryManager) -> Self {
-        Self { map, territory }
+        Self {
+            map,
+            territory,
+            province: None,
+        }
     }
 }
 
 impl ConstructionSpace for MapConstructionSpace<'_> {
-    fn is_coastal(&self, position: Position) -> bool {
-        self.map.is_coastal(position)
+    fn evaluate_site(
+        &self,
+        position: Position,
+        requirements: &SiteRequirements,
+    ) -> Result<SiteEvaluation, TerritoryError> {
+        self.map.validate_building_position(position)?;
+        requirements.evaluate(position, |id| {
+            self.map.site_fact(position, self.province, id)
+        })
     }
 
     fn reserve_construction(
@@ -99,7 +111,6 @@ impl ConstructionSpace for MapConstructionSpace<'_> {
 pub struct MapSettlementEnvironment<'a> {
     space: MapConstructionSpace<'a>,
     costs: AStarTravelCosts<'a>,
-    province: Option<usize>,
 }
 
 impl<'a> MapSettlementEnvironment<'a> {
@@ -111,12 +122,11 @@ impl<'a> MapSettlementEnvironment<'a> {
         Self {
             space: MapConstructionSpace::new(map, territory),
             costs: AStarTravelCosts::new(map, finder),
-            province: None,
         }
     }
 
     pub(super) fn with_province(mut self, province: usize) -> Self {
-        self.province = Some(province);
+        self.space.province = Some(province);
         self
     }
 }
@@ -128,16 +138,12 @@ impl TravelCostSource for MapSettlementEnvironment<'_> {
 }
 
 impl ConstructionSpace for MapSettlementEnvironment<'_> {
-    fn is_coastal(&self, position: Position) -> bool {
-        self.space.is_coastal(position)
-    }
-
-    fn can_extract(&self, position: Position, resource: ResourceType) -> bool {
-        self.province.is_some_and(|province| {
-            self.space
-                .map
-                .has_accessible_deposit(province, position, &resource)
-        })
+    fn evaluate_site(
+        &self,
+        position: Position,
+        requirements: &SiteRequirements,
+    ) -> Result<SiteEvaluation, TerritoryError> {
+        self.space.evaluate_site(position, requirements)
     }
 
     fn reserve_construction(

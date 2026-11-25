@@ -121,34 +121,43 @@ impl BuildingManager {
         }
     }
 
-    pub fn generate_requests(&self, can_operate: impl Fn(&Building) -> bool) -> Vec<DemandRequest> {
-        self.buildings
-            .iter()
-            .filter(|building| can_operate(building))
-            .filter_map(|b| {
-                let demand = b.calculate_demand();
-                if demand.is_empty() {
-                    None
-                } else {
-                    Some(DemandRequest {
-                        recipient: AllocationRecipient::Building(b.instance_id()),
+    pub fn generate_requests(
+        &self,
+        evaluate_site: impl Fn(&Building) -> Option<u8>,
+    ) -> (Vec<DemandRequest>, HashMap<BuildingId, u8>) {
+        let mut requests = Vec::new();
+        let mut site_efficiencies = HashMap::new();
+        for building in &self.buildings {
+            if let Some(efficiency) = evaluate_site(building) {
+                let demand = building.calculate_demand();
+                if !demand.is_empty() {
+                    let id = building.instance_id();
+                    site_efficiencies.insert(id, efficiency);
+                    requests.push(DemandRequest {
+                        recipient: AllocationRecipient::Building(id),
                         demand,
-                    })
+                    });
                 }
-            })
-            .collect()
+            }
+        }
+        (requests, site_efficiencies)
     }
 
     pub fn process_allocations(
         &mut self,
         allocations: &AllocationResult,
+        site_efficiencies: &HashMap<BuildingId, u8>,
     ) -> (HashMap<ResourceType, u64>, HashMap<ResourceType, u64>) {
         let mut all_produced = HashMap::new();
         let mut all_returned = HashMap::new();
 
         for building in self.buildings.iter_mut() {
             let grants = allocations.get(&AllocationRecipient::Building(building.instance_id()));
-            let update_result = building.resolve_allocation(grants);
+            let site_efficiency = site_efficiencies
+                .get(&building.instance_id())
+                .copied()
+                .unwrap_or(100);
+            let update_result = building.produce_from_grants(grants, site_efficiency);
 
             for (res, amount) in update_result.produced {
                 *all_produced.entry(res).or_insert(0_u64) += u64::from(amount);
@@ -349,7 +358,7 @@ mod tests {
             .unwrap();
 
         // Act
-        let requests = manager.generate_requests(|_| true);
+        let (requests, _) = manager.generate_requests(|_| Some(100));
 
         // Assert
         assert_eq!(
@@ -417,7 +426,7 @@ mod tests {
         allocations.insert(AllocationRecipient::Building(BuildingId(2)), b2_grants);
 
         // Act
-        let (produced, returned) = manager.process_allocations(&allocations);
+        let (produced, returned) = manager.process_allocations(&allocations, &HashMap::new());
 
         // Assert
         // Both buildings worked at 100% capacity (10 labour, enough wood).

@@ -42,7 +42,7 @@ id = "waterfront"
 name = "Waterfront"
 tier = 1
 cost = { wood = 200, stone = 100 }
-requires_coast = true
+site_requirements = [{ fact = "tile.coastal", op = "eq", value = true }]
 recipes = [
     { outputs = { fish = 1 } },
 ]

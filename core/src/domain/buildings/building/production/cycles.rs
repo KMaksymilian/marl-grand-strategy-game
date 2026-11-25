@@ -1,5 +1,6 @@
 use super::{
     Building, ProductionModifier, ProductionModifierStrategy, ProductionResult, ResourceType,
+    SiteEvaluation,
 };
 use crate::domain::buildings::definition::{CycleProduction, CycleRecipe};
 use std::cmp::Reverse;
@@ -10,17 +11,8 @@ impl Building {
         &self,
         available: impl Fn(&ResourceType) -> u32,
     ) -> Option<(usize, u32)> {
-        self.choose_cycle_recipe(self.requested_workers(), available)
-    }
-
-    pub(super) fn choose_cycle_recipe(
-        &self,
-        workers: u32,
-        available: impl Fn(&ResourceType) -> u32,
-    ) -> Option<(usize, u32)> {
         let production = self.definition.cycle_production()?;
-        self.configured_biome_efficiency()?;
-        let staff_limit = self.staffed_cycles(production, workers);
+        let staff_limit = self.staffed_cycles(production, self.requested_workers());
         production
             .recipes
             .iter()
@@ -36,7 +28,7 @@ impl Building {
     ) -> HashMap<ResourceType, u32> {
         let mut demand = HashMap::new();
         let workers = self.requested_workers();
-        if workers == 0 || self.configured_biome_efficiency().is_none() {
+        if workers == 0 {
             return demand;
         }
 
@@ -57,13 +49,12 @@ impl Building {
         production: &CycleProduction,
         recipe_index: Option<usize>,
         mut unused: HashMap<ResourceType, u32>,
+        site: SiteEvaluation,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
         turn_modifier: Option<&ProductionModifier>,
     ) -> ProductionResult {
         let mut produced = HashMap::new();
-        if let Some(recipe) = recipe_index.and_then(|index| production.recipes.get(index))
-            && let Some(efficiency) = self.configured_biome_efficiency()
-        {
+        if let Some(recipe) = recipe_index.and_then(|index| production.recipes.get(index)) {
             let staff_limit = self.staffed_cycles(production, self.current_workers);
             let cycles = executable_cycles(recipe, staff_limit, |resource| {
                 unused.get(resource).copied().unwrap_or_default()
@@ -76,7 +67,7 @@ impl Building {
                         .expect("cycle input must be granted") -= cycles * units;
                 }
                 let production_yield =
-                    self.production_yield(efficiency, modifier_strategies, turn_modifier);
+                    self.production_yield(site, modifier_strategies, turn_modifier);
                 produced.extend(recipe.outputs.iter().map(|(resource, units)| {
                     (
                         resource.clone(),
@@ -86,11 +77,6 @@ impl Building {
             }
         }
         ProductionResult { produced, unused }
-    }
-
-    fn configured_biome_efficiency(&self) -> Option<u8> {
-        self.production_biome
-            .map_or(Some(100), |biome| self.definition.biome_efficiency(biome))
     }
 
     fn staffed_cycles(&self, production: &CycleProduction, workers: u32) -> u32 {

@@ -23,7 +23,7 @@ fn totals<'a>(goods: impl IntoIterator<Item = (&'a ResourceType, &'a u32)>) -> M
 }
 
 impl Settlement {
-    /// Restore accepted escrow without discarding it if the warehouse or treasury filled up.
+    /// Refund gold immediately and hold any materials that the warehouse cannot accept.
     pub(in crate::domain::settlement) fn refund_canceled_order(
         &mut self,
         mut caravan: CaravanReturn,
@@ -52,17 +52,16 @@ impl Settlement {
             })
             .collect();
         admitted.retain(|_, amount| *amount > 0);
-        let credited = gold.min(u32::MAX - self.gold());
-        self.gold_inventory.add(credited);
+        self.gold_inventory.add(gold);
         let receipt = ReturnedCaravan {
             receiver_id: caravan.receiver_id,
             outcome: caravan.outcome,
             trades: vec![],
             cargo: admitted,
-            gold: u64::from(credited),
+            gold,
         };
-        if !remaining_offers.is_empty() || gold > credited {
-            caravan.book = TradeBook::new(gold - credited, remaining_offers);
+        if !remaining_offers.is_empty() {
+            caravan.book = TradeBook::new(0, remaining_offers);
             self.receive_caravan(caravan);
         }
         receipt
@@ -79,7 +78,7 @@ impl Settlement {
             demands,
         );
         report.market_reserved = totals(&self.book.goods_for_sale());
-        report.market_gold_reserved = u64::from(self.book.gold());
+        report.market_gold_reserved = self.book.gold();
     }
 
     /// Releases orders already funded at acceptance, in queue order.
@@ -89,12 +88,9 @@ impl Settlement {
     ) {
         for order in std::mem::take(&mut self.trade.orders) {
             let cargo = order.into_cargo(self.id);
-            report.caravans_dispatched.push(DispatchedCaravan {
-                receiver_id: cargo.receiver_id,
-                cargo: totals(&cargo.book.goods_for_sale()),
-                gold: u64::from(cargo.book.gold()),
-                route: None,
-            });
+            report
+                .caravans_dispatched
+                .push(DispatchedCaravan::from_cargo(&cargo));
             self.trade.dispatched.push(cargo);
         }
     }
@@ -164,7 +160,7 @@ impl Settlement {
         let (goods, gold) = self.book.return_resources();
         add(&goods);
         self.gold_inventory.add(gold);
-        report.gold_received += u64::from(gold);
+        report.gold_received += gold;
 
         let mut refunded = MaterialTotals::new();
         for mut caravan in std::mem::take(&mut self.trade.returning) {
@@ -186,13 +182,13 @@ impl Settlement {
             let (goods, gold) = caravan.book.return_resources();
             add(&goods);
             self.gold_inventory.add(gold);
-            report.gold_received += u64::from(gold);
+            report.gold_received += gold;
             report.caravans_returned.push(ReturnedCaravan {
                 receiver_id: caravan.receiver_id,
                 outcome: caravan.outcome,
                 trades: caravan.trades,
                 cargo: totals(&goods),
-                gold: u64::from(gold),
+                gold,
             });
         }
 
@@ -328,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn canceled_escrow_survives_a_warehouse_and_treasury_filled_after_acceptance() {
+    fn canceled_escrow_refunds_gold_even_when_materials_do_not_fit() {
         let mut settlement = Settlement::new(SettlementId(1), 5, 0, Arc::default());
         let wood = material("wood");
         let stone = material("stone");
@@ -352,10 +348,9 @@ mod tests {
         assert!(turn(&mut settlement).trade.caravans_returned.is_empty());
 
         assert!(settlement.withdraw(stone.clone(), 3));
-        assert!(settlement.gold_inventory.consume(1));
         let partial = turn(&mut settlement);
         assert_eq!(partial.inventory.trade_received[&wood], 3);
-        assert_eq!(partial.trade.gold_received, 1);
+        assert_eq!(partial.trade.gold_received, 0);
         assert_eq!(
             partial.trade.caravans_returned[0].outcome,
             CaravanOutcome::OrderCanceled
@@ -366,7 +361,7 @@ mod tests {
         let final_refund = turn(&mut settlement);
         assert_eq!(final_refund.inventory.trade_received[&wood], 2);
         assert_eq!(settlement.inventory().amount(wood), 5);
-        assert_eq!(settlement.gold(), u32::MAX);
+        assert_eq!(settlement.gold(), u64::from(u32::MAX) + 1);
         assert!(final_refund.inventory.is_balanced());
         assert!(settlement.returning_caravans().is_empty());
     }

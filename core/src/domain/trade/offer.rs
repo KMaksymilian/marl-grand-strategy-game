@@ -73,7 +73,7 @@ impl TradeOffer {
 
 /// TRADE DEMAND
 pub enum TradeDemand {
-    Gold(u32),
+    Gold(u64),
     ResourceType(u32),
 }
 
@@ -128,9 +128,7 @@ impl BuyTradeOffer {
         }
     }
     fn calculate_demand(&self) -> TradeDemand {
-        let gold_amount: u32 = self
-            .maximum_price_per_unit
-            .saturating_mul(self.available_units);
+        let gold_amount = u64::from(self.maximum_price_per_unit) * u64::from(self.available_units);
         TradeDemand::Gold(gold_amount)
     }
     pub fn consume_bought_units(&mut self) -> u32 {
@@ -183,11 +181,11 @@ mod tests {
     }
 
     #[test]
-    fn huge_buy_demand_saturates_instead_of_overflowing() {
+    fn buy_demand_can_exceed_the_old_gold_counter_limit() {
         let TradeDemand::Gold(gold) = TradeOffer::buy(u32::MAX, 2).calculate_demand() else {
             unreachable!()
         };
-        assert_eq!(gold, u32::MAX);
+        assert_eq!(gold, 2 * u64::from(u32::MAX));
     }
 
     #[test]

@@ -25,7 +25,7 @@ classDiagram
         -u32 current_workers
         -LocationProductivity location_productivity
         +calculate_demand()
-        +resolve_allocation()
+        +produce_from_grants()
         +upgrade(definition)
     }
     class BuildingDefinition {

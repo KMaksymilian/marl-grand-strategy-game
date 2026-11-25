@@ -50,21 +50,4 @@ impl World {
             })
             .collect())
     }
-
-    pub(super) fn validate_building_deposit(
-        &self,
-        position: Position,
-        required: Option<ResourceType>,
-    ) -> Result<(), WorldError> {
-        if let Some(resource) = required {
-            let province = self.province_at(position)?;
-            if !self
-                .map
-                .has_accessible_deposit(province, position, &resource)
-            {
-                return Err(WorldError::RequiredDepositMissing { position, resource });
-            }
-        }
-        Ok(())
-    }
 }

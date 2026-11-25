@@ -205,7 +205,10 @@ mod tests {
                 expected: wrong,
                 actual: TileOccupancy::Construction(PROJECT),
             };
-            assert_eq!(manager.cancel_construction(POSITION, wrong), Err(error));
+            assert_eq!(
+                manager.cancel_construction(POSITION, wrong),
+                Err(error.clone())
+            );
             assert_eq!(
                 manager.finish_construction(POSITION, wrong, BUILDING),
                 Err(error)
@@ -243,7 +246,10 @@ mod tests {
                 expected: PROJECT,
                 actual,
             };
-            assert_eq!(manager.cancel_construction(POSITION, PROJECT), Err(error));
+            assert_eq!(
+                manager.cancel_construction(POSITION, PROJECT),
+                Err(error.clone())
+            );
             assert_eq!(
                 manager.finish_construction(POSITION, PROJECT, BUILDING),
                 Err(error)

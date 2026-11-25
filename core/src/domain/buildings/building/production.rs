@@ -2,9 +2,10 @@
 use super::{Building, ProductionResult};
 use crate::domain::buildings::definition::BuildingBehavior;
 use crate::domain::buildings::productivity::{
-    ProductionModifierContext, ProductionModifierStrategy,
+    ProductionModifier, ProductionModifierContext, ProductionModifierStrategy,
 };
 use crate::domain::economy::ResourceType;
+use crate::domain::spatial::site::SiteEvaluation;
 use std::collections::HashMap;
 
 impl Building {
@@ -34,6 +35,7 @@ impl Building {
     pub(crate) fn produce_from_grants(
         &mut self,
         granted: Option<&HashMap<ResourceType, u32>>,
+        site: SiteEvaluation,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
     ) -> ProductionResult {
         let mut material_grants = granted.cloned().unwrap_or_default();
@@ -46,12 +48,13 @@ impl Building {
             material_grants.remove(&ResourceType::Labour);
         }
 
-        self.execute_production(&material_grants, modifier_strategies)
+        self.execute_production(&material_grants, site, modifier_strategies)
     }
 
     fn execute_production(
         &self,
         granted: &HashMap<ResourceType, u32>,
+        site: SiteEvaluation,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
     ) -> ProductionResult {
         let mut produced = HashMap::new();
@@ -63,12 +66,17 @@ impl Building {
 
         let context = ProductionModifierContext {
             building: self,
-            biome: self.production_biome,
+            biome: site.biome,
         };
+        let site_modifier = (site.efficiency_percent != 100).then(|| {
+            ProductionModifier::multiplicative("site", u32::from(site.efficiency_percent) * 100)
+        });
         let production_yield = self.location_productivity.apply_modifiers(
-            modifier_strategies
-                .iter()
-                .filter_map(|strategy| strategy.modifier(&context)),
+            site_modifier.into_iter().chain(
+                modifier_strategies
+                    .iter()
+                    .filter_map(|strategy| strategy.modifier(&context)),
+            ),
         );
 
         // Recipes run in definition order against the remaining material balance.

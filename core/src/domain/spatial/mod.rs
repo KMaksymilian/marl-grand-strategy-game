@@ -1,4 +1,7 @@
 //! Map-independent coordinates, occupancy values and construction contracts.
+pub mod site;
+
+use crate::domain::economy::ResourceType;
 use crate::domain::ids::{BuildingId, ProjectId, SettlementId};
 use serde::{Deserialize, Serialize};
 
@@ -36,12 +39,25 @@ pub enum TileOccupancy {
     Building(BuildingReference),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TerritoryError {
     InvalidMapPosition(Position),
     OceanTile(Position),
     CoastRequired(Position),
+    ForbiddenBiome(Position),
+    TileDepositRequired {
+        position: Position,
+        resource: ResourceType,
+    },
+    ProvinceDepositRequired {
+        position: Position,
+        resource: ResourceType,
+    },
+    SiteRequirementNotMet {
+        position: Position,
+        fact: String,
+    },
     Occupied {
         position: Position,
         occupancy: TileOccupancy,
@@ -63,26 +79,13 @@ pub enum TerritoryError {
 /// are qualified by settlement identity. Returning `Err` must leave occupancy
 /// unchanged; successful operations must be visible to subsequent validation.
 pub trait ConstructionSpace {
-    /// Biome of the tile occupied by a producing building, if terrain is available.
-    fn production_biome(
+    /// Evaluates a blueprint's requirements independently of structural occupancy.
+    fn evaluate_site(
         &self,
-        _position: Position,
-    ) -> Option<crate::domain::world::terrain::biome::Biome> {
-        None
-    }
-
-    /// Whether this land tile shares an edge with the ocean.
-    fn is_coastal(&self, _position: Position) -> bool {
-        false
-    }
-
-    /// Whether this settlement can work a deposit on the specified tile.
-    fn can_extract(
-        &self,
-        _position: Position,
-        _resource: crate::domain::economy::ResourceType,
-    ) -> bool {
-        false
+        position: Position,
+        requirements: &site::SiteRequirements,
+    ) -> Result<site::SiteEvaluation, TerritoryError> {
+        requirements.evaluate(position, |_| None)
     }
 
     /// Validate placement and atomically reserve an empty structural slot.

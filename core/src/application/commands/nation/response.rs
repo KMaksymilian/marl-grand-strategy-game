@@ -21,7 +21,7 @@ pub enum NationActionError {
     /// Labour is a per-turn capacity of a population, not a stored good.
     LabourIsNotTransferable,
     /// `available` is the treasury after earlier applied actions.
-    InsufficientTreasury { requested: u64, available: u32 },
+    InsufficientTreasury { requested: u64, available: u64 },
     /// `available` is the national stock after earlier actual deliveries.
     InsufficientStock {
         resource: ResourceType,

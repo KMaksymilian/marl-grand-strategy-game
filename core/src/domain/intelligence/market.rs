@@ -26,8 +26,16 @@ impl ObservationStrategy<MarketObservationSource<'_>> for MarketObservation {
                 let (side, unit_price_limit, units) = match offer {
                     TradeOffer::Buy(buy) => {
                         let limit = buy.get_maximum_price_per_unit();
-                        let affordable = source.book.gold().checked_div(limit).unwrap_or(0);
-                        (MarketOfferSide::Buy, limit, remaining.min(affordable))
+                        let affordable = source
+                            .book
+                            .gold()
+                            .checked_div(u64::from(limit))
+                            .unwrap_or(0);
+                        (
+                            MarketOfferSide::Buy,
+                            limit,
+                            affordable.min(u64::from(remaining)) as u32,
+                        )
                     }
                     TradeOffer::Sell(sell) => (
                         MarketOfferSide::Sell,

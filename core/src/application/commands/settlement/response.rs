@@ -95,7 +95,7 @@ pub enum ActionError {
     /// left after the market (funded first) and earlier caravan orders.
     InsufficientGold {
         requested: u64,
-        available: u32,
+        available: u64,
     },
     ProjectIdsExhausted,
     /// An earlier successful action of this decision still claims this target.

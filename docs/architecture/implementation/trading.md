@@ -52,7 +52,7 @@ defined in the [decision contract](settlement_decisions.md); the application han
 | --- | --- |
 | [domain/trade/caravan.rs](../../../core/src/domain/trade/caravan.rs) | `CaravanCargo` owns a funded book before routing; `CaravanReturn` owns its returned book/outcome/log. `Caravan::from_cargo` returns cargo on route failure; `new` returns `Option` without recovering its book. `travel` dispatches outbound/return movement; `finish_trading` mirrors executions and starts return; `abort_trading` marks a missing receiver; `into_return` extracts results. `state`, `position`, `book`, `trades` expose views; public `trade` handles one book outside shared matching. |
 | [domain/world/state.rs](../../../core/src/domain/world/state.rs) | Owns caravans and settlement/province registries. `caravan_travel` advances movement; internal `settlement_ids` supplies registry order and `settlement_mut` resolves persistent instances. |
-| [domain/world/state/trade.rs](../../../core/src/domain/world/state/trade.rs) | `begin_trade_turn` moves/removes caravans, queues returns and turns back missing receivers. `prepare_settlement_turn` supplies sender-sorted arrivals and a map adapter. `capital_trade_locations` reads the registered capital positions. `finish_trade_turn` routes departures or queues unchanged cargo on failure. |
+| [domain/world/state/trade.rs](../../../core/src/domain/world/state/trade.rs) | `begin_trade_turn` moves/removes caravans, queues returns and turns back missing receivers. `prepare_settlement_turn` supplies sender-sorted arrivals and a map adapter. `capital_trade_locations` reads the registered capital positions. `finish_trade_turn` routes each funded cargo and reports its result together with that cargo. |
 | [domain/world/state/construction.rs](../../../core/src/domain/world/state/construction.rs) | `validate_settlement_turn` checks project membership before mutation. |
 | [domain/world/settlement_environment.rs](../../../core/src/domain/world/settlement_environment.rs) | Temporary construction/productivity adapters; Settlement does not receive Map/PathFinder/TerritoryManager directly. |
 | [application/simulation/turn_coordinator.rs](../../../core/src/application/simulation/turn_coordinator.rs) | `step` preflights all settlements, applies decisions, starts transport, runs global phases, routes departures and increments time. |
@@ -73,10 +73,10 @@ selection. Use exactly one whole-world runner for an intended turn.
 | Missing endpoint or A* route | Queue unchanged cargo with `NoRoute`. |
 | Missing receiver on arrival | Start return journey; later report `ReceiverMissing`. |
 | No compatible trades | Normal return with `Traded` and empty executions. |
-| Material capacity exceeded | Storage order decides admission; rejected quantities become inventory losses. |
+| Material capacity exceeded | Storage order decides admission; rejected quantities become inventory losses. Gold is credited separately without a storage limit. |
 
 An applied `CaravanOrdered` action confirms acceptance and funding. The local
-report records realization at the end of the settlement turn. The coordinator
-then adds the route result and sends the caravan or queues its unchanged cargo
-for return. A failed departure remains visible in the outgoing material report
+report records realization at the end of the settlement turn. The world reports
+each cargo together with its route result as it sends the caravan or queues the
+unchanged cargo for return. A failed departure remains visible in the outgoing material report
 and returns on the next turn. Market executions use the host's perspective.

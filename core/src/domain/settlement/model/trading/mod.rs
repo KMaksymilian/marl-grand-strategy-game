@@ -14,14 +14,14 @@ use std::collections::{BTreeMap, HashMap, btree_map::Entry};
 pub struct CaravanOrder {
     pub receiver_id: SettlementId,
     pub offers: HashMap<ResourceType, TradeOffer>,
-    gold: u32,
+    gold: u64,
 }
 
 impl CaravanOrder {
     pub(super) fn funded(
         receiver_id: SettlementId,
         offers: HashMap<ResourceType, TradeOffer>,
-        gold: u32,
+        gold: u64,
     ) -> Self {
         Self {
             receiver_id,

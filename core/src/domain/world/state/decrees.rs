@@ -160,9 +160,7 @@ impl World {
                 // A decree with a state is always in the catalogue: the
                 // catalogue cannot be replaced while any decree has a state.
                 let upkeep = catalog.upkeep(&decree, settlements).unwrap_or(0);
-                let paid = u32::try_from(upkeep)
-                    .ok()
-                    .is_some_and(|upkeep| nation.withdraw_gold(upkeep));
+                let paid = nation.withdraw_gold(upkeep);
                 if paid {
                     report.gold_paid += upkeep;
                     report.paid.push(decree);

@@ -20,7 +20,7 @@ pub struct NationObservation {
     pub tax_rate: f32,
     #[serde(default)]
     pub war_weariness: u8,
-    pub treasury: u32,
+    pub treasury: u64,
     /// National stock, ascending resource; zero amounts are omitted.
     pub stock: ResourceAmounts,
     /// Materials stored in total and the capacity they share. The stock may
@@ -43,7 +43,7 @@ pub struct OwnedSettlementObservation {
     pub settlement_id: SettlementId,
     pub province_id: usize,
     pub population: u32,
-    pub gold: u32,
+    pub gold: u64,
     /// Turns left of the conquest penalty: the settlement pays half the rate.
     pub conquest_turns: u32,
     /// An enemy army stands in the province: the settlement pays no tax.

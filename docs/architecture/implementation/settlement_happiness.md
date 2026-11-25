@@ -17,8 +17,8 @@ population change.
 
 Gold income uses the opening population and unrounded, clamped happiness.
 The final amount is floored once. A population of 1,000 at happiness 50 earns
-1,000 gold. The report distinguishes calculated gold from gold credited if the
-treasury counter is full. The national production tax is a separate operation.
+1,000 gold, all of which is credited to the treasury. The national production
+tax is a separate operation.
 
 Settlements expose current happiness and the last turn's demographic and
 income report. The nation's decree slots use the mean current happiness of its

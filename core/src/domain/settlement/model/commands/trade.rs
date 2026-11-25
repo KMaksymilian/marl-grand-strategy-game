@@ -30,7 +30,7 @@ pub enum TradeCommandError {
     },
     InsufficientGold {
         requested: u64,
-        available: u32,
+        available: u64,
     },
 }
 
@@ -56,6 +56,25 @@ pub(crate) fn offer_units(offers: &HashMap<ResourceType, TradeOffer>) -> u64 {
         .values()
         .map(|offer| u64::from(offer.remaining_units()))
         .sum()
+}
+
+impl TradeCommandError {
+    pub(crate) fn validate_offer_shapes(
+        offers: &HashMap<ResourceType, TradeOffer>,
+    ) -> Result<(), Self> {
+        if offers.contains_key(&ResourceType::Labour) {
+            return Err(Self::LabourIsNotTradable);
+        }
+        if let Some(resource) = offers
+            .iter()
+            .filter(|(_, offer)| offer.remaining_units() == 0)
+            .map(|(resource, _)| resource)
+            .min()
+        {
+            return Err(Self::ZeroUnits(resource.clone()));
+        }
+        Ok(())
+    }
 }
 
 impl Settlement {
@@ -118,7 +137,7 @@ impl Settlement {
     }
 
     pub fn deposit_gold(&mut self, amount: u32) {
-        self.gold_inventory.add(amount);
+        self.gold_inventory.add(u64::from(amount));
     }
 
     /// Replaces the market offers. They stay published until replaced and are
@@ -148,7 +167,7 @@ impl Settlement {
                     });
                 }
             }
-            if self.trade.has_escrowed_gold() && gold > u64::from(self.gold()) {
+            if self.trade.has_escrowed_gold() && gold > self.gold() {
                 return Err(TradeCommandError::InsufficientGold {
                     requested: gold,
                     available: self.gold(),
@@ -213,16 +232,13 @@ impl Settlement {
                 });
             }
         }
-        let available = self
-            .gold()
-            .saturating_sub(u32::try_from(market_gold).unwrap_or(u32::MAX));
-        if gold > u64::from(available) {
+        let available = self.gold().saturating_sub(market_gold);
+        if gold > available {
             return Err(TradeCommandError::InsufficientGold {
                 requested: gold,
                 available,
             });
         }
-        let gold = u32::try_from(gold).expect("budget cannot exceed the treasury");
         assert!(
             self.gold_inventory.consume(gold),
             "gold funding was validated"
@@ -276,22 +292,13 @@ impl Settlement {
         &self,
         offers: &HashMap<ResourceType, TradeOffer>,
     ) -> Result<(), TradeCommandError> {
-        if offers.contains_key(&ResourceType::Labour) {
-            return Err(TradeCommandError::LabourIsNotTradable);
-        }
+        TradeCommandError::validate_offer_shapes(offers)?;
         if let Some(resource) = offers
             .keys()
             .filter(|resource| !self.knows_material(resource))
             .min()
         {
             return Err(TradeCommandError::UnknownMaterial(resource.clone()));
-        }
-        if let Some((resource, _)) = offers
-            .iter()
-            .filter(|(_, offer)| offer.remaining_units() == 0)
-            .min_by_key(|(resource, _)| *resource)
-        {
-            return Err(TradeCommandError::ZeroUnits(resource.clone()));
         }
         Ok(())
     }
@@ -310,7 +317,7 @@ impl Settlement {
 
 /// Read-only trade views.
 impl Settlement {
-    pub fn gold(&self) -> u32 {
+    pub fn gold(&self) -> u64 {
         self.gold_inventory.amount()
     }
 

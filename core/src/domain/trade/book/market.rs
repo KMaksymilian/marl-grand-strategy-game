@@ -96,7 +96,7 @@ impl TradeBook {
                     _ => continue,
                 };
                 if let Some(price) = price
-                    && buyer_gold >= price
+                    && buyer_gold >= u64::from(price)
                 {
                     interest
                         .units
@@ -114,7 +114,7 @@ impl TradeBook {
 
     /// Midpoint unit price, or `None` when the offers cannot match.
     fn price(minimum: u32, maximum: u32) -> Option<u32> {
-        let price = (minimum + maximum) / 2;
+        let price = u32::midpoint(minimum, maximum);
         (minimum <= maximum && price > 0).then_some(price)
     }
 
@@ -123,15 +123,16 @@ impl TradeBook {
         interest: &Interest,
         visitor_count: usize,
         round: usize,
-    ) -> (Vec<u32>, Vec<BTreeMap<ResourceType, u32>>) {
+    ) -> (Vec<u64>, Vec<BTreeMap<ResourceType, u32>>) {
         let mut units = vec![BTreeMap::new(); visitor_count];
         for (resource, visitors) in &interest.units {
             let total = self.offers[resource].remaining_units();
-            for (&visitor, share) in visitors
-                .iter()
-                .zip(Self::split(total, visitors.len(), round))
+            for (&visitor, share) in
+                visitors
+                    .iter()
+                    .zip(Self::split(u64::from(total), visitors.len(), round))
             {
-                units[visitor].insert(resource.clone(), share);
+                units[visitor].insert(resource.clone(), share as u32);
             }
         }
         let mut gold = vec![0; visitor_count];
@@ -147,15 +148,14 @@ impl TradeBook {
     }
 
     /// Splits `total` into `parts` near-equal values; remainders start at `round`.
-    fn split(total: u32, parts: usize, round: usize) -> Vec<u32> {
+    fn split(total: u64, parts: usize, round: usize) -> Vec<u64> {
         if parts == 0 {
             return Vec::new();
         }
-        let parts_u32 = u32::try_from(parts).unwrap_or(u32::MAX);
-        let base = total / parts_u32;
-        let remainder = (total % parts_u32) as usize;
+        let base = total / parts as u64;
+        let remainder = (total % parts as u64) as usize;
         (0..parts)
-            .map(|index| base + u32::from((index + parts - round % parts) % parts < remainder))
+            .map(|index| base + u64::from((index + parts - round % parts) % parts < remainder))
             .collect()
     }
 }
@@ -171,7 +171,7 @@ mod tests {
         executions.iter().map(|execution| execution.units).sum()
     }
 
-    fn book(gold: u32, offers: &[(ResourceType, TradeOffer)]) -> TradeBook {
+    fn book(gold: u64, offers: &[(ResourceType, TradeOffer)]) -> TradeBook {
         TradeBook::new(gold, offers.iter().cloned().collect::<HashMap<_, _>>())
     }
 

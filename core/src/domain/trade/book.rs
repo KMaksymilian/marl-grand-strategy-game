@@ -11,12 +11,12 @@ use std::collections::{BTreeMap, HashMap};
 /// Funded offers available for bilateral trade.
 #[derive(Debug)]
 pub struct TradeBook {
-    gold: u32,
+    gold: u64,
     offers: HashMap<ResourceType, TradeOffer>,
 }
 
 impl TradeBook {
-    pub fn new(gold: u32, offers: HashMap<ResourceType, TradeOffer>) -> Self {
+    pub fn new(gold: u64, offers: HashMap<ResourceType, TradeOffer>) -> Self {
         TradeBook { gold, offers }
     }
 
@@ -25,7 +25,7 @@ impl TradeBook {
         Self::new(0, offers)
     }
 
-    pub fn gold(&self) -> u32 {
+    pub fn gold(&self) -> u64 {
         self.gold
     }
 
@@ -41,7 +41,7 @@ impl TradeBook {
         std::mem::replace(&mut self.offers, offers)
     }
 
-    pub fn add_gold_amount(&mut self, gold_amount: u32) {
+    pub fn add_gold_amount(&mut self, gold_amount: u64) {
         self.gold += gold_amount;
     }
 
@@ -53,22 +53,26 @@ impl TradeBook {
         }
     }
 
-    pub fn calculate_demand(&self) -> (HashMap<ResourceType, u32>, u32) {
-        let mut resource_demands: HashMap<ResourceType, u32> = HashMap::new();
-        let mut gold_demand: u32 = 0;
+    pub fn calculate_demand(&self) -> (HashMap<ResourceType, u32>, u64) {
+        let (goods, gold) = Self::funding_demand(&self.offers);
+        (goods.into_iter().collect(), gold)
+    }
 
-        for (resource_type, offer) in &self.offers {
+    /// Exact sell quantities and full purchase budget before checking the funding limit.
+    pub(crate) fn funding_demand(
+        offers: &HashMap<ResourceType, TradeOffer>,
+    ) -> (BTreeMap<ResourceType, u32>, u64) {
+        let mut goods = BTreeMap::new();
+        let mut gold = 0_u64;
+        for (resource, offer) in offers {
             match offer.calculate_demand() {
-                TradeDemand::Gold(gold_amount) => {
-                    gold_demand = gold_demand.saturating_add(gold_amount)
+                TradeDemand::ResourceType(units) => {
+                    goods.insert(resource.clone(), units);
                 }
-                TradeDemand::ResourceType(resource_amount) => {
-                    *resource_demands.entry(resource_type.clone()).or_default() += resource_amount;
-                }
+                TradeDemand::Gold(budget) => gold = gold.saturating_add(budget),
             }
         }
-
-        (resource_demands, gold_demand)
+        (goods, gold)
     }
 
     /// Goods still held for sale (nonzero entries only).
@@ -97,9 +101,9 @@ impl TradeBook {
             .collect()
     }
 
-    pub fn return_resources(&mut self) -> (HashMap<ResourceType, u32>, u32) {
+    pub fn return_resources(&mut self) -> (HashMap<ResourceType, u32>, u64) {
         let mut returned_resources: HashMap<ResourceType, u32> = HashMap::new();
-        let returned_gold: u32 = std::mem::take(&mut self.gold);
+        let returned_gold: u64 = std::mem::take(&mut self.gold);
 
         for (resource_type, offer) in &mut self.offers {
             match offer {
@@ -120,7 +124,7 @@ impl TradeBook {
     /// Moves `gold` and the given open units into a separate book with the same prices.
     pub(crate) fn take_share(
         &mut self,
-        gold: u32,
+        gold: u64,
         units: &BTreeMap<ResourceType, u32>,
     ) -> TradeBook {
         let gold = gold.min(self.gold);
@@ -151,7 +155,7 @@ impl TradeBook {
 
 impl Default for TradeBook {
     fn default() -> Self {
-        let gold: u32 = 0;
+        let gold: u64 = 0;
         let offers: HashMap<ResourceType, TradeOffer> = HashMap::new();
         Self::new(gold, offers)
     }

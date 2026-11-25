@@ -22,7 +22,7 @@ Diplomacy extends this contract.
 | Tax collection | [domain/world/state/taxation.rs](../../../core/src/domain/world/state/taxation.rs) |
 | Ownership changes, capital succession, extinction, subsidies | [domain/world/state/nations.rs](../../../core/src/domain/world/state/nations.rs) |
 | Decision contract and results | [application/commands/nation/contract.rs](../../../core/src/application/commands/nation/contract.rs), [response.rs](../../../core/src/application/commands/nation/response.rs) |
-| Validation and execution | [preparation.rs](../../../core/src/application/commands/nation/preparation.rs), [handler.rs](../../../core/src/application/commands/nation/handler.rs) |
+| Validation and execution | [handler.rs](../../../core/src/application/commands/nation/handler.rs) |
 | Observation | [queries/nation_observation.rs](../../../core/src/application/queries/nation_observation.rs), [queries/observe_nation.rs](../../../core/src/application/queries/observe_nation.rs) |
 | `DecreeId`, `DecreeEffects`, `DecreeState`, `DecreeBook` | [domain/nation/decree.rs](../../../core/src/domain/nation/decree.rs) |
 | `DecreeCatalog`, `DecreeRules` (loaded from [decrees.toml](../../../decrees.toml)) | [domain/nation/decree_catalog.rs](../../../core/src/domain/nation/decree_catalog.rs) |
@@ -57,8 +57,8 @@ previous owner:
 
 ## Treasury, stock and tax rate
 
-- Treasury: gold, never above `u32::MAX` (`deposit_nation_gold` returns the
-  accepted amount).
+- Treasury: gold uses a 64-bit balance, with no gameplay capacity.
+  `deposit_nation_gold` returns the deposited amount.
 - Stock: one warehouse (`ResourceInventory`, as in settlements) whose single
   capacity, `Nation::STOCK_CAPACITY_PER_SETTLEMENT` (500) × owned settlements,
   is shared by all materials. The registry updates it on every ownership change.
@@ -155,7 +155,7 @@ military levy, army and walls fields wait for their systems.
 | Action | Effect | Errors |
 | --- | --- | --- |
 | `set_tax_rate` | `tax_rate_set` | `invalid_tax_rate` outside 0.0..=1.0, `conflict` for a second rate in the same decision |
-| `subsidize` | `subsidy_delivered` with `gold`, `delivered` and `returned` | `unknown_settlement`, `settlement_not_owned`, `empty_subsidy`, `labour_is_not_transferable`, `insufficient_treasury`, `insufficient_stock`, `settlement_treasury_full` |
+| `subsidize` | `subsidy_delivered` with `gold`, `delivered` and `returned` | `unknown_settlement`, `settlement_not_owned`, `empty_subsidy`, `labour_is_not_transferable`, `insufficient_treasury`, `insufficient_stock` |
 | `enact_decree` | `decree_enacted` with the `upkeep` per active turn | `unknown_decree`, `decree_already_enacted`, `decree_on_cooldown` (`turns_left`), `no_free_decree_slot`, `conflict` for the same decree twice |
 | `revoke_decree` | `decree_revoked` with `cooldown_turns` | `unknown_decree`, `decree_not_active` (also a pending one), `decree_minimum_duration` (`turns_left`), `conflict` |
 
@@ -164,11 +164,11 @@ catalogue is checked by validation (`unknown_decree`), so the contract does not
 change when the file does. Decrees of one decision share the slots: a
 revocation frees its slot for a later enactment of the same decision.
 
-Actions are checked in order and each one is accepted or rejected on its own; a
-rejected action changes and claims nothing. Subsidies of one decision share the
-treasury and stock, so `available` in an error is what earlier accepted subsidies
-left. Materials that do not fit the settlement's warehouse stay in the national
-stock (`returned`): a subsidy neither creates nor destroys goods.
+Each action is checked and executed on the live state after the previous one.
+A rejected action changes and claims nothing. Later subsidies can use the
+materials that an earlier recipient could not store. The result reports those
+materials as `returned`, and the national stock is debited only for what the
+settlement actually received.
 
 ## Global turn
 

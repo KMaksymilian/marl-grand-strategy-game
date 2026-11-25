@@ -1,4 +1,4 @@
-//! Agent decision validation against the authoritative world (read-only).
+//! Ordered agent decision execution against the authoritative world.
 use crate::test_support::material;
 use simulation_core::buildings::Building;
 use simulation_core::buildings::catalog::BuildingCatalog;
@@ -7,18 +7,15 @@ use simulation_core::economy::storage_order::StorageOrderError;
 use simulation_core::economy::{ResourceCatalog, ResourceType};
 use simulation_core::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
 use simulation_core::settlement::Settlement;
-use simulation_core::settlement::command::SettlementCommand;
 use simulation_core::settlement::decision::{
-    ActionEffect, ActionError, ActionKind, OfferSide, OfferSpec, RejectedAction, SettlementAction,
-    SettlementDecision,
+    ActionEffect, ActionError, ActionKind, ActionOutcome, DecisionOutcome, OfferSide, OfferSpec,
+    RejectedAction, SettlementAction, SettlementDecision,
 };
-use simulation_core::settlement::projects::ProjectCost;
+use simulation_core::settlement::projects::{ProjectCost, ProjectResult};
 use simulation_core::trade::offer::TradeOffer;
 use simulation_core::world::pathfinding::path_finder::PathFinder;
 use simulation_core::world::territory::TileOccupancy;
-use simulation_core::world::{
-    Map, Position, Province, ValidatedDecision, World, WorldError, terrain::area::Area,
-};
+use simulation_core::world::{Map, Position, Province, World, WorldError, terrain::area::Area};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -106,22 +103,48 @@ fn world_with_farm_load(load: f32) -> World {
     world
 }
 
-fn validate(world: &World, actions: Vec<SettlementAction>) -> ValidatedDecision {
+fn apply(world: &mut World, actions: Vec<SettlementAction>) -> DecisionOutcome {
     world
-        .validate_decision(&SettlementDecision::new(ME, actions))
+        .apply_decision(&SettlementDecision::new(ME, actions))
         .unwrap()
 }
 
-fn errors(result: &ValidatedDecision) -> Vec<(usize, ActionError)> {
+fn rejections(result: &DecisionOutcome) -> Vec<RejectedAction> {
     result
-        .rejected
+        .results
         .iter()
-        .map(|rejection| (rejection.index, rejection.error.clone()))
+        .filter_map(|result| match &result.outcome {
+            ActionOutcome::Applied { .. } => None,
+            ActionOutcome::Rejected { error } => Some(RejectedAction {
+                index: result.index,
+                kind: result.kind,
+                error: error.clone(),
+            }),
+        })
         .collect()
 }
 
-fn accepted_indices(result: &ValidatedDecision) -> Vec<usize> {
-    result.accepted.iter().map(|action| action.index).collect()
+fn errors(result: &DecisionOutcome) -> Vec<(usize, ActionError)> {
+    rejections(result)
+        .into_iter()
+        .map(|rejection| (rejection.index, rejection.error))
+        .collect()
+}
+
+fn accepted_indices(result: &DecisionOutcome) -> Vec<usize> {
+    result
+        .results
+        .iter()
+        .filter(|result| result.is_applied())
+        .map(|result| result.index)
+        .collect()
+}
+
+fn effect(result: &DecisionOutcome, index: usize) -> &ActionEffect {
+    match &result.results[index].outcome {
+        ActionOutcome::Applied { effect } => effect,
+        other => panic!("{other:?}"),
+    }
 }
 
 fn construct(building_type: &str, position: Position) -> SettlementAction {
@@ -175,9 +198,9 @@ fn second_farm_with_load(world: &mut World, load: f32) -> BuildingId {
 
 #[test]
 fn construction_and_upgrade_use_catalog_costs_and_new_project_ids() {
-    let world = world();
-    let result = validate(
-        &world,
+    let mut world = world();
+    let result = apply(
+        &mut world,
         vec![
             construct("farm", at(1, 0)),
             SettlementAction::Upgrade {
@@ -186,58 +209,45 @@ fn construction_and_upgrade_use_catalog_costs_and_new_project_ids() {
             },
         ],
     );
-    assert!(result.rejected.is_empty(), "{:?}", result.rejected);
-    let effects: Vec<_> = result
-        .accepted
-        .iter()
-        .map(|action| action.effect.clone())
-        .collect();
     assert_eq!(
-        effects,
-        vec![
-            ActionEffect::ProjectQueued {
+        [effect(&result, 0), effect(&result, 1)],
+        [
+            &ActionEffect::ProjectQueued {
                 project_id: ProjectId(1)
             },
-            ActionEffect::ProjectQueued {
+            &ActionEffect::ProjectQueued {
                 project_id: ProjectId(2)
             },
         ]
     );
-    match &result.accepted[0].command {
-        SettlementCommand::Construct {
-            project_id,
+    let projects = world.settlement(ME).unwrap().active_projects();
+    match projects[0].result() {
+        ProjectResult::ConstructBuilding {
             position,
             definition,
-            cost,
         } => {
-            assert_eq!(*project_id, ProjectId(1));
             assert_eq!(*position, at(1, 0));
             assert_eq!(definition.id(), "farm");
-            assert_eq!(
-                cost.needed_resources,
-                HashMap::from([(material("wood"), 2)])
-            );
-            assert_eq!(cost.turn_cost, 3);
         }
         other => panic!("{other:?}"),
     }
-    match &result.accepted[1].command {
-        SettlementCommand::Upgrade {
-            project_id,
-            building_id,
-            definition,
-            cost,
+    match projects[1].result() {
+        ProjectResult::UpgradeBuilding {
+            target_instance_id,
+            new_definition,
         } => {
-            assert_eq!(*project_id, ProjectId(2));
-            assert_eq!(*building_id, FARM);
-            assert_eq!(definition.id(), "big_farm");
-            assert_eq!(
-                cost.needed_resources,
-                HashMap::from([(material("wood"), 5)])
-            );
-            assert_eq!(cost.turn_cost, 4);
+            assert_eq!(*target_instance_id, FARM);
+            assert_eq!(new_definition.id(), "big_farm");
         }
         other => panic!("{other:?}"),
+    }
+    for (project, wood, turns) in [(&projects[0], 2, 3), (&projects[1], 5, 4)] {
+        let cost = project.remaining_cost();
+        assert_eq!(
+            cost.needed_resources,
+            HashMap::from([(material("wood"), wood)])
+        );
+        assert_eq!(cost.turn_cost, turns);
     }
 }
 
@@ -249,14 +259,13 @@ fn project_ids_continue_after_earlier_and_canceled_projects() {
         .queue_construction(ME, ProjectId(7), at(1, 0), farm, ProjectCost::default())
         .unwrap();
     world.cancel_project(ME, ProjectId(7)).unwrap();
-    let result = validate(&world, vec![construct("farm", at(1, 0))]);
-    assert!(matches!(
-        result.accepted[0].command,
-        SettlementCommand::Construct {
+    let result = apply(&mut world, vec![construct("farm", at(1, 0))]);
+    assert_eq!(
+        effect(&result, 0),
+        &ActionEffect::ProjectQueued {
             project_id: ProjectId(8),
-            ..
         }
-    ));
+    );
 }
 
 #[test]
@@ -266,8 +275,8 @@ fn construction_sites_follow_placement_and_ownership_rules() {
     world
         .queue_construction(ME, ProjectId(3), at(0, 1), farm, ProjectCost::default())
         .unwrap();
-    let result = validate(
-        &world,
+    let result = apply(
+        &mut world,
         vec![
             construct("castle", at(1, 0)),
             construct("farm", at(9, 9)),
@@ -279,7 +288,7 @@ fn construction_sites_follow_placement_and_ownership_rules() {
             construct("farm", at(0, 1)),
         ],
     );
-    assert!(result.accepted.is_empty());
+    assert!(accepted_indices(&result).is_empty());
     assert_eq!(
         errors(&result),
         vec![
@@ -307,9 +316,9 @@ fn construction_sites_follow_placement_and_ownership_rules() {
 
 #[test]
 fn assets_of_other_settlements_cannot_be_targeted() {
-    let world = world();
-    let result = validate(
-        &world,
+    let mut world = world();
+    let result = apply(
+        &mut world,
         vec![
             SettlementAction::Upgrade {
                 building_id: NEIGHBOUR_FARM,
@@ -350,8 +359,8 @@ fn assets_of_other_settlements_cannot_be_targeted() {
 fn worker_requests_respect_building_capacity_and_population() {
     let mut world = world();
     let second = second_farm(&mut world);
-    let result = validate(
-        &world,
+    let result = apply(
+        &mut world,
         vec![
             workers(FARM, 5),
             workers(FARM, 4),
@@ -380,11 +389,8 @@ fn worker_requests_respect_building_capacity_and_population() {
         ]
     );
     assert_eq!(accepted_indices(&result), vec![1, 3]);
-    for (action, expected) in result.accepted.iter().zip([4, 1]) {
-        let SettlementCommand::SetBuildingStaff { load, .. } = action.command else {
-            panic!("{:?}", action.command);
-        };
-        assert_eq!(Building::workers_at_load(4, load), expected);
+    for (building, expected) in world.settlement(ME).unwrap().buildings().zip([4, 1]) {
+        assert_eq!(building.requested_workers(), expected);
     }
 }
 
@@ -393,10 +399,10 @@ fn staff_can_be_reduced_when_buildings_already_ask_for_too_many() {
     let mut world = world_with_farm_load(1.0);
     let second = second_farm_with_load(&mut world, 1.0);
     // 8 requested workers for a population of 5.
-    let result = validate(&world, vec![workers(FARM, 3), workers(second, 4)]);
-    assert!(result.rejected.is_empty(), "{:?}", result.rejected);
-    let result = validate(&world, vec![workers(FARM, 0), workers(second, 4)]);
-    assert!(result.rejected.is_empty(), "{:?}", result.rejected);
+    let result = apply(&mut world, vec![workers(FARM, 3), workers(second, 4)]);
+    assert!(errors(&result).is_empty(), "{result:?}");
+    let result = apply(&mut world, vec![workers(FARM, 0), workers(second, 4)]);
+    assert!(errors(&result).is_empty(), "{result:?}");
 }
 
 #[test]
@@ -411,8 +417,8 @@ fn upgrades_need_an_own_building_a_new_type_and_no_running_upgrade() {
         building_id,
         building_type: BuildingTypeId::new(building_type),
     };
-    let result = validate(
-        &world,
+    let result = apply(
+        &mut world,
         vec![
             upgrade(FARM, "farm"),
             upgrade(second, "big_farm"),
@@ -458,7 +464,7 @@ fn only_active_own_projects_can_be_canceled() {
     let cancel = |id| SettlementAction::CancelProject {
         project_id: ProjectId(id),
     };
-    let result = validate(&world, vec![cancel(4), cancel(3)]);
+    let result = apply(&mut world, vec![cancel(4), cancel(3)]);
     assert_eq!(
         errors(&result),
         vec![(
@@ -468,15 +474,18 @@ fn only_active_own_projects_can_be_canceled() {
             }
         )]
     );
-    assert!(matches!(
-        result.accepted[0].command,
-        SettlementCommand::CancelProject(ProjectId(3))
-    ));
+    assert_eq!(
+        effect(&result, 1),
+        &ActionEffect::ProjectCanceled {
+            project_id: ProjectId(3)
+        }
+    );
+    assert!(world.settlement(ME).unwrap().active_projects().is_empty());
 }
 
 #[test]
 fn storage_orders_use_the_engine_rule() {
-    let world = world();
+    let mut world = world();
     let order = |order: Vec<ResourceType>| SettlementAction::SetStorageOrder { order };
     for (materials, error) in [
         (
@@ -497,14 +506,14 @@ fn storage_orders_use_the_engine_rule() {
             StorageOrderError::LabourIsNotMaterial,
         ),
     ] {
-        let result = validate(&world, vec![order(materials)]);
+        let result = apply(&mut world, vec![order(materials)]);
         assert_eq!(
             errors(&result),
             vec![(0, ActionError::InvalidStorageOrder { error })]
         );
     }
-    let result = validate(
-        &world,
+    let result = apply(
+        &mut world,
         vec![order(
             [material("grain"), material("stone"), material("wood")]
                 .into_iter()
@@ -512,12 +521,12 @@ fn storage_orders_use_the_engine_rule() {
                 .collect(),
         )],
     );
-    assert!(result.rejected.is_empty());
+    assert!(errors(&result).is_empty(), "{result:?}");
 }
 
 #[test]
 fn market_offers_are_checked_and_resolved_to_fresh_offers() {
-    let world = world();
+    let mut world = world();
     for (offers, error) in [
         (
             vec![offer(ResourceType::Labour, OfferSide::Sell, 1, 1)],
@@ -539,39 +548,35 @@ fn market_offers_are_checked_and_resolved_to_fresh_offers() {
             },
         ),
     ] {
-        let result = validate(&world, vec![publish(offers)]);
+        let result = apply(&mut world, vec![publish(offers)]);
         assert_eq!(errors(&result), vec![(0, error)]);
     }
     // Market offers are not limited by stock: each turn reserves what is available.
-    let result = validate(
-        &world,
+    let result = apply(
+        &mut world,
         vec![publish(vec![
             offer(material("wood"), OfferSide::Sell, 500, 2),
             offer(material("stone"), OfferSide::Buy, 4, 3),
         ])],
     );
-    let SettlementCommand::PublishMarketOffers(offers) = &result.accepted[0].command else {
-        panic!("{:?}", result.accepted);
-    };
+    assert_eq!(effect(&result, 0), &ActionEffect::MarketOffersPublished);
     assert_eq!(
-        offers,
+        world.settlement(ME).unwrap().market_offers(),
         &HashMap::from([
             (material("wood"), TradeOffer::sell(500, 2)),
             (material("stone"), TradeOffer::buy(4, 3))
         ])
     );
-    let result = validate(&world, vec![SettlementAction::ClearMarketOffers]);
-    assert!(matches!(
-        result.accepted[0].command,
-        SettlementCommand::ClearMarketOffers
-    ));
+    let result = apply(&mut world, vec![SettlementAction::ClearMarketOffers]);
+    assert_eq!(effect(&result, 0), &ActionEffect::MarketOffersCleared);
+    assert!(world.settlement(ME).unwrap().market_offers().is_empty());
 }
 
 #[test]
 fn caravans_need_a_receiver_and_enough_stock_and_gold_together() {
-    let world = world();
-    let result = validate(
-        &world,
+    let mut world = world();
+    let result = apply(
+        &mut world,
         vec![
             caravan(NEIGHBOUR, vec![]),
             caravan(ME, vec![offer(material("wood"), OfferSide::Sell, 1, 1)]),
@@ -651,12 +656,12 @@ fn world_with_market(offers: Vec<OfferSpec>) -> World {
 #[test]
 fn caravans_get_only_what_the_published_market_leaves() {
     // Stock: Wood 10, gold 20. The market reserves 7 Wood and 4 Ã— 3 = 12 gold first.
-    let world = world_with_market(vec![
+    let mut world = world_with_market(vec![
         offer(material("wood"), OfferSide::Sell, 7, 1),
         offer(material("stone"), OfferSide::Buy, 4, 3),
     ]);
-    let result = validate(
-        &world,
+    let result = apply(
+        &mut world,
         vec![
             caravan(
                 NEIGHBOUR,
@@ -701,7 +706,7 @@ fn caravans_get_only_what_the_published_market_leaves() {
 
 #[test]
 fn a_market_action_in_the_same_decision_changes_what_caravans_get() {
-    let world = world_with_market(vec![offer(material("wood"), OfferSide::Sell, 10, 1)]);
+    let mut world = world_with_market(vec![offer(material("wood"), OfferSide::Sell, 10, 1)]);
     let caravan_wood = |units| {
         caravan(
             NEIGHBOUR,
@@ -709,13 +714,14 @@ fn a_market_action_in_the_same_decision_changes_what_caravans_get() {
         )
     };
     // Clearing or shrinking the market first frees its stock for caravans.
-    let result = validate(
-        &world,
+    let result = apply(
+        &mut world,
         vec![SettlementAction::ClearMarketOffers, caravan_wood(10)],
     );
-    assert!(result.rejected.is_empty(), "{:?}", result.rejected);
-    let result = validate(
-        &world,
+    assert!(errors(&result).is_empty(), "{result:?}");
+    let mut world = world_with_market(vec![offer(material("wood"), OfferSide::Sell, 10, 1)]);
+    let result = apply(
+        &mut world,
         vec![
             publish(vec![offer(material("wood"), OfferSide::Sell, 6, 1)]),
             caravan_wood(4),
@@ -737,9 +743,9 @@ fn a_market_action_in_the_same_decision_changes_what_caravans_get() {
 
 #[test]
 fn a_later_market_action_cannot_take_what_caravans_were_promised() {
-    let world = world();
-    let result = validate(
-        &world,
+    let mut world = world();
+    let result = apply(
+        &mut world,
         vec![
             caravan(
                 NEIGHBOUR,
@@ -779,8 +785,9 @@ fn a_later_market_action_cannot_take_what_caravans_were_promised() {
     );
     // Exactly what is left is fine; markets without competing caravans stay unlimited.
     assert_eq!(accepted_indices(&result), vec![0, 1, 4]);
-    let result = validate(
-        &world,
+    let mut world = self::world();
+    let result = apply(
+        &mut world,
         vec![publish(vec![offer(
             material("wood"),
             OfferSide::Sell,
@@ -788,7 +795,7 @@ fn a_later_market_action_cannot_take_what_caravans_were_promised() {
             1,
         )])],
     );
-    assert!(result.rejected.is_empty());
+    assert!(errors(&result).is_empty(), "{result:?}");
 }
 
 #[test]
@@ -802,8 +809,8 @@ fn caravans_queued_earlier_in_the_turn_count_too() {
         )],
     );
     assert!(world.apply_decision(&earlier).unwrap().results[0].is_applied());
-    let result = validate(
-        &world,
+    let result = apply(
+        &mut world,
         vec![caravan(
             NEIGHBOUR,
             vec![offer(material("wood"), OfferSide::Sell, 3, 1)],
@@ -824,9 +831,9 @@ fn caravans_queued_earlier_in_the_turn_count_too() {
 
 #[test]
 fn caravans_must_carry_goods_or_gold() {
-    let world = world();
-    let result = validate(
-        &world,
+    let mut world = world();
+    let result = apply(
+        &mut world,
         vec![
             caravan(
                 NEIGHBOUR,
@@ -862,8 +869,8 @@ fn later_actions_on_the_same_target_are_conflicts() {
             .chain(ResourceCatalog::standard().materials()[3..].iter().cloned())
             .collect(),
     };
-    let result = validate(
-        &world,
+    let result = apply(
+        &mut world,
         vec![
             construct("farm", at(1, 0)),
             construct("big_farm", at(1, 0)),
@@ -894,10 +901,47 @@ fn later_actions_on_the_same_target_are_conflicts() {
 }
 
 #[test]
+fn canceling_a_new_project_releases_its_claim_in_the_same_decision() {
+    let mut world = world();
+    let site = at(1, 0);
+    let upgrade = SettlementAction::Upgrade {
+        building_id: FARM,
+        building_type: BuildingTypeId::new("big_farm"),
+    };
+    let result = apply(
+        &mut world,
+        vec![
+            construct("farm", site),
+            SettlementAction::CancelProject {
+                project_id: ProjectId(1),
+            },
+            construct("big_farm", site),
+            upgrade.clone(),
+            SettlementAction::CancelProject {
+                project_id: ProjectId(3),
+            },
+            upgrade,
+        ],
+    );
+    assert_eq!(accepted_indices(&result), vec![0, 1, 2, 3, 4, 5]);
+    let projects = world.settlement(ME).unwrap().active_projects();
+    assert_eq!(
+        projects
+            .iter()
+            .map(|project| project.id())
+            .collect::<Vec<_>>(),
+        vec![ProjectId(2), ProjectId(4)]
+    );
+    assert!(matches!(world.tile_at(site).unwrap().occupancy(),
+        TileOccupancy::Construction(reference) if reference.project_id == ProjectId(2)
+    ));
+}
+
+#[test]
 fn rejected_actions_claim_nothing() {
-    let world = world();
-    let result = validate(
-        &world,
+    let mut world = world();
+    let result = apply(
+        &mut world,
         vec![
             construct("castle", at(1, 0)),
             construct("farm", at(1, 1)),
@@ -908,18 +952,17 @@ fn rejected_actions_claim_nothing() {
     );
     assert_eq!(accepted_indices(&result), vec![2, 4]);
     // The rejected constructions did not use up a project ID.
-    assert!(matches!(
-        result.accepted[0].command,
-        SettlementCommand::Construct {
+    assert_eq!(
+        effect(&result, 2),
+        &ActionEffect::ProjectQueued {
             project_id: ProjectId(1),
-            ..
         }
-    ));
+    );
 }
 
 #[test]
 fn every_action_is_either_accepted_or_rejected_in_order_and_deterministically() {
-    let world = world();
+    let mut world = world();
     let actions = vec![
         workers(FARM, 2),
         construct("farm", at(3, 0)),
@@ -932,10 +975,10 @@ fn every_action_is_either_accepted_or_rejected_in_order_and_deterministically() 
         },
         SettlementAction::ClearMarketOffers,
     ];
-    let result = validate(&world, actions.clone());
+    let result = apply(&mut world, actions.clone());
     assert_eq!(accepted_indices(&result), vec![0, 2, 4]);
     assert_eq!(
-        result.rejected,
+        rejections(&result),
         vec![
             RejectedAction {
                 index: 1,
@@ -951,13 +994,13 @@ fn every_action_is_either_accepted_or_rejected_in_order_and_deterministically() 
             },
         ]
     );
-    let again = validate(&world, actions);
-    assert_eq!(format!("{again:?}"), format!("{result:?}"));
+    let again = apply(&mut self::world(), actions);
+    assert_eq!(again, result);
 }
 
 #[test]
-fn validation_leaves_the_world_unchanged() {
-    let world = world();
+fn rejected_actions_leave_the_world_unchanged() {
+    let mut world = world();
     let snapshot = |world: &World| {
         let me = world.settlement(ME).unwrap();
         format!(
@@ -975,25 +1018,22 @@ fn validation_leaves_the_world_unchanged() {
         )
     };
     let before = snapshot(&world);
-    let result = validate(
-        &world,
+    let result = apply(
+        &mut world,
         vec![
-            construct("farm", at(1, 0)),
-            workers(FARM, 4),
+            construct("farm", at(0, 0)),
+            workers(FARM, 5),
             SettlementAction::SetStorageOrder {
-                order: [material("grain"), material("stone"), material("wood")]
-                    .into_iter()
-                    .chain(ResourceCatalog::standard().materials()[3..].iter().cloned())
-                    .collect(),
+                order: vec![material("wood")],
             },
-            publish(vec![offer(material("wood"), OfferSide::Sell, 1, 1)]),
+            publish(vec![offer(material("wood"), OfferSide::Sell, 0, 1)]),
             caravan(
                 NEIGHBOUR,
-                vec![offer(material("wood"), OfferSide::Sell, 1, 1)],
+                vec![offer(material("wood"), OfferSide::Sell, 11, 1)],
             ),
         ],
     );
-    assert_eq!(result.accepted.len(), 5);
+    assert_eq!(errors(&result).len(), 5);
     assert_eq!(snapshot(&world), before);
     assert_eq!(
         world.tile_at(at(1, 0)).unwrap().occupancy(),
@@ -1003,20 +1043,23 @@ fn validation_leaves_the_world_unchanged() {
 
 #[test]
 fn a_decision_of_an_unknown_settlement_is_rejected_as_a_whole() {
-    let world = world();
+    let mut world = world();
     let decision = SettlementDecision::new(SettlementId(99), vec![workers(FARM, 1)]);
     assert!(matches!(
-        world.validate_decision(&decision),
+        world.apply_decision(&decision),
         Err(WorldError::MissingSettlement(SettlementId(99)))
     ));
 }
 
 #[test]
 fn rejections_serialize_for_agents() {
-    let world = world();
-    let result = validate(&world, vec![construct("farm", at(0, 0)), workers(FARM, 5)]);
+    let mut world = world();
+    let result = apply(
+        &mut world,
+        vec![construct("farm", at(0, 0)), workers(FARM, 5)],
+    );
     assert_eq!(
-        serde_json::to_value(&result.rejected).unwrap(),
+        serde_json::to_value(rejections(&result)).unwrap(),
         serde_json::json!([
             {"index": 0, "kind": "construct",
              "error": {"reason": "tile_occupied", "position": {"x": 0, "y": 0}}},

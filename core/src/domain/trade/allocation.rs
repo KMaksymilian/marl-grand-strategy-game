@@ -13,7 +13,7 @@ impl TradeAllocationEngine {
         book: &mut TradeBook,
         gold_inventory: &mut GoldInventory,
         inventory: &mut ResourceInventory,
-        demands: (HashMap<ResourceType, u32>, u32),
+        demands: (HashMap<ResourceType, u32>, u64),
     ) {
         let (resource_demands, gold_demand) = demands;
 
@@ -30,10 +30,10 @@ impl TradeAllocationEngine {
     fn execute_gold_allocation(
         book: &mut TradeBook,
         gold_inventory: &mut GoldInventory,
-        gold_demand: u32,
+        gold_demand: u64,
     ) {
         if !gold_inventory.consume(gold_demand) {
-            let gold_amount: u32 = gold_inventory.consume_available();
+            let gold_amount: u64 = gold_inventory.consume_available();
             book.add_gold_amount(gold_amount);
         } else {
             book.add_gold_amount(gold_demand);
@@ -43,7 +43,7 @@ impl TradeAllocationEngine {
     pub fn execute_remained_resources(
         gold_inventory: &mut GoldInventory,
         inventory: &mut ResourceInventory,
-        returned: (HashMap<ResourceType, u32>, u32),
+        returned: (HashMap<ResourceType, u32>, u64),
     ) {
         let (returned_resources, returned_gold) = returned;
         gold_inventory.add(returned_gold);

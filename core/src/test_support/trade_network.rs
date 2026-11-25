@@ -20,10 +20,13 @@ impl TradeNetwork {
         }
         world.begin_trade_turn();
         let mut reports = Vec::with_capacity(ids.len());
-        for id in ids {
+        for &id in &ids {
             reports.push(world.process_settlement_turn_for_test(id, finder)?);
         }
-        world.finish_trade_turn(locations, finder);
+        let mut routes = world.finish_trade_turn(locations, finder);
+        for (id, report) in ids.into_iter().zip(&mut reports) {
+            report.trade.caravans_dispatched = routes.remove(&id).unwrap_or_default();
+        }
         Ok(reports)
     }
 }
@@ -32,7 +35,9 @@ impl TradeNetwork {
 mod tests {
     use super::*;
     use crate::domain::settlement::Settlement;
-    use crate::domain::settlement::turn_report::{InventoryLoss, InventoryLossStage};
+    use crate::domain::settlement::turn_report::{
+        CaravanDepartureRoute, InventoryLoss, InventoryLossStage,
+    };
     use crate::domain::trade::caravan::{CaravanOutcome, CaravanState};
     use crate::domain::trade::execution::{TradeExecution, TradeSide};
     use crate::domain::trade::offer::TradeOffer;
@@ -234,7 +239,7 @@ mod tests {
                 .unwrap();
         }
 
-        // Turn 1 funds the caravan, emptying the warehouse; refill it while it travels.
+        // Turn 1 dispatches the already funded caravan; refill the warehouse while it travels.
         let first = TradeNetwork::process_turn(&mut world, &locations, &mut finder).unwrap();
         assert_eq!(first[0].inventory.trade_reserved[&material("stone")], 10);
         world
@@ -274,7 +279,7 @@ mod tests {
         let mut finder = PathFinder::new(WIDTH, HEIGHT);
         let locations = HashMap::from([(SettlementId(1), Point(0, 0))]);
         let mut sender = settlement(1, 100);
-        sender.deposit_gold(30);
+        sender.deposit_gold(60);
         sender
             .order_caravan(
                 SettlementId(2),
@@ -294,18 +299,28 @@ mod tests {
         }
 
         let first = TradeNetwork::process_turn(&mut world, &locations, &mut finder).unwrap();
-        assert_eq!(first[0].trade.caravans_dispatched.len(), 1);
+        assert_eq!(first[0].trade.caravans_dispatched.len(), 2);
+        assert!(first[0].trade.unfunded_caravan_orders.is_empty());
         assert_eq!(
-            first[0].trade.unfunded_caravan_orders,
-            vec![SettlementId(9)]
+            first[0]
+                .trade
+                .caravans_dispatched
+                .iter()
+                .map(|cargo| cargo.route)
+                .collect::<Vec<_>>(),
+            vec![
+                Some(CaravanDepartureRoute::NoRoute),
+                Some(CaravanDepartureRoute::ReceiverMissing)
+            ]
         );
         assert!(world.caravans.is_empty());
 
         let second = TradeNetwork::process_turn(&mut world, &locations, &mut finder).unwrap();
         let returned = &second[0].trade.caravans_returned;
-        assert_eq!(returned.len(), 1);
+        assert_eq!(returned.len(), 2);
         assert_eq!(returned[0].outcome, CaravanOutcome::NoRoute);
-        assert_eq!(world.settlement(SettlementId(1)).unwrap().gold(), 30);
+        assert_eq!(returned[1].outcome, CaravanOutcome::ReceiverMissing);
+        assert_eq!(world.settlement(SettlementId(1)).unwrap().gold(), 60);
     }
 
     #[test]

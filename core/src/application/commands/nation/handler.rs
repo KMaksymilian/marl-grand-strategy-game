@@ -1,90 +1,151 @@
-//! Applies validated nation decisions through World's national operations.
+//! Applies nation actions in submission order against the authoritative world.
 use super::contract::{
-    NationActionEffect, NationActionError, NationActionOutcome, NationActionResult, NationDecision,
-    NationDecisionOutcome,
+    NationAction, NationActionEffect, NationActionError, NationActionOutcome, NationActionResult,
+    NationDecision, NationDecisionOutcome,
 };
-use super::preparation::{NationCommand, validate_nation_decision};
 use crate::domain::ids::NationId;
-use crate::domain::world::{World, WorldError};
+use crate::domain::nation::{Nation, decree::DecreeId};
+use crate::domain::world::{NationOperationError, World, WorldError};
+use std::collections::BTreeMap;
 
-/// Validates the decision, then executes the accepted actions in submission
-/// order. Fails as a whole only for an unknown nation; then nothing changes.
+/// Policies and decrees that a decision may change once.
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+enum Target<'a> {
+    TaxRate,
+    Decree(&'a DecreeId),
+}
+
+impl<'a> Target<'a> {
+    fn of(action: &'a NationAction) -> Option<Self> {
+        match action {
+            NationAction::SetTaxRate { rate } if Nation::is_valid_tax_rate(*rate) => {
+                Some(Self::TaxRate)
+            }
+            NationAction::EnactDecree { decree } | NationAction::RevokeDecree { decree } => {
+                Some(Self::Decree(decree))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Each applied action becomes visible to the next. Rejected actions claim no target.
 pub(crate) fn handle_nation_decision(
     world: &mut World,
     decision: &NationDecision,
 ) -> Result<NationDecisionOutcome, WorldError> {
-    // Step 1: read-only validation of the whole decision.
-    let validated = validate_nation_decision(world, decision)?;
-    let nation_id = validated.nation_id;
-    // Step 2: rejected actions become results right away; they changed nothing.
-    let mut results: Vec<_> = validated
-        .rejected
-        .into_iter()
-        .map(|rejected| NationActionResult {
-            index: rejected.index,
-            kind: rejected.kind,
-            outcome: NationActionOutcome::Rejected {
-                error: rejected.error,
-            },
-        })
-        .collect();
-    // Step 3: accepted actions run in submission order. A failure here means the
-    // validator and World disagree: debug builds panic to expose the bug,
-    // release builds report `execution_failed` for that action.
-    for (index, command) in validated.accepted {
-        let outcome = match execute(world, nation_id, command) {
-            Ok(effect) => NationActionOutcome::Applied { effect },
-            Err(error) => {
-                debug_assert!(false, "validated nation action failed: {error:?}");
+    let nation_id = decision.nation_id;
+    world
+        .nation(nation_id)
+        .ok_or(WorldError::MissingNation(nation_id))?;
+
+    let mut claims = BTreeMap::new();
+    let mut results = Vec::with_capacity(decision.actions.len());
+    for (index, action) in decision.actions.iter().enumerate() {
+        let target = Target::of(action);
+        let outcome =
+            if let Some(with_index) = target.and_then(|target| claims.get(&target).copied()) {
                 NationActionOutcome::Rejected {
-                    error: NationActionError::ExecutionFailed,
+                    error: NationActionError::Conflict { with_index },
                 }
-            }
-        };
+            } else {
+                match execute(world, nation_id, action) {
+                    Ok(effect) => {
+                        if let Some(target) = target {
+                            claims.insert(target, index);
+                        }
+                        NationActionOutcome::Applied { effect }
+                    }
+                    Err(error) => NationActionOutcome::Rejected {
+                        error: report_error(error)?,
+                    },
+                }
+            };
         results.push(NationActionResult {
             index,
-            kind: decision.actions[index].kind(),
+            kind: action.kind(),
             outcome,
         });
     }
-    // One result per submitted action, in the agent's original order.
-    results.sort_by_key(|result| result.index);
     Ok(NationDecisionOutcome { nation_id, results })
 }
 
 fn execute(
     world: &mut World,
     nation_id: NationId,
-    command: NationCommand,
-) -> Result<NationActionEffect, WorldError> {
-    match command {
-        NationCommand::SetTaxRate(rate) => {
-            world.set_tax_rate(nation_id, rate)?;
-            Ok(NationActionEffect::TaxRateSet { rate })
+    action: &NationAction,
+) -> Result<NationActionEffect, NationOperationError> {
+    match action {
+        NationAction::SetTaxRate { rate } => {
+            world.set_tax_rate(nation_id, *rate)?;
+            Ok(NationActionEffect::TaxRateSet { rate: *rate })
         }
-        NationCommand::Subsidize {
+        NationAction::Subsidize {
             settlement_id,
             gold,
             resources,
         } => {
-            let transfer = world.subsidize(nation_id, settlement_id, gold, &resources)?;
+            let transfer = world.subsidize(nation_id, *settlement_id, *gold, resources)?;
             Ok(NationActionEffect::SubsidyDelivered {
-                settlement_id,
+                settlement_id: *settlement_id,
                 gold: transfer.gold,
                 delivered: transfer.delivered,
                 returned: transfer.returned,
             })
         }
-        NationCommand::EnactDecree(decree) => {
+        NationAction::EnactDecree { decree } => {
             let upkeep = world.enact_decree(nation_id, decree.clone())?;
-            Ok(NationActionEffect::DecreeEnacted { decree, upkeep })
+            Ok(NationActionEffect::DecreeEnacted {
+                decree: decree.clone(),
+                upkeep,
+            })
         }
-        NationCommand::RevokeDecree(decree) => {
-            let cooldown_turns = world.revoke_decree(nation_id, &decree)?;
+        NationAction::RevokeDecree { decree } => {
+            let cooldown_turns = world.revoke_decree(nation_id, decree)?;
             Ok(NationActionEffect::DecreeRevoked {
-                decree,
+                decree: decree.clone(),
                 cooldown_turns,
             })
         }
     }
+}
+
+fn report_error(error: NationOperationError) -> Result<NationActionError, WorldError> {
+    use NationActionError as Action;
+    use NationOperationError as Domain;
+
+    Ok(match error {
+        Domain::MissingNation(nation_id) => return Err(WorldError::MissingNation(nation_id)),
+        Domain::InvalidTaxRate(rate) => Action::InvalidTaxRate { rate },
+        Domain::UnknownSettlement(settlement_id) => Action::UnknownSettlement { settlement_id },
+        Domain::SettlementNotOwned(settlement_id) => Action::SettlementNotOwned { settlement_id },
+        Domain::EmptySubsidy => Action::EmptySubsidy,
+        Domain::LabourIsNotTransferable => Action::LabourIsNotTransferable,
+        Domain::InsufficientTreasury {
+            requested,
+            available,
+        } => Action::InsufficientTreasury {
+            requested: u64::from(requested),
+            available,
+        },
+        Domain::InsufficientStock {
+            resource,
+            requested,
+            available,
+        } => Action::InsufficientStock {
+            resource,
+            requested: u64::from(requested),
+            available,
+        },
+        Domain::UnknownDecree(decree) => Action::UnknownDecree { decree },
+        Domain::DecreeAlreadyEnacted(decree) => Action::DecreeAlreadyEnacted { decree },
+        Domain::DecreeOnCooldown { decree, turns_left } => {
+            Action::DecreeOnCooldown { decree, turns_left }
+        }
+        Domain::NoFreeDecreeSlot(slots) => Action::NoFreeDecreeSlot { slots },
+        Domain::DecreeNotActive(decree) => Action::DecreeNotActive { decree },
+        Domain::DecreeMinimumDuration { decree, turns_left } => {
+            Action::DecreeMinimumDuration { decree, turns_left }
+        }
+    })
 }

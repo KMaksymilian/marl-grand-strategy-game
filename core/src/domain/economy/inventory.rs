@@ -80,6 +80,11 @@ impl ResourceInventory {
         self.priorities.validate_order(materials)
     }
 
+    /// Copies a previously validated order between inventories sharing one catalog.
+    pub(crate) fn copy_storage_order_from(&mut self, other: &Self) {
+        self.priorities = other.priorities.clone();
+    }
+
     pub fn knows_material(&self, resource: &ResourceType) -> bool {
         self.storage_order().contains(resource)
     }

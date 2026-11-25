@@ -95,15 +95,14 @@ pub enum ActionError {
     /// left after the market (funded first) and earlier caravan orders.
     InsufficientGold {
         requested: u64,
-        available: u32,
+        available: u64,
     },
     ProjectIdsExhausted,
-    /// An earlier action of the same decision already targets the same object.
+    /// An earlier successful action of this decision still claims this target.
     Conflict {
         with_index: usize,
     },
-    /// The engine refused an action that passed validation. This indicates a
-    /// mismatch between validator and engine rules; the state is unchanged.
+    /// An internal execution failure with no more specific action error.
     ExecutionFailed,
 }
 
@@ -126,7 +125,7 @@ pub enum ActionEffect {
     StorageOrderSet,
     MarketOffersPublished,
     MarketOffersCleared,
-    /// Funded from stock and gold during this turn, then sent to the receiver.
+    /// Stock and gold were reserved for a caravan to this receiver.
     CaravanOrdered {
         receiver_id: SettlementId,
     },

@@ -1,7 +1,6 @@
-//! Nation command contract, validation and execution.
+//! Nation command contract and execution.
 pub mod contract;
 pub(crate) mod handler;
-mod preparation;
 pub mod response;
 
 pub use contract::*;

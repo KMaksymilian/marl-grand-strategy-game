@@ -20,9 +20,9 @@ pub enum NationActionError {
     EmptySubsidy,
     /// Labour is a per-turn capacity of a population, not a stored good.
     LabourIsNotTransferable,
-    /// `available` is the treasury left after earlier subsidies of the decision.
-    InsufficientTreasury { requested: u64, available: u32 },
-    /// `available` is the national stock left after earlier subsidies of the decision.
+    /// `available` is the treasury after earlier applied actions.
+    InsufficientTreasury { requested: u64, available: u64 },
+    /// `available` is the national stock after earlier actual deliveries.
     InsufficientStock {
         resource: ResourceType,
         requested: u64,
@@ -46,7 +46,7 @@ pub enum NationActionError {
     /// An earlier action of the same decision already sets the same policy or
     /// targets the same decree.
     Conflict { with_index: usize },
-    /// The engine refused an action that passed validation; the state is unchanged.
+    /// Retained for existing serialized outcomes.
     ExecutionFailed,
 }
 

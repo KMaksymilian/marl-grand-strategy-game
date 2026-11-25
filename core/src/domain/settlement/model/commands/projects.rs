@@ -58,7 +58,6 @@ impl Settlement {
             cost,
         );
 
-        Self::validate_project_result(&project.result, &self.building_manager)?;
         if self
             .active_projects()
             .iter()
@@ -73,7 +72,7 @@ impl Settlement {
         space
             .reserve_construction(position, reference)
             .map_err(ProjectError::Territory)?;
-        // ID uniqueness was checked before reserving; rollback if registration fails.
+        // The project ID was checked before reserving. Keep both stores consistent.
         self.project_manager.add_project(project).map_err(|id| {
             space
                 .cancel_construction(position, reference)
@@ -91,6 +90,12 @@ impl Settlement {
         cost: ProjectCost,
     ) -> Result<(), ProjectError> {
         self.validate_project_materials(&new_definition, &cost)?;
+        if self.active_projects().iter().any(|project| {
+            matches!(project.result(), ProjectResult::UpgradeBuilding { target_instance_id: active, .. }
+                if *active == target_instance_id)
+        }) {
+            return Err(ProjectError::BuildingAlreadyUpgrading(target_instance_id));
+        }
         let result = ProjectResult::UpgradeBuilding {
             target_instance_id,
             new_definition,

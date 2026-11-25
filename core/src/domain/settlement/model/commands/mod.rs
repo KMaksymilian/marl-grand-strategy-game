@@ -6,3 +6,4 @@ mod projects;
 mod trade;
 
 pub use trade::TradeCommandError;
+pub(crate) use trade::{CaravanUsage, offer_units};

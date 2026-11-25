@@ -21,6 +21,7 @@ pub enum ProjectError {
     Territory(crate::domain::spatial::TerritoryError),
     DuplicateProject(ProjectId),
     MissingBuilding(BuildingId),
+    BuildingRule(crate::domain::buildings::passive::BuildingRuleError),
     BuildingAlreadyUpgrading(BuildingId),
     UnsupportedRecruitment,
 }

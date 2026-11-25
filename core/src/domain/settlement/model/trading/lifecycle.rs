@@ -69,7 +69,7 @@ impl Settlement {
 
     /// Moves stock and gold requested by the published offers into the market book.
     pub(in crate::domain::settlement) fn reserve_market(&mut self, report: &mut TradeTurnReport) {
-        self.book.replace_offers(self.trade.market_offers.clone());
+        self.book.replace_offers(self.fundable_market_offers());
         let demands = self.book.calculate_demand();
         TradeAllocationEngine::execute(
             &mut self.book,
@@ -321,6 +321,41 @@ mod tests {
         assert_eq!(settlement.inventory().amount(material("grain")), 6);
         assert_eq!(settlement.take_dispatched_caravans().len(), 2);
         assert!(settlement.caravan_orders().is_empty());
+    }
+
+    #[test]
+    fn funded_market_limits_set_priority_without_invalidating_accepted_caravans() {
+        use crate::domain::buildings::passive::TradeLimitBonuses;
+
+        let mut settlement = Settlement::new(SettlementId(1), 50, 0, Arc::default());
+        let wood = material("wood");
+        settlement.deposit(wood.clone(), 10);
+        let mut limits = TradeLimitBonuses {
+            caravan_slots: 1,
+            caravan_cargo: 6,
+            offer_slots: 1,
+            open_offer_units: 10,
+        };
+        settlement.set_base_trade_limits(Some(limits));
+        settlement
+            .publish_trade_offers(HashMap::from([(wood.clone(), TradeOffer::sell(10, 1))]))
+            .unwrap();
+        limits.open_offer_units = 4;
+        settlement.set_base_trade_limits(Some(limits));
+        settlement
+            .order_caravan(
+                SettlementId(2),
+                HashMap::from([(wood.clone(), TradeOffer::sell(6, 1))]),
+            )
+            .unwrap();
+
+        limits.caravan_slots = 0;
+        settlement.set_base_trade_limits(Some(limits));
+        let report = turn(&mut settlement);
+        assert_eq!(report.trade.market_reserved[&wood], 4);
+        assert_eq!(report.trade.caravans_dispatched[0].cargo[&wood], 6);
+        assert!(report.trade.unfunded_caravan_orders.is_empty());
+        assert!(report.inventory.is_balanced());
     }
 
     #[test]

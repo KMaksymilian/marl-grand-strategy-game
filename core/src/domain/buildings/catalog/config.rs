@@ -1,5 +1,6 @@
 use super::BuildingCatalog;
 use crate::domain::buildings::definition::{BuildingDefinition, CycleRecipe, DefinitionError};
+use crate::domain::buildings::passive::{BuildingUpgradeRule, PassiveBuildingRules};
 use crate::domain::economy::{ResourceCatalog, ResourceType, cost::ProjectCost};
 use crate::domain::spatial::site::{RawCondition, SiteFactKind, SiteRequirements};
 use crate::domain::world::terrain::biome::Biome;
@@ -38,8 +39,12 @@ impl std::error::Error for BuildingCatalogError {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawCatalog {
+    #[serde(default)]
     tiers: BTreeMap<String, MapTier>,
+    #[serde(default)]
     buildings: Vec<RawBuilding>,
+    #[serde(default)]
+    special_buildings: Vec<RawSpecialBuilding>,
 }
 
 #[derive(Deserialize)]
@@ -51,6 +56,16 @@ struct MapTier {
 }
 
 type RawMaterials = BTreeMap<String, u32>;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSpecialBuilding {
+    id: String,
+    name: String,
+    cost: RawMaterials,
+    build_turns: u32,
+    rules: PassiveBuildingRules,
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -105,8 +120,75 @@ impl BuildingCatalog {
         for building in raw.buildings {
             building.register(&mut catalog, &raw.tiers, resources, site_fact_types)?;
         }
+        for building in raw.special_buildings {
+            building.register(&mut catalog, resources)?;
+        }
+        validate_special_rules(&catalog)?;
         Ok(catalog)
     }
+}
+
+impl RawSpecialBuilding {
+    fn register(
+        self,
+        catalog: &mut BuildingCatalog,
+        resources: &ResourceCatalog,
+    ) -> Result<(), BuildingCatalogError> {
+        if !valid_building_id(&self.id)
+            || self.name.trim().is_empty()
+            || self.build_turns == 0
+            || self
+                .rules
+                .limit
+                .as_ref()
+                .is_some_and(|limit| limit.maximum == 0 || limit.group.trim().is_empty())
+        {
+            return Err(BuildingCatalogError::Invalid(format!(
+                "{}: invalid special building settings",
+                self.id
+            )));
+        }
+        let cost = ProjectCost {
+            needed_resources: materials(self.cost, resources, &self.id)?
+                .into_iter()
+                .collect(),
+            turn_cost: self.build_turns,
+        };
+        let definition = BuildingDefinition::new(&self.id, self.name, 0, 0, vec![], cost)
+            .map_err(|error| BuildingCatalogError::Invalid(format!("{}: {error:?}", self.id)))?
+            .with_passive_rules(self.rules);
+        insert(catalog, definition)
+    }
+}
+
+fn validate_special_rules(catalog: &BuildingCatalog) -> Result<(), BuildingCatalogError> {
+    let mut group_limits = BTreeMap::new();
+    for id in catalog.ids() {
+        let definition = catalog.get_blueprint(id).expect("registered building");
+        if let Some(limit) = &definition.passive_rules().limit
+            && group_limits
+                .insert(limit.group.clone(), limit.maximum)
+                .is_some_and(|previous| previous != limit.maximum)
+        {
+            return Err(BuildingCatalogError::Invalid(format!(
+                "{id}: inconsistent placement cap for group {:?}",
+                limit.group
+            )));
+        }
+        let mut path = std::collections::HashSet::new();
+        let mut current = definition;
+        while let BuildingUpgradeRule::From(previous) = &current.passive_rules().upgrade {
+            if !path.insert(current.id().to_owned()) {
+                return Err(BuildingCatalogError::Invalid(format!(
+                    "{id}: cyclic upgrade chain"
+                )));
+            }
+            current = catalog.get_blueprint(previous).ok_or_else(|| {
+                BuildingCatalogError::Invalid(format!("{id}: unknown upgrade source {previous:?}"))
+            })?;
+        }
+    }
+    Ok(())
 }
 
 impl RawBuilding {

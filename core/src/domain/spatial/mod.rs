@@ -68,6 +68,11 @@ pub enum TerritoryError {
         expected: ProjectReference,
         actual: TileOccupancy,
     },
+    BuildingMismatch {
+        position: Position,
+        expected: BuildingReference,
+        actual: TileOccupancy,
+    },
     SettlementMismatch {
         project: ProjectReference,
         building: BuildingReference,

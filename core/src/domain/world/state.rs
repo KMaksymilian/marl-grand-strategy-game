@@ -5,6 +5,7 @@ mod decrees;
 mod inspection;
 mod map_commands;
 mod nations;
+mod passive_buildings;
 mod resource_sites;
 mod site_facts;
 mod taxation;
@@ -118,6 +119,7 @@ pub struct World {
     province_settlements: HashMap<usize, SettlementId>,
     /// Building types agents may construct or upgrade to.
     building_catalog: BuildingCatalog,
+    base_trade_limits: Option<crate::domain::buildings::passive::TradeLimitBonuses>,
     resource_catalog: Arc<ResourceCatalog>,
     /// Unit types and military rules (`units.toml`).
     unit_catalog: Arc<UnitCatalog>,
@@ -325,6 +327,7 @@ impl World {
             settlements: SettlementRegistry::default(),
             province_settlements: HashMap::new(),
             building_catalog: BuildingCatalog::default(),
+            base_trade_limits: None,
             resource_catalog,
             unit_catalog: Arc::new(UnitCatalog::standard().clone()),
             province_graph,
@@ -418,6 +421,9 @@ impl World {
                 .ok_or(WorldError::NoCapitalSite(province_id))?,
         };
         settlement.assign_capital(capital);
+        if self.base_trade_limits.is_some() {
+            settlement.set_base_trade_limits(self.base_trade_limits);
+        }
         self.settlements
             .register(settlement)
             .map_err(WorldError::DuplicateSettlement)?;

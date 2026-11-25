@@ -1,4 +1,5 @@
 use crate::domain::buildings::effects::StatType;
+use crate::domain::buildings::passive::PassiveBuildingRules;
 use crate::domain::economy::ResourceType;
 use crate::domain::economy::cost::ProjectCost;
 use crate::domain::spatial::site::SiteRequirements;
@@ -46,6 +47,7 @@ pub struct BuildingDefinition {
     behaviors: Vec<BuildingBehavior>,
     construction_cost: ProjectCost,
     site_requirements: SiteRequirements,
+    passive_rules: PassiveBuildingRules,
     cycle_production: Option<CycleProduction>,
 }
 
@@ -82,6 +84,7 @@ impl BuildingDefinition {
             behaviors,
             construction_cost,
             site_requirements: SiteRequirements::default(),
+            passive_rules: PassiveBuildingRules::default(),
             cycle_production: None,
         };
         definition.validate()?;
@@ -219,6 +222,15 @@ impl BuildingDefinition {
 
     pub fn requires_coast(&self) -> bool {
         self.site_requirements.requires_coast()
+    }
+
+    pub fn with_passive_rules(mut self, rules: PassiveBuildingRules) -> Self {
+        self.passive_rules = rules;
+        self
+    }
+
+    pub fn passive_rules(&self) -> &PassiveBuildingRules {
+        &self.passive_rules
     }
 
     pub fn with_site_requirements(mut self, requirements: SiteRequirements) -> Self {

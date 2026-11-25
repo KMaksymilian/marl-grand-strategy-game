@@ -8,6 +8,9 @@
 //! live offers, caravans and any tile outside the own province. Returned
 //! caravans supply dated foreign-market snapshots.
 use crate::application::commands::settlement::contract::{OfferSide, OfferSpec};
+use crate::domain::buildings::passive::{
+    PassiveBuildingEffects, PassiveBuildingRules, TradeLimitBonuses,
+};
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{BuildingId, BuildingTypeId, NationId, ProjectId, SettlementId};
 use crate::domain::nation::decree::DecreeId;
@@ -30,6 +33,8 @@ pub struct SettlementObservation {
     pub population: u32,
     pub gold: u64,
     pub inventory: InventoryObservation,
+    #[serde(default)]
+    pub passive_building_effects: PassiveBuildingEffects,
     pub workforce: WorkforceObservation,
     /// Materials the population requests every turn at its current size.
     pub needs_per_turn: ResourceAmounts,
@@ -127,6 +132,8 @@ pub enum ProjectTarget {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TradeObservation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limits: Option<TradeLimitBonuses>,
     /// Published market offers, ascending resource.
     pub market_offers: Vec<OfferSpec>,
     /// Latest delivered snapshot per foreign market, ascending market settlement ID.
@@ -258,6 +265,8 @@ pub struct BuildingTypeObservation {
         Option<std::collections::BTreeMap<crate::domain::world::terrain::biome::Biome, u8>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cycles_per_turn: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub passive_rules: Option<PassiveBuildingRules>,
     /// Quantities per cycle when a cycle rate is present, otherwise per fully staffed turn.
     pub recipes: Vec<RecipeObservation>,
 }

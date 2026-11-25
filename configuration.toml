@@ -4,3 +4,10 @@
 [economy.building_productivity]
 full_productivity_cost = 100
 zero_productivity_cost = 300
+
+# Shared trade capacity per settlement before market bonuses.
+[economy.trade_limits]
+caravan_slots = 2
+offer_slots = 4
+caravan_cargo = 400
+open_offer_units = 800

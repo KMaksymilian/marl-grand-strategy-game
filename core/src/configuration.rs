@@ -1,3 +1,4 @@
+use crate::buildings::passive::TradeLimitBonuses;
 use crate::buildings::productivity::{InvalidTravelCosts, TravelCostEfficiencyPolicy};
 use serde::Deserialize;
 use std::fmt;
@@ -11,6 +12,7 @@ pub struct Configuration {
 #[derive(Debug, Clone, Copy)]
 pub struct EconomyConfiguration {
     pub building_productivity: TravelCostEfficiencyPolicy,
+    pub trade_limits: Option<TradeLimitBonuses>,
 }
 
 #[derive(Debug)]
@@ -53,6 +55,7 @@ struct RawConfiguration {
 #[serde(deny_unknown_fields)]
 struct RawEconomy {
     building_productivity: RawBuildingProductivity,
+    trade_limits: Option<TradeLimitBonuses>,
 }
 
 #[derive(Deserialize)]
@@ -79,6 +82,7 @@ impl Configuration {
         Ok(Self {
             economy: EconomyConfiguration {
                 building_productivity: policy,
+                trade_limits: raw.economy.trade_limits,
             },
         })
     }

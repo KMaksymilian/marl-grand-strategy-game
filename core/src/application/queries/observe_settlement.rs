@@ -59,6 +59,7 @@ impl ObservationQuery<'_> {
             province_id,
             population: settlement.population(),
             gold: settlement.gold(),
+            passive_building_effects: settlement.passive_building_effects(),
             inventory: InventoryObservation {
                 capacity: settlement.inventory().capacity(),
                 stored: materials(settlement.inventory()),
@@ -82,6 +83,7 @@ impl ObservationQuery<'_> {
             projects: projects(settlement),
             next_project_id: settlement.next_project_id(),
             trade: TradeObservation {
+                limits: settlement.trade_limits(),
                 market_offers: market_offers(settlement),
                 known_markets: settlement.known_markets().map(known_market).collect(),
                 caravans_in_transit: self
@@ -194,6 +196,8 @@ impl ObservationQuery<'_> {
                 requires_coast: definition.requires_coast(),
                 requires_province_deposit: definition.requires_province_deposit(),
                 biome_efficiencies: definition.biome_efficiencies().cloned(),
+                passive_rules: (definition.passive_rules() != &Default::default())
+                    .then(|| definition.passive_rules().clone()),
                 cycles_per_turn: definition
                     .cycle_production()
                     .map(|production| production.cycles_per_turn),

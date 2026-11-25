@@ -29,6 +29,17 @@ impl<'a> CommandDispatch<'a> {
         action: &SettlementAction,
     ) -> Result<ActionEffect, ActionError> {
         match action {
+            SettlementAction::Demolish { building_id } => {
+                self.world
+                    .demolish_building(id, *building_id)
+                    .map_err(|error| match error {
+                        WorldError::Building(error) => building_error(error),
+                        _ => ActionError::ExecutionFailed,
+                    })?;
+                Ok(ActionEffect::BuildingDemolished {
+                    building_id: *building_id,
+                })
+            }
             SettlementAction::Construct {
                 building_type,
                 position,
@@ -163,6 +174,7 @@ fn project_error(error: WorldError, site: Option<Position>) -> ActionError {
         WorldError::Project(ProjectError::BuildingAlreadyUpgrading(building_id)) => {
             ActionError::BuildingAlreadyUpgrading { building_id }
         }
+        WorldError::Project(ProjectError::BuildingRule(rule)) => ActionError::BuildingRule { rule },
         WorldError::Project(ProjectError::MissingProject(project_id)) => {
             ActionError::UnknownProject { project_id }
         }
@@ -238,6 +250,8 @@ fn building_error(error: BuildingCommandError) -> ActionError {
 
 pub(super) fn trade_error(error: TradeCommandError) -> ActionError {
     match error {
+        TradeCommandError::MarketCapacityExceeded => ActionError::MarketCapacityExceeded,
+        TradeCommandError::CaravanCapacityExceeded => ActionError::CaravanCapacityExceeded,
         TradeCommandError::UnknownMaterial(resource) => ActionError::UnknownMaterial { resource },
         TradeCommandError::LabourIsNotTradable => ActionError::LabourIsNotTradable,
         TradeCommandError::ZeroUnits(resource) => ActionError::ZeroUnits { resource },

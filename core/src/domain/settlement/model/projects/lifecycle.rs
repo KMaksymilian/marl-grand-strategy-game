@@ -5,6 +5,7 @@ use crate::domain::buildings::productivity::TravelCostSource;
 use crate::domain::ids::ProjectId;
 use crate::domain::settlement::Settlement;
 use crate::domain::settlement::model::economy::BuildingManager;
+use crate::domain::settlement::model::passive_buildings::validate_building_rules;
 use crate::domain::spatial::{BuildingReference, ConstructionSpace, ProjectReference};
 
 impl Settlement {
@@ -13,15 +14,19 @@ impl Settlement {
         buildings: &BuildingManager,
     ) -> Result<(), ProjectError> {
         match result {
-            ProjectResult::ConstructBuilding { .. } => Ok(()),
+            ProjectResult::ConstructBuilding { definition, .. } => {
+                validate_building_rules(buildings, &[], definition, None)
+                    .map_err(ProjectError::BuildingRule)
+            }
             ProjectResult::UpgradeBuilding {
-                target_instance_id, ..
+                target_instance_id,
+                new_definition,
             } => {
-                if buildings.contains(*target_instance_id) {
-                    Ok(())
-                } else {
-                    Err(ProjectError::MissingBuilding(*target_instance_id))
-                }
+                let current = buildings
+                    .get(*target_instance_id)
+                    .ok_or(ProjectError::MissingBuilding(*target_instance_id))?;
+                validate_building_rules(buildings, &[], new_definition, Some(current))
+                    .map_err(ProjectError::BuildingRule)
             }
             ProjectResult::RecruitUnit { .. } => Err(ProjectError::UnsupportedRecruitment),
         }
@@ -134,6 +139,7 @@ impl Settlement {
                 self.building_manager
                     .construct_building(new_building, environment)
                     .expect("new building ID is unused");
+                self.refresh_warehouse_capacity();
                 Ok(ProjectCompletion::BuildingConstructed(id))
             }
             ProjectResult::UpgradeBuilding {
@@ -144,6 +150,7 @@ impl Settlement {
                     .building_manager
                     .upgrade_building(target_instance_id, new_definition)
                 {
+                    self.refresh_warehouse_capacity();
                     Ok(ProjectCompletion::BuildingUpgraded(target_instance_id))
                 } else {
                     Err(ProjectError::MissingBuilding(target_instance_id))

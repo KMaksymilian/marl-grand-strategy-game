@@ -19,6 +19,7 @@ pub(crate) struct PreparedTurn {
     trade: TradeTurnReport,
     projects: Vec<ProjectOutcome>,
     opening_stock: MaterialTotals,
+    retained_stock_limit: Option<u32>,
     building_requests: BuildingRequests,
 }
 
@@ -28,6 +29,7 @@ pub(crate) struct AllocatedTurn {
     allocations: AllocationResult,
     sites: HashMap<BuildingId, SiteEvaluation>,
     cycle_recipes: HashMap<BuildingId, usize>,
+    retained_stock_limit: Option<u32>,
     inventory: InventoryTurnReport,
 }
 
@@ -87,10 +89,11 @@ impl Settlement {
         province_id: usize,
     ) -> PreparedTurn {
         self.building_manager.refresh_productivity(environment);
-        let mut opening_stock = InventoryTurnReport::snapshot(
-            &self.inventory_manager.main,
-            &self.inventory_manager.pending_production,
-        );
+        let main = &self.inventory_manager.main;
+        let retained_stock_limit = (main.total_amount() > u64::from(main.capacity()))
+            .then(|| u32::try_from(main.total_amount()).expect("stock fit the previous capacity"));
+        let mut opening_stock =
+            InventoryTurnReport::snapshot(main, &self.inventory_manager.pending_production);
         for (resource, amount) in self.trade.escrowed_goods() {
             *opening_stock.entry(resource.clone()).or_default() += u64::from(amount);
         }
@@ -115,6 +118,7 @@ impl Settlement {
             trade,
             projects,
             opening_stock,
+            retained_stock_limit,
             building_requests,
         }
     }
@@ -132,6 +136,7 @@ impl Settlement {
             allocations,
             sites: prepared.building_requests.sites,
             cycle_recipes: prepared.building_requests.recipes,
+            retained_stock_limit: prepared.retained_stock_limit,
             inventory,
         }
     }
@@ -176,7 +181,7 @@ impl Settlement {
         let ProducedTurn {
             consumed,
             produced,
-            returned,
+            mut returned,
         } = produced;
         let ConsumedTurn {
             allocated,
@@ -186,18 +191,33 @@ impl Settlement {
             mut trade,
             mut projects,
             mut inventory,
+            retained_stock_limit,
             ..
         } = allocated;
         self.realize_caravan_orders(&mut trade);
         let mut incoming = produced;
-        for (resource, amount) in self.collect_trade_returns(&mut trade) {
+        let mut trade_returns = self.collect_trade_returns(&mut trade);
+        if let Some(limit) = retained_stock_limit {
+            for (resource, &units) in &trade.market_unsold {
+                *trade_returns
+                    .get_mut(resource)
+                    .expect("unsold stock was returned") -= units;
+                *returned.entry(resource.clone()).or_default() += units;
+            }
+            inventory.losses.extend(
+                self.inventory_manager
+                    .restore_reserved_stock(std::mem::take(&mut returned), limit),
+            );
+        }
+        for (resource, amount) in trade_returns {
             *incoming.entry(resource).or_default() += amount;
         }
         inventory.trade_reserved = trade.reserved();
         inventory.trade_received = trade.received.clone();
-        inventory.losses = self
-            .inventory_manager
-            .process_production_results(incoming, returned);
+        inventory.losses.extend(
+            self.inventory_manager
+                .process_production_results(incoming, returned),
+        );
         inventory
             .losses
             .extend(self.inventory_manager.commit_pending_production());

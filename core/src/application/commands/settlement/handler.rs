@@ -15,6 +15,7 @@ enum Target {
     Upgrade(BuildingId),
     Project(ProjectId),
     Workers(BuildingId),
+    Demolition(BuildingId),
     StorageOrder,
     Market,
 }
@@ -31,7 +32,23 @@ impl Target {
                 Self::Market
             }
             SettlementAction::OrderCaravan { .. } => return None,
+            SettlementAction::Demolish { building_id } => Self::Demolition(*building_id),
         })
+    }
+
+    fn conflict(self, claimed: &HashMap<Self, usize>) -> Option<usize> {
+        let existing = claimed.get(&self).copied();
+        if existing.is_some() {
+            return existing;
+        }
+        match self {
+            Self::Upgrade(id) | Self::Workers(id) => claimed.get(&Self::Demolition(id)).copied(),
+            Self::Demolition(id) => [Self::Upgrade(id), Self::Workers(id)]
+                .iter()
+                .filter_map(|target| claimed.get(target).copied())
+                .min(),
+            _ => None,
+        }
     }
 }
 
@@ -51,7 +68,7 @@ pub(crate) fn handle_decision(
         .enumerate()
         .map(|(index, action)| {
             let target = Target::of(action);
-            let outcome = match target.and_then(|target| claimed.get(&target).copied()) {
+            let outcome = match target.and_then(|target| target.conflict(&claimed)) {
                 Some(with_index) => ActionOutcome::Rejected {
                     error: ActionError::Conflict { with_index },
                 },

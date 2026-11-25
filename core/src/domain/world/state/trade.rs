@@ -1,15 +1,43 @@
 //! Caravan transport coordinates the same settlement instances as construction.
 use super::World;
+use crate::domain::buildings::passive::TradeLimitBonuses;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
-use crate::domain::settlement::TradeCommandError;
 use crate::domain::settlement::turn_report::{CaravanDepartureRoute, DispatchedCaravan};
+use crate::domain::settlement::{CaravanUsage, TradeCommandError, offer_units};
 use crate::domain::trade::caravan::{Caravan, CaravanOutcome, CaravanReturn, CaravanState};
 use crate::domain::trade::offer::TradeOffer;
 use crate::domain::world::{Point, pathfinding::path_finder::PathFinder};
 use std::collections::HashMap;
 
 impl World {
+    pub fn set_base_trade_limits(&mut self, limits: Option<TradeLimitBonuses>) {
+        self.base_trade_limits = limits;
+        for id in self.settlement_ids() {
+            self.settlement_mut(id)
+                .expect("registered settlement")
+                .set_base_trade_limits(limits);
+        }
+    }
+
+    pub(crate) fn active_caravan_usage(&self, id: SettlementId) -> CaravanUsage {
+        let mut usage = CaravanUsage::default();
+        for caravan in self
+            .caravans
+            .iter()
+            .filter(|caravan| caravan.sender_id == id)
+        {
+            let book = caravan.book();
+            let purchased: u64 = book
+                .bought_goods()
+                .values()
+                .map(|&amount| u64::from(amount))
+                .sum();
+            usage.add(offer_units(book.offers()).saturating_add(purchased));
+        }
+        usage
+    }
+
     /// Funds a caravan to another registered settlement. Routes are assigned at turn end.
     pub fn order_caravan(
         &mut self,
@@ -23,9 +51,10 @@ impl World {
         if self.settlement(receiver_id).is_none() {
             return Err(TradeCommandError::UnknownReceiver(receiver_id));
         }
+        let usage = self.active_caravan_usage(sender_id);
         self.settlement_mut(sender_id)
             .expect("validated caravan sender")
-            .order_caravan(receiver_id, offers)
+            .order_caravan_with_usage(receiver_id, offers, usage)
     }
 
     pub(crate) fn prepare_settlement_turn(
@@ -143,5 +172,68 @@ impl World {
             }
         }
         routed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::settlement::Settlement;
+    use crate::domain::world::{Map, Position, Province, terrain::area::Area};
+    use crate::test_support::material;
+    use std::sync::Arc;
+
+    #[test]
+    fn world_order_checks_pending_and_live_caravans_against_capacity() {
+        let mut world = World::new(
+            Map::new(2, 1, vec![Area::new(0.5, 0.5); 2], vec![1, 2]),
+            vec![Province::new(1), Province::new(2)],
+        );
+        world.set_base_trade_limits(Some(TradeLimitBonuses {
+            caravan_slots: 1,
+            caravan_cargo: 10,
+            ..TradeLimitBonuses::default()
+        }));
+        let sender = SettlementId(1);
+        let receiver = SettlementId(2);
+        let mut settlement = Settlement::new(sender, 10, 0, Arc::default());
+        let wood = material("wood");
+        settlement.deposit(wood.clone(), 2);
+        world
+            .add_settlement_at(1, Position { x: 0, y: 0 }, settlement)
+            .unwrap();
+        world
+            .add_settlement_at(
+                2,
+                Position { x: 1, y: 0 },
+                Settlement::new(receiver, 10, 0, Arc::default()),
+            )
+            .unwrap();
+        let offers = || HashMap::from([(wood.clone(), TradeOffer::sell(1, 1))]);
+        world.order_caravan(sender, receiver, offers()).unwrap();
+        assert_eq!(
+            world.order_caravan(sender, receiver, offers()),
+            Err(TradeCommandError::CaravanCapacityExceeded)
+        );
+
+        let mut finder = PathFinder::new(2, 1);
+        world
+            .process_settlement_turn_for_test(sender, &mut finder)
+            .unwrap();
+        let locations = world.capital_trade_locations();
+        let departures = world.finish_trade_turn(&locations, &mut finder);
+        assert_eq!(departures[&sender].len(), 1);
+        assert_eq!(
+            departures[&sender][0].route,
+            Some(CaravanDepartureRoute::Routed)
+        );
+        assert_eq!(
+            world.order_caravan(sender, receiver, offers()),
+            Err(TradeCommandError::CaravanCapacityExceeded)
+        );
+        assert_eq!(
+            world.settlement(sender).unwrap().inventory().amount(wood),
+            1
+        );
     }
 }

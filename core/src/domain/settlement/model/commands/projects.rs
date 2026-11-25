@@ -49,6 +49,8 @@ impl Settlement {
         space: &mut impl ConstructionSpace,
     ) -> Result<(), ProjectError> {
         self.validate_project_materials(&definition, &cost)?;
+        self.validate_new_building_rules(&definition)
+            .map_err(ProjectError::BuildingRule)?;
         space
             .evaluate_site(position, definition.site_requirements())
             .map_err(ProjectError::Territory)?;
@@ -131,19 +133,13 @@ impl Settlement {
         new_definition: Arc<BuildingDefinition>,
         cost: ProjectCost,
     ) -> Result<(), ProjectError> {
-        if self.active_projects().iter().any(|project| {
-            matches!(project.result(), ProjectResult::UpgradeBuilding { target_instance_id: active, .. }
-                if *active == target_instance_id)
-        }) {
-            return Err(ProjectError::BuildingAlreadyUpgrading(target_instance_id));
-        }
+        self.validate_building_upgrade_rules(target_instance_id, &new_definition)?;
         let result = ProjectResult::UpgradeBuilding {
             target_instance_id,
             new_definition,
         };
         let project = Project::new(project_id, result, cost);
 
-        Self::validate_project_result(&project.result, &self.building_manager)?;
         self.project_manager
             .add_project(project)
             .map_err(ProjectError::DuplicateProject)

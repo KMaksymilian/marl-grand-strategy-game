@@ -2,11 +2,13 @@
 //! Commands and turn processing are implemented on the same type in child modules.
 mod commands;
 mod economy;
+mod passive_buildings;
 pub mod projects;
 mod trading;
 mod turn;
 
 pub use commands::TradeCommandError;
+pub(crate) use commands::{CaravanUsage, offer_units};
 pub use economy::{NeedRegistry, NeedTier};
 pub use trading::CaravanOrder;
 pub use turn::report as turn_report;
@@ -45,6 +47,7 @@ pub enum BuildingCommandError {
         available: u32,
     },
     InvalidLoad,
+    BuildingRule(crate::domain::buildings::passive::BuildingRuleError),
 }
 
 /// Managers are implementation details; public views cannot mutate their collections.

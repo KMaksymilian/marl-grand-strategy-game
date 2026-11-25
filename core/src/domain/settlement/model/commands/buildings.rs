@@ -58,6 +58,8 @@ impl Settlement {
         if let Some(resource) = self.first_unknown_building_material(building.definition()) {
             return Err(BuildingCommandError::UnknownMaterial(resource));
         }
+        self.validate_new_building_rules(building.definition())
+            .map_err(BuildingCommandError::BuildingRule)?;
         environment
             .evaluate_site(position, building.definition().site_requirements())
             .map_err(BuildingCommandError::Territory)?;
@@ -74,6 +76,7 @@ impl Settlement {
         self.building_manager
             .construct_building(building, environment)
             .expect("building ID was checked before spatial registration");
+        self.refresh_warehouse_capacity();
         Ok(())
     }
 

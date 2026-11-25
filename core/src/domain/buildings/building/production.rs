@@ -38,38 +38,7 @@ impl Building {
         demand
     }
 
-    pub fn resolve_allocation(
-        &mut self,
-        granted: Option<&HashMap<ResourceType, u32>>,
-    ) -> ProductionResult {
-        self.resolve_modified_allocation(granted, &[])
-    }
-
-    pub(crate) fn resolve_modified_allocation(
-        &mut self,
-        granted: Option<&HashMap<ResourceType, u32>>,
-        modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
-    ) -> ProductionResult {
-        let recipe = granted.and_then(|grants| {
-            let workers = grants
-                .get(&ResourceType::Labour)
-                .copied()
-                .unwrap_or_default()
-                .min(self.definition.max_workers());
-            self.choose_cycle_recipe(workers, |resource| {
-                grants.get(resource).copied().unwrap_or_default()
-            })
-            .map(|(index, _)| index)
-        });
-        self.resolve_planned_allocation(
-            granted,
-            modifier_strategies,
-            recipe,
-            TurnProductionModifiers::default(),
-        )
-    }
-
-    pub(crate) fn resolve_planned_allocation(
+    pub(crate) fn produce_from_grants(
         &mut self,
         granted: Option<&HashMap<ResourceType, u32>>,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],

@@ -69,7 +69,9 @@ fn gold_at_neutral_happiness_uses_opening_population_even_without_food() {
     assert_eq!(settlement.consumption.people_unfed, 1_000);
     assert_eq!(happiness.score, 50.0);
     assert_eq!(happiness.gold_income, 1_000);
-    assert_eq!(happiness.gold_credited, 1_000);
+    let json = serde_json::to_value(happiness).unwrap();
+    assert_eq!(json["gold_income"], 1_000);
+    assert!(json.get("gold_credited").is_none());
     assert_eq!(happiness.demographics.opening_population, 1_000);
     assert_eq!(happiness.demographics.starved, 100);
     assert_eq!(happiness.demographics.closing_population, 900);

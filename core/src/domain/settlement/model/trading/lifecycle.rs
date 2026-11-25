@@ -6,7 +6,7 @@ use crate::domain::intelligence::{
 };
 use crate::domain::settlement::Settlement;
 use crate::domain::settlement::turn_report::{
-    DispatchedCaravan, MarketTrade, MaterialTotals, ReturnedCaravan, TradeTurnReport,
+    MarketTrade, MaterialTotals, ReturnedCaravan, TradeTurnReport,
 };
 use crate::domain::trade::allocation::TradeAllocationEngine;
 use crate::domain::trade::book::TradeBook;
@@ -81,18 +81,18 @@ impl Settlement {
         report.market_gold_reserved = self.book.gold();
     }
 
-    /// Releases orders already funded at acceptance, in queue order.
+    /// Accounts for reserved goods and releases funded orders for routing in FIFO order.
     pub(in crate::domain::settlement) fn realize_caravan_orders(
         &mut self,
-        report: &mut TradeTurnReport,
+        reserved: &mut MaterialTotals,
     ) {
-        for order in std::mem::take(&mut self.trade.orders) {
-            let cargo = order.into_cargo(self.id);
-            report
-                .caravans_dispatched
-                .push(DispatchedCaravan::from_cargo(&cargo));
-            self.trade.dispatched.push(cargo);
+        for (resource, amount) in self.trade.escrowed_goods() {
+            *reserved.entry(resource.clone()).or_default() += u64::from(amount);
         }
+        let orders = std::mem::take(&mut self.trade.orders);
+        self.trade
+            .dispatched
+            .extend(orders.into_iter().map(|order| order.into_cargo(self.id)));
     }
 
     /// Trades the market book with caravans that arrived here; the book is shared equally.
@@ -309,17 +309,16 @@ mod tests {
             }),
         );
         let report = turn(&mut settlement);
-        let dispatched = &report.trade.caravans_dispatched;
+        let dispatched = settlement.take_dispatched_caravans();
         assert_eq!(dispatched.len(), 2);
         assert_eq!(dispatched[0].receiver_id, SettlementId(2));
-        assert_eq!(dispatched[0].cargo[&material("grain")], 3);
+        assert_eq!(dispatched[0].book.goods_for_sale()[&material("grain")], 3);
         assert_eq!(dispatched[1].receiver_id, SettlementId(3));
-        assert_eq!(dispatched[1].cargo[&material("grain")], 1);
+        assert_eq!(dispatched[1].book.goods_for_sale()[&material("grain")], 1);
         assert_eq!(report.inventory.opening_stock[&material("grain")], 10);
         assert_eq!(report.inventory.trade_reserved[&material("grain")], 10);
         assert!(report.inventory.is_balanced());
         assert_eq!(settlement.inventory().amount(material("grain")), 6);
-        assert_eq!(settlement.take_dispatched_caravans().len(), 2);
         assert!(settlement.caravan_orders().is_empty());
     }
 
@@ -353,7 +352,9 @@ mod tests {
         settlement.set_base_trade_limits(Some(limits));
         let report = turn(&mut settlement);
         assert_eq!(report.trade.market_reserved[&wood], 4);
-        assert_eq!(report.trade.caravans_dispatched[0].cargo[&wood], 6);
+        let dispatched = settlement.take_dispatched_caravans();
+        assert_eq!(dispatched.len(), 1);
+        assert_eq!(dispatched[0].book.goods_for_sale()[&wood], 6);
         assert!(report.trade.unfunded_caravan_orders.is_empty());
         assert!(report.inventory.is_balanced());
     }

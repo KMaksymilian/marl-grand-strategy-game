@@ -249,7 +249,8 @@ impl Settlement {
             population_needs,
             ..
         } = allocated;
-        self.realize_caravan_orders(&mut trade);
+        inventory.trade_reserved = trade.market_reserved.clone();
+        self.realize_caravan_orders(&mut inventory.trade_reserved);
         let mut incoming = produced;
         let mut trade_returns = self.collect_trade_returns(&mut trade);
         if let Some(limit) = retained_stock_limit {
@@ -267,7 +268,6 @@ impl Settlement {
         for (resource, amount) in trade_returns {
             *incoming.entry(resource).or_default() += amount;
         }
-        inventory.trade_reserved = trade.reserved();
         inventory.trade_received = trade.received.clone();
         inventory.losses.extend(
             self.inventory_manager
@@ -335,7 +335,6 @@ impl Settlement {
             production_loss_basis_points: happiness.production_loss_basis_points,
             demographics,
             gold_income,
-            gold_credited: gold_income,
         });
     }
 }

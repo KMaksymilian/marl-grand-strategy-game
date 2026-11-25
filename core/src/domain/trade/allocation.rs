@@ -39,16 +39,4 @@ impl TradeAllocationEngine {
             book.add_gold_amount(gold_demand);
         }
     }
-
-    pub fn execute_remained_resources(
-        gold_inventory: &mut GoldInventory,
-        inventory: &mut ResourceInventory,
-        returned: (HashMap<ResourceType, u32>, u64),
-    ) {
-        let (returned_resources, returned_gold) = returned;
-        gold_inventory.add(returned_gold);
-        for (res_type, amount) in returned_resources {
-            inventory.add(res_type, amount); // result ignored ???
-        }
-    }
 }

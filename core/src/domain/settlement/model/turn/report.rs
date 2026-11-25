@@ -167,7 +167,6 @@ pub struct HappinessTurnReport {
     pub production_loss_basis_points: u32,
     pub demographics: crate::domain::settlement::happiness::DemographicOutcome,
     pub gold_income: u64,
-    pub gold_credited: u64,
 }
 
 /// A trade made at this settlement's market with a visiting caravan.

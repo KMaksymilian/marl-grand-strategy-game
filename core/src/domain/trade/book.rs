@@ -20,11 +20,6 @@ impl TradeBook {
         TradeBook { gold, offers }
     }
 
-    /// Unfunded book; reserve its demand before trading.
-    pub fn with_offers(offers: HashMap<ResourceType, TradeOffer>) -> Self {
-        Self::new(0, offers)
-    }
-
     pub fn gold(&self) -> u64 {
         self.gold
     }

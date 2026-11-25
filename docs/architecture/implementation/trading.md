@@ -10,11 +10,11 @@ Child modules add methods to their owning types rather than extra service object
 | --- | --- |
 | [domain/trade/mod.rs](../../../core/src/domain/trade/mod.rs) | Exports allocation, book, caravan, execution, network and offer modules. |
 | [domain/trade/offer.rs](../../../core/src/domain/trade/offer.rs) | `TradeOffer`, `BuyTradeOffer`, `SellTradeOffer`, `TradeDemand`. `buy`/`sell` construct offers; `remaining_units` reads open quantity; `calculate_demand` requests stock or gold. `without_progress` strips earlier purchases from templates; `take_share`/`absorb` split/merge offers. Buy/sell accessors track stock and purchases. Buy gold demand uses saturating multiplication. |
-| [domain/trade/book.rs](../../../core/src/domain/trade/book.rs) | `TradeBook` owns reserved funds and offers. `new`/`with_offers`/`default` construct it; `replace_offers` installs templates; `calculate_demand` sums reservations; `update_sell_resource_amount` and `add_gold_amount` apply funding. `gold`, `offers`, `goods_for_sale`, `bought_goods` expose state; `return_resources` drains materials and funds. |
+| [domain/trade/book.rs](../../../core/src/domain/trade/book.rs) | `TradeBook` owns reserved funds and offers. `new`/`default` construct it; `replace_offers` installs templates; `calculate_demand` sums reservations; `update_sell_resource_amount` and `add_gold_amount` apply funding. `gold`, `offers`, `goods_for_sale`, `bought_goods` expose state; `return_resources` drains materials and funds. |
 | [domain/trade/book/matching.rs](../../../core/src/domain/trade/book/matching.rs) | `TradeBook::trade` returns executions from self's perspective. Private `transaction` scales purchases to gold, orders price/resource ties and spends remainders. `execute_single_trade` updates buyer/seller quantities and funds. |
 | [domain/trade/book/market.rs](../../../core/src/domain/trade/book/market.rs) | `TradeBook::trade_with_visitors` shares a market and returns execution vectors in visitor order. `visitor_interest`, `price`, `equal_shares`, `split`, `take_share`, `absorb` implement repeated sharing. |
 | [domain/trade/execution.rs](../../../core/src/domain/trade/execution.rs) | `TradeExecution`: resource, units, unit price, `TradeSide`. `total_price` multiplies in `u64`; `mirrored` and `TradeSide::opposite` switch perspective. |
-| [domain/trade/allocation.rs](../../../core/src/domain/trade/allocation.rs) | `TradeAllocationEngine::execute` withdraws available stock/gold, reducing unfunded sell quantities; `execute_gold_allocation` handles funds. Legacy `execute_remained_resources` ignores material admission rejection and is not used by the coordinated lifecycle. |
+| [domain/trade/allocation.rs](../../../core/src/domain/trade/allocation.rs) | `TradeAllocationEngine::execute` withdraws available stock/gold, reducing unfunded sell quantities; `execute_gold_allocation` handles funds. |
 
 ## Settlement state and lifecycle
 
@@ -75,8 +75,9 @@ selection. Use exactly one whole-world runner for an intended turn.
 | No compatible trades | Normal return with `Traded` and empty executions. |
 | Material capacity exceeded | Storage order decides admission; rejected quantities become inventory losses. Gold is credited separately without a storage limit. |
 
-An applied `CaravanOrdered` action confirms acceptance and funding. The local
-report records realization at the end of the settlement turn. The world reports
-each cargo together with its route result as it sends the caravan or queues the
-unchanged cargo for return. A failed departure remains visible in the outgoing material report
-and returns on the next turn. Market executions use the host's perspective.
+An applied `CaravanOrdered` action confirms acceptance and funding. The
+settlement records reserved materials at the end of its turn. The world
+records one departure per cargo, with its route result, as it sends the caravan
+or queues the unchanged cargo for return. A failed departure remains visible in
+the outgoing material report and returns on the next turn. Market executions
+use the host's perspective.

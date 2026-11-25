@@ -422,7 +422,12 @@ fn routing_keeps_each_cargo_and_returns_an_unroutable_order_without_another_char
         first.settlements[&SENDER].inventory.trade_reserved[&material("wood")],
         9
     );
-    assert_eq!(first.settlements[&SENDER].trade.gold_reserved(), 10);
+    let sender_report = &first.settlements[&SENDER];
+    assert_eq!(
+        sender_report.trade.reserved(),
+        sender_report.inventory.trade_reserved
+    );
+    assert_eq!(sender_report.trade.gold_reserved(), 10);
     let second = simulation.step().unwrap();
     let report = &second.settlements[&SENDER];
     assert_eq!(

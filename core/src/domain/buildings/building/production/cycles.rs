@@ -10,17 +10,9 @@ impl Building {
         &self,
         available: impl Fn(&ResourceType) -> u32,
     ) -> Option<(usize, u32)> {
-        self.choose_cycle_recipe(self.requested_workers(), available)
-    }
-
-    pub(super) fn choose_cycle_recipe(
-        &self,
-        workers: u32,
-        available: impl Fn(&ResourceType) -> u32,
-    ) -> Option<(usize, u32)> {
         let production = self.definition.cycle_production()?;
         self.configured_biome_efficiency()?;
-        let staff_limit = self.staffed_cycles(production, workers);
+        let staff_limit = self.staffed_cycles(production, self.requested_workers());
         production
             .recipes
             .iter()

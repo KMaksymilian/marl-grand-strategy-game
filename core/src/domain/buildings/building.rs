@@ -223,7 +223,7 @@ mod tests {
         );
         let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
         let grants = HashMap::from([(ResourceType::Labour, 1), (material("wood"), 1)]);
-        let result = building.resolve_allocation(Some(&grants));
+        let result = building.produce_from_grants(Some(&grants), &[], None, Default::default());
         assert_eq!(result.produced[&material("stone")], 1);
         assert_eq!(result.unused[&material("wood")], 0);
     }
@@ -244,7 +244,7 @@ mod tests {
             (material("wood"), 3),
             (material("grain"), 1),
         ]);
-        let result = building.resolve_allocation(Some(&grants));
+        let result = building.produce_from_grants(Some(&grants), &[], None, Default::default());
         assert_eq!(result.produced[&material("stone")], 3);
         assert_eq!(result.unused[&material("wood")], 0);
         assert_eq!(result.unused[&material("grain")], 0);
@@ -263,7 +263,7 @@ mod tests {
         );
         let mut building = Building::new(BuildingId(1), Position { x: 0, y: 0 }, def);
         let grants = HashMap::from([(ResourceType::Labour, 1), (material("wood"), amount)]);
-        let result = building.resolve_allocation(Some(&grants));
+        let result = building.produce_from_grants(Some(&grants), &[], None, Default::default());
         assert_eq!(result.produced[&material("stone")], u64::from(amount));
         assert_eq!(result.unused[&material("wood")], 0);
     }
@@ -319,7 +319,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_allocation_no_workers_no_production() {
+    fn test_produce_from_grants_no_workers_no_production() {
         let behavior = BuildingBehavior::Production {
             inputs: vec![],
             outputs: vec![(material("wood"), 10)],
@@ -331,7 +331,7 @@ mod tests {
         let mut granted = HashMap::new();
         granted.insert(material("wood"), 50);
 
-        let result = building.resolve_allocation(Some(&granted));
+        let result = building.produce_from_grants(Some(&granted), &[], None, Default::default());
 
         assert!(
             result.produced.is_empty(),
@@ -346,7 +346,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_allocation_inactive_building() {
+    fn test_produce_from_grants_inactive_building() {
         let behavior = BuildingBehavior::Production {
             inputs: vec![],
             outputs: vec![(material("wood"), 10)],
@@ -359,7 +359,7 @@ mod tests {
         granted.insert(ResourceType::Labour, 5); // Attempt to assign workers
         granted.insert(material("wood"), 20);
 
-        let result = building.resolve_allocation(Some(&granted));
+        let result = building.produce_from_grants(Some(&granted), &[], None, Default::default());
 
         assert!(
             result.produced.is_empty(),
@@ -381,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_allocation_full_efficiency() {
+    fn test_produce_from_grants_full_efficiency() {
         let behavior = BuildingBehavior::Production {
             inputs: vec![(material("wood"), 10)],
             outputs: vec![(material("stone"), 20)],
@@ -394,7 +394,7 @@ mod tests {
         granted.insert(ResourceType::Labour, 10);
         granted.insert(material("wood"), 10);
 
-        let result = building.resolve_allocation(Some(&granted));
+        let result = building.produce_from_grants(Some(&granted), &[], None, Default::default());
 
         assert_eq!(building.current_workers, 10);
         assert_eq!(*result.produced.get(&material("stone")).unwrap_or(&0), 20);
@@ -406,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_allocation_partial_efficiency() {
+    fn test_produce_from_grants_partial_efficiency() {
         let behavior = BuildingBehavior::Production {
             inputs: vec![(material("wood"), 20)],
             outputs: vec![(material("stone"), 40)],
@@ -419,7 +419,7 @@ mod tests {
         granted.insert(ResourceType::Labour, 5);
         granted.insert(material("wood"), 15);
 
-        let result = building.resolve_allocation(Some(&granted));
+        let result = building.produce_from_grants(Some(&granted), &[], None, Default::default());
 
         assert_eq!(building.current_workers, 5);
         assert_eq!(
@@ -435,7 +435,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_allocation_fractional_production_with_bottleneck() {
+    fn test_produce_from_grants_fractional_production_with_bottleneck() {
         let behavior = BuildingBehavior::Production {
             inputs: vec![(material("wood"), 10), (material("grain"), 5)],
             outputs: vec![(material("stone"), 20)],
@@ -463,7 +463,7 @@ mod tests {
         granted.insert(material("wood"), 10);
         granted.insert(material("grain"), 2);
 
-        let result = building.resolve_allocation(Some(&granted));
+        let result = building.produce_from_grants(Some(&granted), &[], None, Default::default());
 
         assert_eq!(building.current_workers, 10);
 

@@ -95,7 +95,7 @@ Additional methods on the same `Building` type, grouped around the production cy
 | Method on `Building` | Purpose |
 | --- | --- |
 | `calculate_demand` | Request inputs and labour according to activity and target load. |
-| `resolve_allocation` | Set staffing and return ProductionResult with products and unused grants. |
+| `produce_from_grants` | Apply actual staffing and production modifiers with the recipe selected during planning. Return produced and unused materials. |
 | `execute_production` | Apply worker/material bottlenecks and exact output scaling. |
 
 ### [core/src/domain/buildings/definition.rs](../../../core/src/domain/buildings/definition.rs)
@@ -394,11 +394,11 @@ reports, failures and related test files in detail.
 | --- | --- |
 | [domain/trade/mod.rs](../../../core/src/domain/trade/mod.rs) | Exports allocation, book, caravan, execution, network and offer modules. |
 | [domain/trade/offer.rs](../../../core/src/domain/trade/offer.rs) | `TradeOffer`, `BuyTradeOffer`, `SellTradeOffer`, `TradeDemand`. `buy`/`sell` construct offers; `remaining_units` reads open quantity; `calculate_demand` requests stock or gold. `without_progress` strips earlier purchases from templates; `take_share`/`absorb` split/merge offers. Buy/sell accessors track stock and purchases. Buy gold demand uses saturating multiplication. |
-| [domain/trade/book.rs](../../../core/src/domain/trade/book.rs) | `TradeBook` owns reserved funds and offers. `new`/`with_offers`/`default` construct it; `replace_offers` installs templates; `calculate_demand` sums reservations; `update_sell_resource_amount` and `add_gold_amount` apply funding. `gold`, `offers`, `goods_for_sale`, `bought_goods` expose state; `return_resources` drains materials and funds. |
+| [domain/trade/book.rs](../../../core/src/domain/trade/book.rs) | `TradeBook` owns reserved funds and offers. `new`/`default` construct it; `replace_offers` installs templates; `calculate_demand` sums reservations; `update_sell_resource_amount` and `add_gold_amount` apply funding. `gold`, `offers`, `goods_for_sale`, `bought_goods` expose state; `return_resources` drains materials and funds. |
 | [domain/trade/book/matching.rs](../../../core/src/domain/trade/book/matching.rs) | `TradeBook::trade` returns executions from self's perspective. Private `transaction` scales purchases to gold, orders price/resource ties and spends remainders. `execute_single_trade` updates buyer/seller quantities and funds. |
 | [domain/trade/book/market.rs](../../../core/src/domain/trade/book/market.rs) | `TradeBook::trade_with_visitors` shares a market and returns execution vectors in visitor order. `visitor_interest`, `price`, `equal_shares`, `split`, `take_share`, `absorb` implement repeated sharing. |
 | [domain/trade/execution.rs](../../../core/src/domain/trade/execution.rs) | `TradeExecution`: resource, units, unit price, `TradeSide`. `total_price` multiplies in `u64`; `mirrored` and `TradeSide::opposite` switch perspective. |
-| [domain/trade/allocation.rs](../../../core/src/domain/trade/allocation.rs) | `TradeAllocationEngine::execute` withdraws available stock/gold, reducing unfunded sell quantities; `execute_gold_allocation` handles funds. Legacy `execute_remained_resources` ignores material admission rejection and is not used by the coordinated lifecycle. |
+| [domain/trade/allocation.rs](../../../core/src/domain/trade/allocation.rs) | `TradeAllocationEngine::execute` withdraws available stock/gold, reducing unfunded sell quantities; `execute_gold_allocation` handles funds. |
 
 ## Geography and world state
 

@@ -215,7 +215,7 @@ impl BuildingManager {
         for building in self.buildings.iter_mut() {
             let id = building.instance_id();
             let grants = allocations.get(&AllocationRecipient::Building(id));
-            let update_result = building.resolve_planned_allocation(
+            let update_result = building.produce_from_grants(
                 grants,
                 &self.production_modifier_strategies,
                 recipes.get(&id).copied(),

@@ -117,7 +117,7 @@ fn mine_uses_the_selected_ore_anywhere_on_land_in_its_own_province() {
     assert_eq!(
         turn.decisions[0].results[0].outcome,
         ActionOutcome::Rejected {
-            error: ActionError::RequiredDepositMissing {
+            error: ActionError::ProvinceDepositRequired {
                 position: MINE_SITE,
                 resource: material("iron_ore"),
             },
@@ -190,7 +190,10 @@ fn queued_mine_losing_its_province_deposit_is_rejected_before_spending() {
     assert_eq!(
         settlement.projects[0].result,
         Err(ProjectError::Territory(
-            TerritoryError::ProvinceDepositRequired(MINE_SITE)
+            TerritoryError::ProvinceDepositRequired {
+                position: MINE_SITE,
+                resource: material("iron_ore")
+            }
         ))
     );
     assert!(settlement.inventory.project_consumed.is_empty());
@@ -235,7 +238,10 @@ fn pending_configured_upgrades_recheck_the_site_before_spending() {
         (
             "mine_iron_ore",
             MINE_SITE,
-            TerritoryError::ProvinceDepositRequired(MINE_SITE),
+            TerritoryError::ProvinceDepositRequired {
+                position: MINE_SITE,
+                resource: material("iron_ore"),
+            },
         ),
     ] {
         let mut world = scenario();

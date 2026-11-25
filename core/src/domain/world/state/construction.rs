@@ -9,6 +9,7 @@ use crate::domain::settlement::BuildingCommandError;
 use crate::domain::settlement::projects::{ProjectCost, ProjectError, ProjectResult};
 #[cfg(test)]
 use crate::domain::settlement::turn_report::TurnReport;
+use crate::domain::spatial::TerritoryError;
 use crate::domain::world::settlement_environment::{
     MapConstructionSpace, MapSettlementEnvironment,
 };
@@ -26,19 +27,6 @@ impl World {
             .validate_building_position(position)
             .and_then(|_| self.territory.validate_vacancy(position))
             .map_err(|error| WorldError::Project(ProjectError::Territory(error)))
-    }
-
-    fn validate_upgrade_site(
-        &self,
-        settlement_id: SettlementId,
-        position: Position,
-        definition: &BuildingDefinition,
-    ) -> Result<(), WorldError> {
-        self.validate_settlement_position(settlement_id, position)?;
-        self.map
-            .validate_building_position(position)
-            .map_err(|error| WorldError::Project(ProjectError::Territory(error)))?;
-        self.validate_building_deposit(position, definition)
     }
 
     /// Cancellation belongs to the settlement and also works after map edits.
@@ -66,12 +54,6 @@ impl World {
         cost: ProjectCost,
     ) -> Result<(), WorldError> {
         self.validate_settlement_position(settlement_id, position)?;
-        if definition.required_deposit().is_some() {
-            self.map
-                .validate_building_position(position)
-                .map_err(|error| WorldError::Project(ProjectError::Territory(error)))?;
-        }
-        self.validate_building_deposit(position, &definition)?;
         self.settlements
             .get_mut(settlement_id)
             .expect("settlement was validated")
@@ -82,7 +64,7 @@ impl World {
                 cost,
                 &mut MapConstructionSpace::new(&self.map, &mut self.territory),
             )
-            .map_err(WorldError::Project)
+            .map_err(construction_error)
     }
 
     pub fn add_building(
@@ -92,10 +74,6 @@ impl World {
         finder: &mut PathFinder,
     ) -> Result<(), WorldError> {
         self.validate_settlement_position(settlement_id, building.position())?;
-        self.map
-            .validate_building_position(building.position())
-            .map_err(|error| WorldError::Building(BuildingCommandError::Territory(error)))?;
-        self.validate_building_deposit(building.position(), building.definition())?;
         self.settlements
             .get_mut(settlement_id)
             .expect("settlement was validated")
@@ -103,7 +81,13 @@ impl World {
                 building,
                 &mut MapSettlementEnvironment::new(&self.map, finder, &mut self.territory),
             )
-            .map_err(WorldError::Building)
+            .map_err(|error| match error {
+                BuildingCommandError::Territory(TerritoryError::TileDepositRequired {
+                    position,
+                    resource,
+                }) => WorldError::RequiredDepositMissing { position, resource },
+                other => WorldError::Building(other),
+            })
     }
 
     pub fn queue_upgrade(
@@ -123,7 +107,7 @@ impl World {
             .ok_or(WorldError::Project(ProjectError::MissingBuilding(
                 building_id,
             )))?;
-        self.validate_upgrade_site(settlement_id, building.position(), &definition)?;
+        self.validate_settlement_position(settlement_id, building.position())?;
         self.settlements
             .get_mut(settlement_id)
             .expect("settlement was validated")
@@ -134,7 +118,7 @@ impl World {
                 cost,
                 &MapConstructionSpace::new(&self.map, &mut self.territory),
             )
-            .map_err(WorldError::Project)
+            .map_err(construction_error)
     }
 
     /// Advances one registered settlement in isolation for tests.
@@ -183,24 +167,27 @@ impl World {
                     self.validate_settlement_position(settlement_id, *position)?
                 }
                 ProjectResult::UpgradeBuilding {
-                    target_instance_id,
-                    new_definition,
+                    target_instance_id, ..
                 } => {
                     if let Some(building) = settlement
                         .buildings()
                         .find(|building| building.instance_id() == *target_instance_id)
                     {
                         self.validate_settlement_position(settlement_id, building.position())?;
-                        // Legacy tile-bound upgrades keep their original deposit validation.
-                        // Blueprint terrain and province deposits are rechecked during project preparation.
-                        if !new_definition.requires_province_deposit() {
-                            self.validate_building_deposit(building.position(), new_definition)?;
-                        }
                     }
                 }
                 ProjectResult::RecruitUnit { .. } => {}
             }
         }
         Ok(())
+    }
+}
+
+fn construction_error(error: ProjectError) -> WorldError {
+    match error {
+        ProjectError::Territory(TerritoryError::TileDepositRequired { position, resource }) => {
+            WorldError::RequiredDepositMissing { position, resource }
+        }
+        other => WorldError::Project(other),
     }
 }

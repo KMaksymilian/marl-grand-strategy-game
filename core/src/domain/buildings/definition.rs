@@ -1,6 +1,7 @@
 use crate::domain::buildings::effects::StatType;
 use crate::domain::economy::ResourceType;
 use crate::domain::economy::cost::ProjectCost;
+use crate::domain::spatial::site::SiteRequirements;
 use crate::domain::world::terrain::biome::Biome;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -44,10 +45,7 @@ pub struct BuildingDefinition {
     max_workers: u32,
     behaviors: Vec<BuildingBehavior>,
     construction_cost: ProjectCost,
-    required_deposit: Option<ResourceType>,
-    requires_province_deposit: bool,
-    requires_coast: bool,
-    biome_efficiencies: Option<BTreeMap<Biome, u8>>,
+    site_requirements: SiteRequirements,
     cycle_production: Option<CycleProduction>,
 }
 
@@ -83,10 +81,7 @@ impl BuildingDefinition {
             max_workers,
             behaviors,
             construction_cost,
-            required_deposit: None,
-            requires_province_deposit: false,
-            requires_coast: false,
-            biome_efficiencies: None,
+            site_requirements: SiteRequirements::default(),
             cycle_production: None,
         };
         definition.validate()?;
@@ -116,30 +111,35 @@ impl BuildingDefinition {
         if resource == ResourceType::Labour {
             return Err(DefinitionError::InvalidDepositResource(resource));
         }
-        self.required_deposit = Some(resource);
+        self.site_requirements = self.site_requirements.requiring_deposit(resource);
         Ok(self)
     }
 
     pub fn required_deposit(&self) -> Option<ResourceType> {
-        self.required_deposit.clone()
+        self.site_requirements
+            .province_deposit()
+            .or_else(|| self.site_requirements.tile_deposit())
+            .cloned()
     }
 
     pub fn requiring_coast(mut self) -> Self {
-        self.requires_coast = true;
+        self.site_requirements = self.site_requirements.requiring_coast();
         self
     }
 
     pub fn requiring_province_deposit(
-        self,
+        mut self,
         resource: ResourceType,
     ) -> Result<Self, DefinitionError> {
-        let mut definition = self.requiring_deposit(resource)?;
-        definition.requires_province_deposit = true;
-        Ok(definition)
+        if resource == ResourceType::Labour {
+            return Err(DefinitionError::InvalidDepositResource(resource));
+        }
+        self.site_requirements = self.site_requirements.requiring_province_deposit(resource);
+        Ok(self)
     }
 
     pub fn requires_province_deposit(&self) -> bool {
-        self.requires_province_deposit
+        self.site_requirements.province_deposit().is_some()
     }
 
     pub fn with_biome_efficiencies(
@@ -154,24 +154,23 @@ impl BuildingDefinition {
         {
             return Err(DefinitionError::InvalidBiomeEfficiencies);
         }
-        self.biome_efficiencies = Some(efficiencies);
+        self.site_requirements.set_biome_efficiencies(efficiencies);
         Ok(self)
     }
 
     pub fn biome_efficiencies(&self) -> Option<&BTreeMap<Biome, u8>> {
-        self.biome_efficiencies.as_ref()
+        self.site_requirements.biome_efficiencies()
     }
 
     pub fn is_biome_restricted(&self) -> bool {
-        self.biome_efficiencies.is_some()
+        self.biome_efficiencies().is_some()
     }
 
     pub fn biome_efficiency(&self, biome: Biome) -> Option<u8> {
         if biome == Biome::Ocean {
             return None;
         }
-        self.biome_efficiencies
-            .as_ref()
+        self.biome_efficiencies()
             .map_or(Some(100), |efficiencies| efficiencies.get(&biome).copied())
     }
 
@@ -219,11 +218,16 @@ impl BuildingDefinition {
     }
 
     pub fn requires_coast(&self) -> bool {
-        self.requires_coast
+        self.site_requirements.requires_coast()
     }
 
-    pub(crate) fn deposit_resource(&self) -> Option<&ResourceType> {
-        self.required_deposit.as_ref()
+    pub fn with_site_requirements(mut self, requirements: SiteRequirements) -> Self {
+        self.site_requirements = requirements;
+        self
+    }
+
+    pub fn site_requirements(&self) -> &SiteRequirements {
+        &self.site_requirements
     }
 
     fn validate(&self) -> Result<(), DefinitionError> {

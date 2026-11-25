@@ -64,6 +64,16 @@ impl From<Biome> for SiteValue {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SiteEvaluation {
     pub efficiency_percent: u8,
+    pub biome: Option<Biome>,
+}
+
+impl Default for SiteEvaluation {
+    fn default() -> Self {
+        Self {
+            efficiency_percent: 100,
+            biome: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -282,8 +292,14 @@ impl SiteRequirements {
         position: Position,
         fact: impl Fn(&str) -> Option<SiteValue>,
     ) -> Result<SiteEvaluation, TerritoryError> {
+        let biome_value = fact(TILE_BIOME);
         for condition in &self.conditions {
-            if !condition.predicate.matches(fact(&condition.fact)) {
+            let actual = if condition.fact == TILE_BIOME {
+                biome_value.clone()
+            } else {
+                fact(&condition.fact)
+            };
+            if !condition.predicate.matches(actual) {
                 return Err(match (condition.fact.as_str(), &condition.predicate) {
                     (TILE_COASTAL, Predicate::Equals(SiteValue::Bool(true))) => {
                         TerritoryError::CoastRequired(position)
@@ -311,14 +327,24 @@ impl SiteRequirements {
 
         let efficiency_percent = match &self.biome_efficiency {
             None => 100,
-            Some(efficiencies) => match fact(TILE_BIOME) {
+            Some(efficiencies) => match &biome_value {
                 Some(SiteValue::Id(biome)) => *efficiencies
-                    .get(&biome)
+                    .get(biome)
                     .ok_or(TerritoryError::ForbiddenBiome(position))?,
                 _ => return Err(TerritoryError::ForbiddenBiome(position)),
             },
         };
-        Ok(SiteEvaluation { efficiency_percent })
+        let biome = match biome_value {
+            Some(SiteValue::Id(id)) => BIOMES
+                .iter()
+                .find(|(_, name)| *name == id)
+                .map(|(biome, _)| *biome),
+            _ => None,
+        };
+        Ok(SiteEvaluation {
+            efficiency_percent,
+            biome,
+        })
     }
 
     pub fn requiring_coast(mut self) -> Self {

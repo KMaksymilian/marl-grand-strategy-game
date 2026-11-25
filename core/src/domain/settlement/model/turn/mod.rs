@@ -12,6 +12,7 @@ use crate::domain::economy::allocation::{
 use crate::domain::ids::BuildingId;
 use crate::domain::nation::taxation::tax_amount;
 use crate::domain::spatial::ConstructionSpace;
+use crate::domain::spatial::site::SiteEvaluation;
 use crate::domain::trade::caravan::Caravan;
 use std::collections::HashMap;
 
@@ -20,14 +21,14 @@ pub(crate) struct PreparedTurn {
     projects: Vec<ProjectOutcome>,
     opening_stock: MaterialTotals,
     building_requests: Vec<DemandRequest>,
-    site_efficiencies: HashMap<BuildingId, u8>,
+    sites: HashMap<BuildingId, SiteEvaluation>,
 }
 
 pub(crate) struct AllocatedTurn {
     trade: TradeTurnReport,
     projects: Vec<ProjectOutcome>,
     allocations: AllocationResult,
-    site_efficiencies: HashMap<BuildingId, u8>,
+    sites: HashMap<BuildingId, SiteEvaluation>,
     inventory: InventoryTurnReport,
 }
 
@@ -100,22 +101,20 @@ impl Settlement {
         let mut trade = TradeTurnReport::default();
         self.reserve_market(&mut trade);
         self.trade_with_visitors(visitors, &mut trade, turn, province_id);
-        let (building_requests, site_efficiencies) =
-            self.building_manager.generate_requests(|building| {
-                environment
-                    .evaluate_site(
-                        building.position(),
-                        building.definition().site_requirements(),
-                    )
-                    .ok()
-                    .map(|site| site.efficiency_percent)
-            });
+        let (building_requests, sites) = self.building_manager.generate_requests(|building| {
+            environment
+                .evaluate_site(
+                    building.position(),
+                    building.definition().site_requirements(),
+                )
+                .ok()
+        });
         PreparedTurn {
             trade,
             projects,
             opening_stock,
             building_requests,
-            site_efficiencies,
+            sites,
         }
     }
 
@@ -130,7 +129,7 @@ impl Settlement {
             trade: prepared.trade,
             projects: prepared.projects,
             allocations,
-            site_efficiencies: prepared.site_efficiencies,
+            sites: prepared.sites,
             inventory,
         }
     }
@@ -151,10 +150,9 @@ impl Settlement {
     }
 
     pub(crate) fn produce_turn(&mut self, mut consumed: ConsumedTurn) -> ProducedTurn {
-        let (produced, returned) = self.building_manager.process_allocations(
-            &consumed.allocated.allocations,
-            &consumed.allocated.site_efficiencies,
-        );
+        let (produced, returned) = self
+            .building_manager
+            .process_allocations(&consumed.allocated.allocations, &consumed.allocated.sites);
         consumed
             .allocated
             .inventory

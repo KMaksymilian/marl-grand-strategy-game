@@ -8,6 +8,7 @@ mod map_commands;
 mod nations;
 mod passive_buildings;
 mod resource_sites;
+mod site_facts;
 mod taxation;
 mod trade;
 pub use inspection::TileView;

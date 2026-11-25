@@ -4,7 +4,7 @@ use super::super::projects::{Project, ProjectCost, ProjectError, ProjectResult};
 use crate::domain::buildings::definition::BuildingDefinition;
 use crate::domain::ids::{BuildingId, ProjectId};
 use crate::domain::spatial::Position;
-use crate::domain::spatial::{ConstructionSpace, ProjectReference, TerritoryError};
+use crate::domain::spatial::{ConstructionSpace, ProjectReference};
 use std::sync::Arc;
 
 impl Settlement {
@@ -51,7 +51,8 @@ impl Settlement {
         self.validate_project_materials(&definition, &cost)?;
         self.validate_new_building_rules(&definition)
             .map_err(ProjectError::BuildingRule)?;
-        Self::validate_building_site(&definition, position, space)
+        space
+            .evaluate_site(position, definition.site_requirements())
             .map_err(ProjectError::Territory)?;
         let project = Project::new(
             project_id,
@@ -98,13 +99,10 @@ impl Settlement {
             .building_manager
             .get(target_instance_id)
             .ok_or(ProjectError::MissingBuilding(target_instance_id))?;
-        Self::validate_building_terrain(&new_definition, building.position(), None, || false)
+        new_definition
+            .site_requirements()
+            .evaluate(building.position(), |_| None)
             .map_err(ProjectError::Territory)?;
-        if new_definition.requires_province_deposit() {
-            return Err(ProjectError::Territory(
-                TerritoryError::ProvinceDepositRequired(building.position()),
-            ));
-        }
         self.queue_validated_upgrade(project_id, target_instance_id, new_definition, cost)
     }
 
@@ -122,7 +120,8 @@ impl Settlement {
             .building_manager
             .get(target_instance_id)
             .ok_or(ProjectError::MissingBuilding(target_instance_id))?;
-        Self::validate_building_site(&new_definition, building.position(), space)
+        space
+            .evaluate_site(building.position(), new_definition.site_requirements())
             .map_err(ProjectError::Territory)?;
         self.queue_validated_upgrade(project_id, target_instance_id, new_definition, cost)
     }

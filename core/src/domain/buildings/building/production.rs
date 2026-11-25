@@ -8,6 +8,7 @@ use crate::domain::buildings::productivity::{
     TurnProductionModifiers,
 };
 use crate::domain::economy::ResourceType;
+use crate::domain::spatial::site::SiteEvaluation;
 use std::collections::HashMap;
 
 impl Building {
@@ -41,6 +42,7 @@ impl Building {
     pub(crate) fn produce_from_grants(
         &mut self,
         granted: Option<&HashMap<ResourceType, u32>>,
+        site: SiteEvaluation,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
         cycle_recipe: Option<usize>,
         turn_modifiers: TurnProductionModifiers<'_>,
@@ -59,27 +61,29 @@ impl Building {
                 production,
                 cycle_recipe,
                 material_grants,
+                site,
                 modifier_strategies,
                 turn_modifiers,
             );
         }
-        self.execute_production(material_grants, modifier_strategies, turn_modifiers)
+        self.execute_production(material_grants, site, modifier_strategies, turn_modifiers)
     }
 
     fn production_yield(
         &self,
-        biome_efficiency: u8,
+        site: SiteEvaluation,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
         global_modifier: Option<&ProductionModifier>,
     ) -> ProductionYield {
         let context = ProductionModifierContext {
             building: self,
-            biome: self.production_biome,
+            biome: site.biome,
         };
-        let biome_modifier = (biome_efficiency != 100)
-            .then(|| ProductionModifier::new("biome", (i32::from(biome_efficiency) - 100) * 100));
+        let site_modifier = (site.efficiency_percent != 100).then(|| {
+            ProductionModifier::multiplicative("site", u32::from(site.efficiency_percent) * 100)
+        });
         self.location_productivity.apply_modifiers(
-            biome_modifier.into_iter().chain(
+            site_modifier.into_iter().chain(
                 modifier_strategies
                     .iter()
                     .filter_map(|strategy| strategy.modifier(&context))
@@ -91,6 +95,7 @@ impl Building {
     fn execute_production(
         &self,
         mut unused: HashMap<ResourceType, u32>,
+        site: SiteEvaluation,
         modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
         turn_modifiers: TurnProductionModifiers<'_>,
     ) -> ProductionResult {
@@ -101,7 +106,7 @@ impl Building {
         }
 
         let production_yield =
-            self.production_yield(100, modifier_strategies, turn_modifiers.global);
+            self.production_yield(site, modifier_strategies, turn_modifiers.global);
 
         // Recipes run in definition order against the remaining material balance.
         // Exact fractions avoid floating-point rounding at the withdrawal boundary.

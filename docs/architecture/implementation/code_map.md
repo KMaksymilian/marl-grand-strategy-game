@@ -95,7 +95,7 @@ Additional methods on the same `Building` type, grouped around the production cy
 | Method on `Building` | Purpose |
 | --- | --- |
 | `calculate_demand` | Request inputs and labour according to activity and target load. |
-| `produce_from_grants` | Apply actual staffing and production modifiers with the recipe selected during planning. Return produced and unused materials. |
+| `produce_from_grants` | Apply staffing, site efficiency and production modifiers to the planned recipe. Return produced and unused materials. |
 | `execute_production` | Apply worker/material bottlenecks and exact output scaling. |
 
 ### [core/src/domain/buildings/definition.rs](../../../core/src/domain/buildings/definition.rs)
@@ -655,7 +655,7 @@ projects outside their settlement's province after a membership change.
 
 | Source | Types and methods |
 | --- | --- |
-| [domain/spatial/mod.rs](../../../core/src/domain/spatial/mod.rs) | Coordinate/occupancy values, qualified references, `TerritoryError`, and the `ConstructionSpace` contract: reserve, validate, cancel, finish, register, release rejected. |
+| [domain/spatial/mod.rs](../../../core/src/domain/spatial/mod.rs) | Coordinate/occupancy values, qualified references, `TerritoryError`, and the `ConstructionSpace` contract: evaluate site requirements, reserve, validate, cancel, finish, register, release rejected. |
 | [domain/economy/cost.rs](../../../core/src/domain/economy/cost.rs) | `ProjectCost::normalize` removes zero entries; `is_fully_paid` checks materials and elapsed time. |
 | [domain/buildings/effects.rs](../../../core/src/domain/buildings/effects.rs) | `StatType`: shared housing, inventory and trade modifier targets. |
 | [domain/buildings/productivity.rs](../../../core/src/domain/buildings/productivity.rs) | `TravelCostSource::travel_cost` supplies a directed optional cost to the calculator. |

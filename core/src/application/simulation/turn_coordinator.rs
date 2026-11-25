@@ -167,12 +167,12 @@ pub(super) fn run_turn(
         settlements.insert(id, report);
     }
     let locations = world.capital_trade_locations();
-    for (sender, routes) in world.finish_trade_turn(&locations, finder) {
+    for (sender, departures) in world.finish_trade_turn(&locations, finder) {
         settlements
             .get_mut(&sender)
             .expect("every caravan sender has a report")
             .trade
-            .record_departure_routes(routes);
+            .caravans_dispatched = departures;
     }
     // National timers count completed turns, so they tick once, after every
     // phase; the nation reports show the state at the end of the turn.

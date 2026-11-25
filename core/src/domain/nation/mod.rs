@@ -76,7 +76,7 @@ impl Nation {
         self.capital
     }
 
-    pub fn treasury(&self) -> u32 {
+    pub fn treasury(&self) -> u64 {
         self.treasury.amount()
     }
 
@@ -118,21 +118,17 @@ impl Nation {
         self.tax_rate = rate;
     }
 
-    /// Adds gold up to the counter limit and returns the accepted amount.
-    /// `GoldInventory::add` would overflow on huge sums, so the amount is capped first.
-    pub(crate) fn deposit_gold(&mut self, amount: u32) -> u32 {
-        let accepted = amount.min(u32::MAX - self.treasury.amount());
-        self.treasury.add(accepted);
-        accepted
+    pub(crate) fn deposit_gold(&mut self, amount: u64) {
+        self.treasury.add(amount);
     }
 
     /// Takes exactly `amount`, or nothing when the treasury holds less.
-    pub(crate) fn withdraw_gold(&mut self, amount: u32) -> bool {
+    pub(crate) fn withdraw_gold(&mut self, amount: u64) -> bool {
         self.treasury.consume(amount)
     }
 
     /// Empties the treasury and returns what it held.
-    pub(crate) fn take_treasury(&mut self) -> u32 {
+    pub(crate) fn take_treasury(&mut self) -> u64 {
         self.treasury.consume_available()
     }
 
@@ -286,14 +282,15 @@ mod tests {
     }
 
     #[test]
-    fn treasury_never_overflows() {
+    fn treasury_keeps_gold_above_the_old_counter_limit() {
         let mut nation = Nation::new(NationId(1), SettlementId(1));
-        assert_eq!(nation.deposit_gold(u32::MAX - 1), u32::MAX - 1);
-        assert_eq!(nation.deposit_gold(5), 1);
-        assert_eq!(nation.treasury(), u32::MAX);
-        assert!(nation.withdraw_gold(u32::MAX - 1));
-        assert!(!nation.withdraw_gold(2));
-        assert_eq!(nation.take_treasury(), 1);
+        let old_limit = u64::from(u32::MAX);
+        nation.deposit_gold(old_limit);
+        nation.deposit_gold(5);
+        assert_eq!(nation.treasury(), old_limit + 5);
+        assert!(nation.withdraw_gold(old_limit));
+        assert!(!nation.withdraw_gold(6));
+        assert_eq!(nation.take_treasury(), 5);
         assert_eq!(nation.treasury(), 0);
     }
 }

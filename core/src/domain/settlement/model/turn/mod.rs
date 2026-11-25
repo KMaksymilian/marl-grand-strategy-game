@@ -328,15 +328,14 @@ impl Settlement {
             population_needs.supported_growth(food_in_storage.saturating_sub(unmet_food)),
         );
         let gold_income = rules.gross_gold_income(opening_population, happiness);
-        let gold_credited = gold_income.min(u64::from(u32::MAX - self.gold())) as u32;
-        self.deposit_gold(gold_credited);
+        self.gold_inventory.add(gold_income);
         self.population_manager.population = demographics.closing_population;
         report.happiness = Some(HappinessTurnReport {
             score: happiness.score(),
             production_loss_basis_points: happiness.production_loss_basis_points,
             demographics,
             gold_income,
-            gold_credited,
+            gold_credited: gold_income,
         });
     }
 }

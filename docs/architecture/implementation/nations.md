@@ -57,8 +57,8 @@ previous owner:
 
 ## Treasury, stock and tax rate
 
-- Treasury: gold, never above `u32::MAX` (`deposit_nation_gold` returns the
-  accepted amount).
+- Treasury: gold uses a 64-bit balance, with no gameplay capacity.
+  `deposit_nation_gold` returns the deposited amount.
 - Stock: one warehouse (`ResourceInventory`, as in settlements) whose single
   capacity, `Nation::STOCK_CAPACITY_PER_SETTLEMENT` (500) × owned settlements,
   is shared by all materials. The registry updates it on every ownership change.
@@ -155,7 +155,7 @@ integration points.
 | Action | Effect | Errors |
 | --- | --- | --- |
 | `set_tax_rate` | `tax_rate_set` | `invalid_tax_rate` outside 0.0..=1.0, `conflict` for a second rate in the same decision |
-| `subsidize` | `subsidy_delivered` with `gold`, `delivered` and `returned` | `unknown_settlement`, `settlement_not_owned`, `empty_subsidy`, `labour_is_not_transferable`, `insufficient_treasury`, `insufficient_stock`, `settlement_treasury_full` |
+| `subsidize` | `subsidy_delivered` with `gold`, `delivered` and `returned` | `unknown_settlement`, `settlement_not_owned`, `empty_subsidy`, `labour_is_not_transferable`, `insufficient_treasury`, `insufficient_stock` |
 | `enact_decree` | `decree_enacted` with the `upkeep` per active turn | `unknown_decree`, `decree_already_enacted`, `decree_on_cooldown` (`turns_left`), `no_free_decree_slot`, `conflict` for the same decree twice |
 | `revoke_decree` | `decree_revoked` with `cooldown_turns` | `unknown_decree`, `decree_not_active` (also a pending one), `decree_minimum_duration` (`turns_left`), `conflict` |
 

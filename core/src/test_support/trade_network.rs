@@ -25,9 +25,7 @@ impl TradeNetwork {
         }
         let mut routes = world.finish_trade_turn(locations, finder);
         for (id, report) in ids.into_iter().zip(&mut reports) {
-            report
-                .trade
-                .record_departure_routes(routes.remove(&id).unwrap_or_default());
+            report.trade.caravans_dispatched = routes.remove(&id).unwrap_or_default();
         }
         Ok(reports)
     }

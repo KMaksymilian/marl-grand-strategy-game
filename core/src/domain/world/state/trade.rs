@@ -3,7 +3,7 @@ use super::World;
 use crate::domain::buildings::passive::TradeLimitBonuses;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
-use crate::domain::settlement::turn_report::CaravanDepartureRoute;
+use crate::domain::settlement::turn_report::{CaravanDepartureRoute, DispatchedCaravan};
 use crate::domain::settlement::{CaravanUsage, TradeCommandError, offer_units};
 use crate::domain::trade::caravan::{Caravan, CaravanOutcome, CaravanReturn, CaravanState};
 use crate::domain::trade::offer::TradeOffer;
@@ -128,14 +128,15 @@ impl World {
         &mut self,
         locations: &HashMap<SettlementId, Point>,
         finder: &mut PathFinder,
-    ) -> HashMap<SettlementId, Vec<CaravanDepartureRoute>> {
-        let mut routes = HashMap::new();
+    ) -> HashMap<SettlementId, Vec<DispatchedCaravan>> {
+        let mut routed = HashMap::new();
         for id in self.settlement_ids() {
             let departures = self
                 .settlement_mut(id)
                 .expect("registered settlement")
                 .take_dispatched_caravans();
             for cargo in departures {
+                let mut departure = DispatchedCaravan::from_cargo(&cargo);
                 let route = locations
                     .get(&cargo.sender_id)
                     .zip(locations.get(&cargo.receiver_id));
@@ -164,7 +165,8 @@ impl World {
                         Some(CaravanReturn::undelivered(cargo, CaravanOutcome::NoRoute)),
                     )
                 };
-                routes.entry(id).or_insert_with(Vec::new).push(status);
+                departure.route = Some(status);
+                routed.entry(id).or_insert_with(Vec::new).push(departure);
                 if let Some(returned) = returned {
                     self.settlement_mut(id)
                         .expect("registered sender")
@@ -172,7 +174,7 @@ impl World {
                 }
             }
         }
-        routes
+        routed
     }
 }
 
@@ -223,7 +225,11 @@ mod tests {
             .unwrap();
         let locations = world.capital_trade_locations();
         let departures = world.finish_trade_turn(&locations, &mut finder);
-        assert_eq!(departures[&sender], [CaravanDepartureRoute::Routed]);
+        assert_eq!(departures[&sender].len(), 1);
+        assert_eq!(
+            departures[&sender][0].route,
+            Some(CaravanDepartureRoute::Routed)
+        );
         assert_eq!(
             world.order_caravan(sender, receiver, offers()),
             Err(TradeCommandError::CaravanCapacityExceeded)

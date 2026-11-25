@@ -33,7 +33,7 @@ pub struct SettlementObservation {
     pub population: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub happiness: Option<f64>,
-    pub gold: u32,
+    pub gold: u64,
     pub inventory: InventoryObservation,
     #[serde(default)]
     pub passive_building_effects: PassiveBuildingEffects,

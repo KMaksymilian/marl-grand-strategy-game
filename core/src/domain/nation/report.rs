@@ -17,7 +17,7 @@ pub struct NationTurnReport {
     pub capital: SettlementId,
     pub capital_loss_turns: u32,
     pub settlements: Vec<SettlementId>,
-    pub closing_treasury: u32,
+    pub closing_treasury: u64,
     pub closing_stock: BTreeMap<ResourceType, u32>,
     /// What the nation's settlements paid this turn (§6).
     pub taxes: NationTaxReport,

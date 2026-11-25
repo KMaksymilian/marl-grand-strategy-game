@@ -56,7 +56,9 @@ fn queue_nation_action(simulation: &mut Simulation, action: NationAction) {
 
 #[test]
 fn gold_at_neutral_happiness_uses_opening_population_even_without_food() {
-    let world = world(Settlement::new(CAPITAL, 1_000_000, 1_000, needs()));
+    let mut settlement = Settlement::new(CAPITAL, 1_000_000, 1_000, needs());
+    settlement.deposit_gold(u32::MAX);
+    let world = world(settlement);
     assert_eq!(score(&world, CAPITAL), 50.0);
     let mut simulation = Simulation::new(world).unwrap();
     let turn = simulation.step().unwrap();
@@ -72,7 +74,10 @@ fn gold_at_neutral_happiness_uses_opening_population_even_without_food() {
     assert_eq!(happiness.demographics.starved, 100);
     assert_eq!(happiness.demographics.closing_population, 900);
     assert_eq!(simulation.settlement(CAPITAL).unwrap().population(), 900);
-    assert_eq!(simulation.settlement(CAPITAL).unwrap().gold(), 1_000);
+    assert_eq!(
+        simulation.settlement(CAPITAL).unwrap().gold(),
+        u64::from(u32::MAX) + 1_000
+    );
     assert_eq!(
         simulation.world().nation(HOME_NATION).unwrap().treasury(),
         0

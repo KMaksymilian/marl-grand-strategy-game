@@ -13,9 +13,9 @@ impl TradeBook {
     pub fn trade(&mut self, other: &mut TradeBook) -> Vec<TradeExecution> {
         // (ResourceType, price_per_unit, max_possible_units)
         let mut my_buying_trade_vector: Vec<(ResourceType, u32, u32)> = Vec::new();
-        let mut my_total_cost: u32 = 0;
+        let mut my_total_cost: u128 = 0;
         let mut other_buying_trade_vector: Vec<(ResourceType, u32, u32)> = Vec::new();
-        let mut other_total_cost: u32 = 0;
+        let mut other_total_cost: u128 = 0;
 
         for (resource_type, offer) in &self.offers {
             match offer {
@@ -24,13 +24,13 @@ impl TradeBook {
                         let price_min = sell_offer.get_minimal_price_per_unit();
                         let price_max = buy_offer.get_maximum_price_per_unit();
                         if price_min <= price_max {
-                            let price_per_unit = (price_max + price_min) / 2;
+                            let price_per_unit = u32::midpoint(price_max, price_min);
                             let max_units = buy_offer
                                 .get_remaining_amount_to_buy()
                                 .min(sell_offer.get_amount_to_sell());
 
                             if max_units > 0 && price_per_unit > 0 {
-                                my_total_cost += price_per_unit * max_units;
+                                my_total_cost += u128::from(price_per_unit) * u128::from(max_units);
                                 my_buying_trade_vector.push((
                                     resource_type.clone(),
                                     price_per_unit,
@@ -45,13 +45,14 @@ impl TradeBook {
                         let price_min = sell_offer.get_minimal_price_per_unit();
                         let price_max = buy_offer.get_maximum_price_per_unit();
                         if price_min <= price_max {
-                            let price_per_unit = (price_max + price_min) / 2;
+                            let price_per_unit = u32::midpoint(price_max, price_min);
                             let max_units = buy_offer
                                 .get_remaining_amount_to_buy()
                                 .min(sell_offer.get_amount_to_sell());
 
                             if max_units > 0 && price_per_unit > 0 {
-                                other_total_cost += price_per_unit * max_units;
+                                other_total_cost +=
+                                    u128::from(price_per_unit) * u128::from(max_units);
                                 other_buying_trade_vector.push((
                                     resource_type.clone(),
                                     price_per_unit,
@@ -103,9 +104,9 @@ impl TradeBook {
         mut buying_trade_vector: Vec<(ResourceType, u32, u32)>,
         buy_book: &mut TradeBook,
         sell_book: &mut TradeBook,
-        total_cost: u32,
+        total_cost: u128,
         executed: &mut Executed,
-    ) -> u32 {
+    ) -> u64 {
         if total_cost == 0 || buy_book.gold == 0 {
             return 0;
         }
@@ -113,14 +114,14 @@ impl TradeBook {
         // Resource order breaks equal-price ties independently of HashMap order.
         buying_trade_vector.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
-        let initial_gold: u32 = buy_book.gold;
-        let mut total_gold_spent: u32 = 0;
+        let initial_gold = u128::from(buy_book.gold);
+        let mut total_gold_spent: u64 = 0;
 
         for (resource, price_per_unit, remaining_units) in &mut buying_trade_vector {
             let units_to_buy = if initial_gold >= total_cost {
                 *remaining_units
             } else {
-                ((*remaining_units as u64) * (initial_gold as u64) / (total_cost as u64)) as u32
+                (u128::from(*remaining_units) * initial_gold / total_cost) as u32
             };
 
             if units_to_buy > 0 {
@@ -136,16 +137,17 @@ impl TradeBook {
                     .or_insert((0, *price_per_unit))
                     .0 += units_to_buy;
                 *remaining_units -= units_to_buy;
-                total_gold_spent += units_to_buy * *price_per_unit;
+                total_gold_spent += u64::from(units_to_buy) * u64::from(*price_per_unit);
             }
         }
 
         if initial_gold < total_cost && buy_book.gold > 0 {
             for (resource, price_per_unit, remaining_units) in buying_trade_vector {
-                if remaining_units == 0 || buy_book.gold < price_per_unit {
+                if remaining_units == 0 || buy_book.gold < u64::from(price_per_unit) {
                     continue;
                 }
-                let affordable_extra = (buy_book.gold / price_per_unit).min(remaining_units);
+                let affordable_extra = (buy_book.gold / u64::from(price_per_unit))
+                    .min(u64::from(remaining_units)) as u32;
                 if affordable_extra > 0 {
                     Self::execute_single_trade(
                         buy_book,
@@ -155,7 +157,7 @@ impl TradeBook {
                         price_per_unit,
                     );
                     executed.entry(resource).or_insert((0, price_per_unit)).0 += affordable_extra;
-                    total_gold_spent += affordable_extra * price_per_unit;
+                    total_gold_spent += u64::from(affordable_extra) * u64::from(price_per_unit);
                 }
             }
         }
@@ -170,7 +172,7 @@ impl TradeBook {
         units: u32,
         price: u32,
     ) {
-        let cost = units * price;
+        let cost = u64::from(units) * u64::from(price);
         buy_book.gold -= cost;
 
         if let Some(TradeOffer::Buy(buy_offer)) = buy_book.offers.get_mut(resource) {
@@ -212,6 +214,27 @@ mod tests {
             buyer.bought_goods().into_iter().collect::<Vec<_>>(),
             vec![(material("wood"), 1)]
         );
+    }
+
+    #[test]
+    fn trade_transfers_gold_above_the_old_counter_limit() {
+        let wood = material("wood");
+        let unit_price = u32::MAX;
+        let budget = 2 * u64::from(unit_price);
+        let mut buyer = TradeBook::new(
+            budget,
+            HashMap::from([(wood.clone(), TradeOffer::buy(2, unit_price))]),
+        );
+        let mut seller =
+            TradeBook::new(0, HashMap::from([(wood, TradeOffer::sell(2, unit_price))]));
+
+        let executions = buyer.trade(&mut seller);
+
+        assert_eq!(executions.len(), 1);
+        assert_eq!(executions[0].units, 2);
+        assert_eq!(executions[0].unit_price, unit_price);
+        assert_eq!(buyer.gold(), 0);
+        assert_eq!(seller.gold(), budget);
     }
 
     #[test]

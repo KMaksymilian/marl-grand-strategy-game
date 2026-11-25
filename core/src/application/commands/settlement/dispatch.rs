@@ -1,13 +1,10 @@
 //! Maps decision values to live domain operations and their reported outcomes.
-use super::{ActionEffect, ActionError, OfferSpec, SettlementAction};
+use super::{ActionEffect, ActionError, SettlementAction, input_validation::resolve_offers};
 use crate::domain::buildings::definition::BuildingDefinition;
-use crate::domain::economy::ResourceType;
 use crate::domain::ids::{BuildingTypeId, ProjectId, SettlementId};
 use crate::domain::settlement::{BuildingCommandError, TradeCommandError, projects::ProjectError};
 use crate::domain::spatial::{Position, TerritoryError};
-use crate::domain::trade::offer::TradeOffer;
 use crate::domain::world::{World, WorldError};
-use std::collections::{HashMap, hash_map::Entry};
 use std::sync::Arc;
 
 pub(crate) struct CommandDispatch<'a> {
@@ -241,7 +238,7 @@ fn building_error(error: BuildingCommandError) -> ActionError {
     }
 }
 
-fn trade_error(error: TradeCommandError) -> ActionError {
+pub(super) fn trade_error(error: TradeCommandError) -> ActionError {
     match error {
         TradeCommandError::MarketCapacityExceeded => ActionError::MarketCapacityExceeded,
         TradeCommandError::CaravanCapacityExceeded => ActionError::CaravanCapacityExceeded,
@@ -272,21 +269,4 @@ fn trade_error(error: TradeCommandError) -> ActionError {
             available,
         },
     }
-}
-
-fn resolve_offers(offers: &[OfferSpec]) -> Result<HashMap<ResourceType, TradeOffer>, ActionError> {
-    let mut resolved = HashMap::with_capacity(offers.len());
-    for offer in offers {
-        match resolved.entry(offer.resource.clone()) {
-            Entry::Occupied(_) => {
-                return Err(ActionError::DuplicateOffer {
-                    resource: offer.resource.clone(),
-                });
-            }
-            Entry::Vacant(entry) => {
-                entry.insert(offer.to_offer());
-            }
-        }
-    }
-    Ok(resolved)
 }

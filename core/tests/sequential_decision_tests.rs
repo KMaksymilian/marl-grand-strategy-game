@@ -36,7 +36,16 @@ fn setup(disconnected: bool, same_nation: bool) -> World {
         terrain[2] = Area::new(0.0, 0.5);
     }
     let mut world = World::new(
-        Map::new(6, 1, terrain, vec![1, 1, 1, 2, 3, 3]),
+        Map::new(
+            6,
+            1,
+            terrain,
+            if disconnected {
+                vec![1, 3, 1, 2, 2, 2]
+            } else {
+                vec![1, 1, 1, 2, 3, 3]
+            },
+        ),
         (1..=3).map(Province::new).collect(),
     );
     let mut sender = Settlement::new(SENDER, 100, 5, Arc::default());
@@ -378,29 +387,40 @@ fn reservations_are_realized_in_fifo_order_and_consumed_once() {
 }
 
 #[test]
-fn an_order_without_a_route_returns_goods_and_gold_without_another_charge() {
+fn routing_keeps_each_cargo_and_returns_an_unroutable_order_without_another_charge() {
     let mut simulation = Simulation::new(setup(true, false)).unwrap();
     queue(
         &mut simulation,
-        vec![SettlementAction::OrderCaravan {
-            receiver_id: EAST,
-            offers: vec![
-                offer(OfferSide::Sell, material("wood"), 7, 1),
-                offer(OfferSide::Buy, material("stone"), 2, 5),
-            ],
-        }],
+        vec![
+            SettlementAction::OrderCaravan {
+                receiver_id: EAST,
+                offers: vec![
+                    offer(OfferSide::Sell, material("wood"), 7, 1),
+                    offer(OfferSide::Buy, material("stone"), 2, 5),
+                ],
+            },
+            caravan(WEST, 2),
+        ],
     );
     let first = simulation.step().unwrap();
     assert!(first.decisions[0].results[0].is_applied());
-    assert!(simulation.world().caravans.is_empty());
-    assert_eq!(
-        first.settlements[&SENDER].trade.caravans_dispatched[0].route,
-        Some(CaravanDepartureRoute::NoRoute)
-    );
+    assert!(first.decisions[0].results[1].is_applied());
+    assert_eq!(simulation.world().caravans.len(), 1);
+    assert_eq!(simulation.world().caravans[0].receiver_id, WEST);
+    let departures = &first.settlements[&SENDER].trade.caravans_dispatched;
+    assert_eq!(departures.len(), 2);
+    assert_eq!(departures[0].receiver_id, EAST);
+    assert_eq!(departures[0].route, Some(CaravanDepartureRoute::NoRoute));
+    assert_eq!(departures[0].cargo[&material("wood")], 7);
+    assert_eq!(departures[0].gold, 10);
+    assert_eq!(departures[1].receiver_id, WEST);
+    assert_eq!(departures[1].route, Some(CaravanDepartureRoute::Routed));
+    assert_eq!(departures[1].cargo[&material("wood")], 2);
+    assert_eq!(departures[1].gold, 0);
     assert!(first.settlements[&SENDER].inventory.is_balanced());
     assert_eq!(
         first.settlements[&SENDER].inventory.trade_reserved[&material("wood")],
-        7
+        9
     );
     assert_eq!(first.settlements[&SENDER].trade.gold_reserved(), 10);
     let second = simulation.step().unwrap();
@@ -409,7 +429,7 @@ fn an_order_without_a_route_returns_goods_and_gold_without_another_charge() {
         report.trade.caravans_returned[0].outcome,
         CaravanOutcome::NoRoute
     );
-    assert_eq!(report.inventory.closing_stock[&material("wood")], 10);
+    assert_eq!(report.inventory.closing_stock[&material("wood")], 8);
     assert_eq!(simulation.settlement(SENDER).unwrap().gold(), 20);
     assert!(report.inventory.is_balanced());
 }

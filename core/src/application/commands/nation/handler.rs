@@ -137,9 +137,6 @@ fn report_error(error: NationOperationError) -> Result<NationActionError, WorldE
             requested: u64::from(requested),
             available,
         },
-        Domain::SettlementTreasuryFull(settlement_id) => {
-            Action::SettlementTreasuryFull { settlement_id }
-        }
         Domain::UnknownDecree(decree) => Action::UnknownDecree { decree },
         Domain::DecreeAlreadyEnacted(decree) => Action::DecreeAlreadyEnacted { decree },
         Domain::DecreeOnCooldown { decree, turns_left } => {

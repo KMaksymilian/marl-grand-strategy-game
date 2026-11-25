@@ -1,7 +1,10 @@
 //! Checks submitted data without accessing simulation state.
+use super::dispatch::trade_error;
 use super::{ActionError, OfferSpec, SettlementAction};
 use crate::domain::economy::ResourceType;
-use std::collections::HashSet;
+use crate::domain::settlement::TradeCommandError;
+use crate::domain::trade::offer::TradeOffer;
+use std::collections::{HashMap, hash_map::Entry};
 
 /// Validates constraints decidable from the command's fields alone.
 /// Unsigned worker counts, units and prices reject negatives during JSON parsing.
@@ -22,21 +25,24 @@ pub fn validate_input(action: &SettlementAction) -> Result<(), ActionError> {
 }
 
 fn validate_offers(offers: &[OfferSpec]) -> Result<(), ActionError> {
-    let mut resources = HashSet::new();
+    TradeCommandError::validate_offer_shapes(&resolve_offers(offers)?).map_err(trade_error)
+}
+
+pub(super) fn resolve_offers(
+    offers: &[OfferSpec],
+) -> Result<HashMap<ResourceType, TradeOffer>, ActionError> {
+    let mut resolved = HashMap::with_capacity(offers.len());
     for offer in offers {
-        if offer.resource == ResourceType::Labour {
-            return Err(ActionError::LabourIsNotTradable);
-        }
-        if offer.units == 0 {
-            return Err(ActionError::ZeroUnits {
-                resource: offer.resource.clone(),
-            });
-        }
-        if !resources.insert(&offer.resource) {
-            return Err(ActionError::DuplicateOffer {
-                resource: offer.resource.clone(),
-            });
+        match resolved.entry(offer.resource.clone()) {
+            Entry::Occupied(_) => {
+                return Err(ActionError::DuplicateOffer {
+                    resource: offer.resource.clone(),
+                });
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(offer.to_offer());
+            }
         }
     }
-    Ok(())
+    Ok(resolved)
 }

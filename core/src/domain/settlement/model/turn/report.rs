@@ -178,6 +178,22 @@ pub struct DispatchedCaravan {
     pub route: Option<CaravanDepartureRoute>,
 }
 
+impl DispatchedCaravan {
+    pub(crate) fn from_cargo(cargo: &crate::domain::trade::caravan::CaravanCargo) -> Self {
+        Self {
+            receiver_id: cargo.receiver_id,
+            cargo: cargo
+                .book
+                .goods_for_sale()
+                .into_iter()
+                .map(|(resource, units)| (resource, u64::from(units)))
+                .collect(),
+            gold: cargo.book.gold(),
+            route: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CaravanDepartureRoute {
@@ -224,13 +240,6 @@ pub struct TradeTurnReport {
 }
 
 impl TradeTurnReport {
-    pub(crate) fn record_departure_routes(&mut self, routes: Vec<CaravanDepartureRoute>) {
-        debug_assert_eq!(self.caravans_dispatched.len(), routes.len());
-        for (departure, route) in self.caravans_dispatched.iter_mut().zip(routes) {
-            departure.route = Some(route);
-        }
-    }
-
     /// Executions at the local market plus those of caravans unloaded this turn.
     pub fn trade_count(&self) -> usize {
         self.market_trades.len()

@@ -27,7 +27,7 @@ pub struct OwnershipChange {
     /// The previous owner had no settlement left and was removed.
     pub extinct: bool,
     /// Gold that vanished: the whole treasury of an extinct nation.
-    pub gold_lost: u32,
+    pub gold_lost: u64,
     /// Materials that vanished: the whole stock of an extinct nation.
     pub stock_lost: BTreeMap<ResourceType, u32>,
 }
@@ -52,14 +52,13 @@ pub(crate) enum NationOperationError {
     LabourIsNotTransferable,
     InsufficientTreasury {
         requested: u32,
-        available: u32,
+        available: u64,
     },
     InsufficientStock {
         resource: ResourceType,
         requested: u32,
         available: u32,
     },
-    SettlementTreasuryFull(SettlementId),
     UnknownDecree(DecreeId),
     DecreeAlreadyEnacted(DecreeId),
     DecreeOnCooldown {
@@ -197,7 +196,8 @@ impl World {
         nation_id: NationId,
         amount: u32,
     ) -> Result<u32, WorldError> {
-        Ok(self.nation_mut(nation_id)?.deposit_gold(amount))
+        self.nation_mut(nation_id)?.deposit_gold(u64::from(amount));
+        Ok(amount)
     }
 
     /// Adds materials to the national stock up to its shared capacity; the rest
@@ -238,10 +238,8 @@ impl World {
         gold: u32,
         resources: &BTreeMap<ResourceType, u32>,
     ) -> Result<SubsidyTransfer, NationOperationError> {
-        let settlement_gold = self
-            .settlement(settlement_id)
-            .ok_or(NationOperationError::UnknownSettlement(settlement_id))?
-            .gold();
+        self.settlement(settlement_id)
+            .ok_or(NationOperationError::UnknownSettlement(settlement_id))?;
         if self.nations.owner_of(settlement_id) != Some(nation_id) {
             return Err(NationOperationError::SettlementNotOwned(settlement_id));
         }
@@ -254,7 +252,7 @@ impl World {
         let nation = self
             .nation(nation_id)
             .ok_or(NationOperationError::MissingNation(nation_id))?;
-        if gold > nation.treasury() {
+        if u64::from(gold) > nation.treasury() {
             return Err(NationOperationError::InsufficientTreasury {
                 requested: gold,
                 available: nation.treasury(),
@@ -270,9 +268,6 @@ impl World {
                 });
             }
         }
-        if gold > u32::MAX - settlement_gold {
-            return Err(NationOperationError::SettlementTreasuryFull(settlement_id));
-        }
 
         // The two inventories are exclusively borrowed and each requested
         // amount was affordable. Only accepted materials need to be debited.
@@ -281,7 +276,7 @@ impl World {
             .settlements
             .get_mut(settlement_id)
             .expect("checked above");
-        assert!(nation.withdraw_gold(gold));
+        assert!(nation.withdraw_gold(u64::from(gold)));
         settlement.deposit_gold(gold);
         let mut transfer = SubsidyTransfer {
             gold,

@@ -551,7 +551,7 @@ fn subsidies_go_only_to_own_settlements_and_must_carry_something() {
 }
 
 #[test]
-fn a_subsidy_that_would_overflow_settlement_gold_is_rejected() {
+fn subsidies_credit_gold_above_the_old_counter_limit() {
     let mut world = two_nations();
     world.deposit_nation_gold(FIRST, 10).unwrap();
     let mut rich = settlement(SettlementId(5), 1);
@@ -569,12 +569,16 @@ fn a_subsidy_that_would_overflow_settlement_gold_is_rejected() {
         .unwrap();
     let results = &simulation.step().unwrap().nation_decisions[0].results;
     assert!(results[0].is_applied());
+    assert!(results[1].is_applied());
     assert_eq!(
-        error_of(&results[1].outcome),
-        &NationActionError::SettlementTreasuryFull {
-            settlement_id: SettlementId(5)
-        }
+        simulation
+            .world()
+            .settlement(SettlementId(5))
+            .unwrap()
+            .gold(),
+        u64::from(u32::MAX) + 1
     );
+    assert_eq!(simulation.world().nation(FIRST).unwrap().treasury(), 4);
 }
 
 #[test]

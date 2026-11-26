@@ -95,7 +95,7 @@ Additional methods on the same `Building` type, grouped around the production cy
 | Method on `Building` | Purpose |
 | --- | --- |
 | `calculate_demand` | Request inputs and labour according to activity and target load. |
-| `produce_from_grants` | Apply actual staffing and site efficiency. Return products and unused grants. |
+| `produce_from_grants` | Apply actual staffing, site efficiency and production modifiers. Return products and unused grants. |
 | `execute_production` | Apply worker/material bottlenecks and exact output scaling. |
 
 ### [core/src/domain/buildings/definition.rs](../../../core/src/domain/buildings/definition.rs)

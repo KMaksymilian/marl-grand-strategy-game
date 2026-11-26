@@ -35,6 +35,9 @@ pub(crate) fn observe_nation(
                 gold: settlement.gold(),
                 conquest_turns: ownership.conquest_turns(),
                 under_attack: ownership.is_under_attack(),
+                garrison: world
+                    .garrison(settlement_id)
+                    .map_or(0, |garrison| garrison.soldiers),
                 free_capacity: u64::from(inventory.capacity())
                     .saturating_sub(inventory.total_amount()),
             })
@@ -142,6 +145,7 @@ fn observe_military(world: &World, nation_id: NationId) -> Result<MilitaryObserv
                 army_id: army.id(),
                 province_id: army.province(),
                 movement: world.army_movement(army),
+                destination: army.destination(),
                 soldiers: army.soldiers(),
                 units: army.units().to_vec(),
             })

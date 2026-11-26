@@ -112,6 +112,15 @@ pub enum NationActionError {
         army_id: ArmyId,
     },
     ArmyIdsExhausted,
+    UnknownProvince {
+        province_id: usize,
+    },
+    /// No route through provinces the army may enter: own, allied, of a
+    /// nation at war with this one, or without a settlement.
+    NoRoute {
+        army_id: ArmyId,
+        province_id: usize,
+    },
     /// An earlier action of the same decision already sets the same policy,
     /// targets the same decree or takes a diplomatic action towards the same
     /// nation.
@@ -176,6 +185,13 @@ pub enum NationActionEffect {
     ArmySplit {
         army_id: ArmyId,
         new_army_id: ArmyId,
+    },
+    /// The army marches from this turn on; `route` is the route as of now
+    /// (empty: the army stays).
+    ArmyMarchOrdered {
+        army_id: ArmyId,
+        province_id: usize,
+        route: Vec<usize>,
     },
 }
 

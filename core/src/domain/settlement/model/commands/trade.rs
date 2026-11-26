@@ -22,6 +22,8 @@ pub enum TradeCommandError {
         receiver_id: SettlementId,
         nation_id: NationId,
     },
+    /// The sender or the receiver is under attack and does not trade (§11.2).
+    SettlementUnderAttack(SettlementId),
     EmptyOrder,
     UnknownMaterial(ResourceType),
     ZeroUnits(ResourceType),

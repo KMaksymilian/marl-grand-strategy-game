@@ -166,6 +166,17 @@ fn execute(
                 into: *into,
             })
         }
+        NationAction::MoveArmy {
+            army_id,
+            province_id,
+        } => {
+            let route = world.order_army_march(nation_id, *army_id, *province_id)?;
+            Ok(NationActionEffect::ArmyMarchOrdered {
+                army_id: *army_id,
+                province_id: *province_id,
+                route,
+            })
+        }
         NationAction::SplitArmy { army_id, units } => {
             let new_army_id = world.split_army(nation_id, *army_id, units)?;
             Ok(NationActionEffect::ArmySplit {
@@ -234,6 +245,11 @@ fn report_error(error: NationOperationError) -> Result<NationActionError, WorldE
         Domain::SameArmy(army_id) => Action::SameArmy { army_id },
         Domain::InvalidUnitSelection(army_id) => Action::InvalidUnitSelection { army_id },
         Domain::ArmyIdExhausted => Action::ArmyIdsExhausted,
+        Domain::UnknownProvince(province_id) => Action::UnknownProvince { province_id },
+        Domain::NoRoute { army_id, province } => Action::NoRoute {
+            army_id,
+            province_id: province,
+        },
     })
 }
 

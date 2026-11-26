@@ -5,8 +5,9 @@ whole province: its position is a province ID, and it moves from province to
 province, never tile by tile.
 
 Status: the unit catalogue loaded from `units.toml`, the province graph,
-armies, recruitment, upkeep, morale, desertion, grouping and disbanding are
-implemented. Movement, battles and troop visibility build on them.
+armies, recruitment, upkeep, morale, desertion, grouping, disbanding, marches,
+sieges, battles, retreats and conquest are implemented. Troop visibility
+builds on them.
 
 | Part | Source |
 | --- | --- |
@@ -16,7 +17,9 @@ implemented. Movement, battles and troop visibility build on them.
 | `Unit`, `Army`, `Recruitment`, `ArmyRegistry` | [domain/military/army.rs](../../../core/src/domain/military/army.rs) |
 | `MilitaryTurnReport`, `ArmyUpkeepReport` | [domain/military/report.rs](../../../core/src/domain/military/report.rs) |
 | Recruitment, grouping, upkeep in World; `Conscription` | [domain/world/state/military.rs](../../../core/src/domain/world/state/military.rs) |
-| Tests | [unit_catalog_tests.rs](../../../core/tests/unit_catalog_tests.rs), [army_tests.rs](../../../core/tests/army_tests.rs) |
+| Battle arithmetic (strength, advantage, walls, losses) | [domain/military/battle.rs](../../../core/src/domain/military/battle.rs) |
+| Access, marches, battles, conquest, sieges, garrisons in World | [domain/world/state/war.rs](../../../core/src/domain/world/state/war.rs) |
+| Tests | [unit_catalog_tests.rs](../../../core/tests/unit_catalog_tests.rs), [army_tests.rs](../../../core/tests/army_tests.rs), [war_tests.rs](../../../core/tests/war_tests.rs) |
 
 ## Unit catalogue
 
@@ -106,6 +109,74 @@ upkeep paid, the morale change, deserted units and recruits that joined.
 | --- | --- | --- |
 | Recruited people leave the settlement, disbanded soldiers join one | `Settlement::remove_population`, `add_population` (`ECONOMY` note) | fewer workers from the next turn; workers above the population are the settlement's problem |
 | Armies eat from the national stock, not from the settlement | `World::pay_army_upkeep` | soldiers are not part of any settlement's needs |
+| A settlement under attack produces half (§11.2) | `World::is_under_attack(settlement)` | apply −50% production, e.g. with a production modifier; tax and trade are already blocked |
+| Walls (§11.4) | `World::wall_bonus` (`ECONOMY` note) | return the level's bonus (0.25 / 0.5 / 1.0), e.g. from `province_fortification_defense_basis_points` |
+| Walls lose a level on conquest (§11.5) | `World::conquer` in `war.rs` (`ECONOMY` note) | call the economy's downgrade of the walls |
+| Fallen garrison soldiers leave the population | `Settlement::remove_population` | fewer people and workers |
+| War weariness | `RelationObservation::since_turn`, `Relation::War { aggressor }` | computed by the economy from the relations |
+
+## War on the map (§11)
+
+Every turn, after the armies are fed (`World::resolve_war`):
+
+1. **Withdrawals.** An army standing where it may no longer be (after a peace
+   or a broken alliance) returns to the nearest own province (`withdrawals`
+   in the report); without one it is lost.
+2. **Marches (§11.1).** `move_army { army_id, province_id }` sets a
+   destination; the army enters one province per movement point (the speed of
+   its slowest unit) along the shortest route through provinces it may enter:
+   its own, its allies', those of nations at war with it, and provinces without
+   a settlement. The route is recomputed at every step, so a new peace or war
+   changes it. The army stops on arrival, when no route is left (`no_route`)
+   and when it enters an enemy province: that is an attack on its settlement
+   (`attacking`). Armies of warring nations in a third nation's province pass
+   each other.
+3. **Battles (§11.3).** One battle in every province (ascending ID) where an
+   army of a nation at war with the settlement's owner stands. The attackers
+   are all such armies; the defenders are the garrison and the armies of the
+   owner and its allies there. Strength of a side:
+   `Σ stat × soldiers / 50 × advantage × terrain × morale / 100`, for the
+   defenders also `× walls`, then `× variance` (±10%, `set_battle_seed`).
+   - Advantage: ×1.5 weighted by the share of enemy soldiers of the types the
+     unit beats (spearmen > cavalry > archers > spearmen).
+   - Terrain: `World::terrain_modifier`, 1.0 for now.
+   - Walls (§11.4): `1 + wall bonus − 0.25 per attacking siege engine unit`,
+     at least 1; the bonus comes from the walls (economy) and the owner's
+     National Fortification (+10 points).
+   - The higher strength wins; a tie goes to the defenders. Every unit of the
+     loser loses 30% of its soldiers (rounded up) and 30 morale (×0.5 with
+     Discipline); every unit of the winner loses `30% × loser / winner`
+     (rounded down). Units without soldiers are gone; attacking units at
+     morale 0 desert.
+   - Beaten attackers retreat to the province they came from if they may
+     stand there; otherwise they are destroyed. The attack ends.
+   - Beaten defenders stay: the battle goes on next turn.
+4. **Conquest (§11.5).** The settlement falls when its defenders have no
+   soldiers or no morale left, or when there are no defenders at all (then
+   without a battle). It passes, with its province, to the attacking nation
+   with the most soldiers there; the defending armies there are destroyed.
+   `transfer_settlement` applies the conquest penalty, the half tax, the
+   capital loss and the extinction of a nation left without settlements.
+5. **Sieges (§11.2).** A settlement is under attack while an army of a nation
+   at war with its owner stands in its province: it pays no tax and does not
+   trade (`settlement_under_attack` for caravan orders, `trade_allowed` false,
+   caravans to or from it do not trade).
+
+**Garrison (§11.4).** Levy from 5% of the settlement's people, without upkeep
+and outside the conscription pool (`World::garrison`). The fallen leave the
+population. It refills to 5% at the end of every turn in which the
+settlement is not under attack; a conquered settlement starts empty.
+
+| Order | Effect | Errors |
+| --- | --- | --- |
+| `move_army { army_id, province_id }` | `army_march_ordered` with the `route` as of now (empty: the army stays) | `unknown_army`, `army_not_owned`, `unknown_province`, `no_route` |
+
+The nation report's `military` adds `withdrawals`, `marches` and `battles`
+(every battle the nation took part in, as attacker, defender or ally:
+strengths, wall multiplier, winner, losses, retreated and destroyed armies,
+`conquered_by`). The nation observation shows each army's `destination` and
+each own settlement's `garrison`.
+
 
 
 ## Province graph

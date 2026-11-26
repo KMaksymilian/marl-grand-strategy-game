@@ -42,9 +42,19 @@ impl World {
         (a != b && !self.diplomacy.relation(a, b).allows_trade()).then_some(b)
     }
 
-    /// Whether two settlements may trade (see `trade_blocked_by`).
+    /// The settlement is under attack (§11.2): it does not trade.
+    pub fn is_under_attack(&self, settlement: SettlementId) -> bool {
+        self.nations
+            .ownership(settlement)
+            .is_some_and(|ownership| ownership.is_under_attack())
+    }
+
+    /// Whether two settlements may trade: their nations allow it (see
+    /// `trade_blocked_by`) and neither is under attack.
     pub fn trade_allowed(&self, sender: SettlementId, receiver: SettlementId) -> bool {
         self.trade_blocked_by(sender, receiver).is_none()
+            && !self.is_under_attack(sender)
+            && !self.is_under_attack(receiver)
     }
 
     /// Replaces the bundled diplomacy rules, e.g. with `diplomacy.toml` loaded

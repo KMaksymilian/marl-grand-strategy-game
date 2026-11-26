@@ -251,6 +251,9 @@ pub(super) fn trade_error(error: TradeCommandError) -> ActionError {
             receiver_id,
             nation_id,
         },
+        TradeCommandError::SettlementUnderAttack(settlement_id) => {
+            ActionError::SettlementUnderAttack { settlement_id }
+        }
         TradeCommandError::UnknownSender(settlement_id)
         | TradeCommandError::UnknownReceiver(settlement_id) => {
             ActionError::UnknownSettlement { settlement_id }

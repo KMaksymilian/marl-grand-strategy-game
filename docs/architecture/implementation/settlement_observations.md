@@ -32,7 +32,7 @@ generation: [application/queries/observe_settlement.rs](../../../core/src/applic
 | `trade` | Own `market_offers`, caravan counts and `known_markets` delivered by returning caravans. Each known market includes its settlement, province, observation turn and observed offers. |
 | `last_turn` | Satisfaction, missing needs, produced, consumed by population/projects/production, lost, trade reserved/received, gold received, market trade count, caravans dispatched, unfunded caravan orders, completed and failed project IDs. |
 | `territory` | Every tile of the own province in row-major order: elevation, moisture, optional `deposit`, `coastal`, occupancy and `buildable`. |
-| `trade_partners` | Other settlements as `{settlement_id, province_id, nation_id, trade_allowed}`, ascending ID; `nation_id` is the public owner, `trade_allowed` is false while the two nations are at war or under an embargo. |
+| `trade_partners` | Other settlements as `{settlement_id, province_id, nation_id, trade_allowed}`, ascending ID; `nation_id` is the public owner, `trade_allowed` is false while the two nations are at war or under an embargo, or while either settlement is under attack. |
 | `building_types` | The public catalog: name, tier, `max_workers`, construction cost and turns, recipes and optional `required_deposit` and `requires_coast`. |
 | `nation` | The owner's policy: `nation_id`, `tax_rate`, `capital`, `is_capital`, `active_decrees`, `at_war_with`. Every settlement belongs to a nation. See [Nations](nations.md). |
 

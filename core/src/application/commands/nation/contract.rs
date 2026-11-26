@@ -1,8 +1,7 @@
 //! Serializable decisions submitted by nation agents (gameplay specification §5.2).
 //!
-//! The contract holds the policy, subsidies, decrees, diplomacy, recruitment
-//! and army grouping implemented so far; army movement is added as new action
-//! variants. Decrees and unit types are
+//! The contract holds the policy, subsidies, decrees, diplomacy, recruitment,
+//! army grouping and marches. Decrees and unit types are
 //! named by their ID from `decrees.toml` and `units.toml`; whether the ID exists is checked by
 //! validation, not by parsing.
 //! Each action is checked against the current world as it executes.
@@ -21,7 +20,8 @@
 //!     { "type": "propose_treaty", "target": 2, "treaty": "trade_agreement" },
 //!     { "type": "respond_to_proposal", "proposer": 2, "treaty": "peace", "accept": true },
 //!     { "type": "recruit_units", "settlement_id": 2, "unit": "spearmen", "units": 3 },
-//!     { "type": "merge_armies", "army_id": 4, "into": 1 }
+//!     { "type": "merge_armies", "army_id": 4, "into": 1 },
+//!     { "type": "move_army", "army_id": 1, "province_id": 30 }
 //!   ]
 //! }
 //! ```
@@ -123,6 +123,11 @@ pub enum NationAction {
     /// Move the units at these positions of the army's unit list into a new
     /// army in the same province; at least one unit stays.
     SplitArmy { army_id: ArmyId, units: Vec<usize> },
+    /// March an own army to a province (§11.1), one province per movement
+    /// point each turn, through own, allied and enemy provinces, along a route
+    /// recomputed every turn. It stops on entering an enemy province: that is
+    /// an attack on its settlement. The army's own province cancels the march.
+    MoveArmy { army_id: ArmyId, province_id: usize },
 }
 
 impl NationAction {
@@ -143,6 +148,7 @@ impl NationAction {
             Self::DisbandArmy { .. } => NationActionKind::DisbandArmy,
             Self::MergeArmies { .. } => NationActionKind::MergeArmies,
             Self::SplitArmy { .. } => NationActionKind::SplitArmy,
+            Self::MoveArmy { .. } => NationActionKind::MoveArmy,
         }
     }
 }
@@ -166,11 +172,12 @@ pub enum NationActionKind {
     DisbandArmy,
     MergeArmies,
     SplitArmy,
+    MoveArmy,
 }
 
 impl NationActionKind {
     /// Every kind in a fixed order, e.g. for a fixed-size mask vector.
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::SetTaxRate,
         Self::Subsidize,
         Self::EnactDecree,
@@ -186,6 +193,7 @@ impl NationActionKind {
         Self::DisbandArmy,
         Self::MergeArmies,
         Self::SplitArmy,
+        Self::MoveArmy,
     ];
 }
 
@@ -264,6 +272,10 @@ mod tests {
                 army_id: ArmyId(1),
                 units: vec![0, 2],
             },
+            NationAction::MoveArmy {
+                army_id: ArmyId(1),
+                province_id: 30,
+            },
         ]
     }
 
@@ -304,7 +316,8 @@ mod tests {
                 {"type": "recruit_units", "settlement_id": 2, "unit": "spearmen", "units": 3},
                 {"type": "disband_army", "army_id": 1},
                 {"type": "merge_armies", "army_id": 4, "into": 1},
-                {"type": "split_army", "army_id": 1, "units": [0, 2]}
+                {"type": "split_army", "army_id": 1, "units": [0, 2]},
+                {"type": "move_army", "army_id": 1, "province_id": 30}
             ]
         });
         // Compared as the text an agent receives: `to_value` would widen the f32

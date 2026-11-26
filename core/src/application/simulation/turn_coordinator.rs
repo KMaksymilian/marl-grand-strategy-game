@@ -59,6 +59,9 @@ pub(super) fn run_turn(
     // Armies are fed and paid next, from what the decisions and the decrees
     // left in the national stock and treasury (§10.3).
     let mut army_upkeep = world.pay_army_upkeep();
+    // War (§11): withdrawals, marches, battles and conquests, then the sieges,
+    // so settlements under attack pay no tax and do not trade this turn.
+    let mut war = world.resolve_war();
 
     let mut execution = Vec::new();
     let mut decisions = Vec::new();
@@ -175,6 +178,7 @@ pub(super) fn run_turn(
     // Recruitments count down; finished units join their armies, ready to
     // act from the next turn.
     let mut recruits = world.finish_recruitments();
+    world.refill_garrisons();
     world.advance_nations_turn();
     // Diplomatic events of this turn: from decisions and from the end of the
     // turn (expired proposals, ended truces), per recipient.
@@ -193,6 +197,9 @@ pub(super) fn run_turn(
             let events = events.remove(&id).unwrap_or_default();
             let military = MilitaryTurnReport {
                 upkeep: army_upkeep.remove(&id).unwrap_or_default(),
+                withdrawals: war.withdrawals.remove(&id).unwrap_or_default(),
+                marches: war.marches.remove(&id).unwrap_or_default(),
+                battles: war.battles.remove(&id).unwrap_or_default(),
                 recruits_joined: recruits.remove(&id).unwrap_or_default(),
             };
             (

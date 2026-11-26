@@ -214,8 +214,9 @@ proposals, ended truces).
   a member of B's alliance and a member of A's becomes a truce as well
   (`allied_truces` in `proposal_accepted`, `peace_joined` events); alliances are
   taken as they are at the moment of peace. Then neutrality (`truce_ended`).
-  Settlements keep their owners (status quo). Armies, which return home after
-  peace, are marked with `ARMY` in `World::respond_to_proposal`.
+  Settlements keep their owners (status quo). Armies on the other side's land
+  return to the nearest own province in the war phase of the same turn (see
+  [Military](military.md#war-on-the-map-11)).
 - **Trade block.** Settlements of nations at war or under an embargo cannot
   trade: `order_caravan` is rejected with `trade_blocked` (with the receiver's
   `nation_id`), a funded caravan of a turn with a new war or embargo does not
@@ -248,7 +249,7 @@ proposals, ended truces).
 | `enact_decree` | `decree_enacted` with the `upkeep` per active turn | `unknown_decree`, `decree_already_enacted`, `decree_on_cooldown` (`turns_left`), `no_free_decree_slot`, `conflict` for the same decree twice |
 | `revoke_decree` | `decree_revoked` with `cooldown_turns` | `unknown_decree`, `decree_not_active` (also a pending one), `decree_minimum_duration` (`turns_left`), `conflict` |
 | `declare_war`, `declare_embargo`, `lift_embargo`, `break_trade_agreement`, `break_alliance`, `propose_treaty`, `respond_to_proposal` | `diplomacy` with a `DiplomaticOutcome` (`war_declared`, `embargo_declared`, `embargo_lifted`, `treaty_broken`, `proposal_sent`, `proposal_accepted`, `proposal_rejected`) | `diplomacy` with a `DiplomacyError` (`unknown_nation`, `diplomacy_with_self`, `invalid_relation`, `truce_in_force`, `warning_period`, `not_embargo_imposer`, `proposal_already_pending`, `no_such_proposal`), `conflict` for a second action towards the same nation |
-| `recruit_units`, `disband_army`, `merge_armies`, `split_army` | see [Military](military.md#armies-recruitment-and-upkeep-10) | |
+| `recruit_units`, `disband_army`, `merge_armies`, `split_army`, `move_army` | see [Military](military.md) | |
 
 A decree ID only needs the snake-case shape to parse; whether it exists in the
 catalogue is checked by validation (`unknown_decree`), so the contract does not
@@ -264,9 +265,9 @@ settlement actually received.
 ## Global turn
 
 ```
-nation decisions -> decree upkeep -> army upkeep -> settlement decisions -> Preparation -> Allocation ->
+nation decisions -> decree upkeep -> army upkeep -> war (withdrawals, marches, battles, sieges) -> settlement decisions -> Preparation -> Allocation ->
 Consumption -> Construction -> Production -> Taxation -> EconomicUpdates ->
-trade dispatch -> recruitments -> national timers, decree states, truces and proposals -> nation reports
+trade dispatch -> recruitments -> garrisons refill -> national timers, decree states, truces and proposals -> nation reports
 ```
 
 `Simulation::queue_nation_decision` accepts decisions of existing nations. Nation

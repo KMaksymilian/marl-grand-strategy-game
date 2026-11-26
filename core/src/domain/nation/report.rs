@@ -5,6 +5,7 @@ use super::diplomacy::DiplomaticEvent;
 use super::taxation::NationTaxReport;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
+use crate::domain::military::MilitaryTurnReport;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -31,17 +32,20 @@ pub struct NationTurnReport {
     /// and answered, broken treaties, embargoes, expired proposals and ended
     /// truces (§8).
     pub diplomacy: Vec<DiplomaticEvent>,
+    /// Army upkeep, morale, desertions and finished recruitments (§10).
+    pub military: MilitaryTurnReport,
 }
 
 impl NationTurnReport {
     /// The end-of-turn state of a nation owning `settlements`, with this
-    /// turn's taxes, decree upkeep and diplomatic events.
+    /// turn's taxes, decree upkeep, diplomatic events and military report.
     pub(crate) fn closing(
         nation: &Nation,
         settlements: Vec<SettlementId>,
         taxes: NationTaxReport,
         decree_upkeep: DecreeUpkeepReport,
         diplomacy: Vec<DiplomaticEvent>,
+        military: MilitaryTurnReport,
     ) -> Self {
         Self {
             tax_rate: nation.tax_rate(),
@@ -54,6 +58,7 @@ impl NationTurnReport {
             decrees: nation.decrees().states().clone(),
             decree_upkeep,
             diplomacy,
+            military,
         }
     }
 }

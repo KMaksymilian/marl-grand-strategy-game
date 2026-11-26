@@ -12,8 +12,8 @@ pub use crate::application::commands::settlement::contract::{
     SettlementDecision,
 };
 pub use crate::application::queries::nation_observation::{
-    DecreesObservation, DiplomacyObservation, NationObservation, OwnedSettlementObservation,
-    RelationObservation,
+    ArmyObservation, DecreesObservation, DiplomacyObservation, MilitaryObservation,
+    NationObservation, OwnedSettlementObservation, RelationObservation,
 };
 pub use crate::domain::nation::report::NationTurnReport;
 pub use crate::domain::world::OwnershipChange;

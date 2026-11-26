@@ -136,6 +136,43 @@ fn execute(
             treaty,
             accept,
         } => diplomacy(world.respond_to_proposal(nation_id, *proposer, *treaty, *accept)),
+        NationAction::RecruitUnits {
+            settlement_id,
+            unit,
+            units,
+        } => {
+            let order = world.recruit_units(nation_id, *settlement_id, unit, *units)?;
+            Ok(NationActionEffect::UnitsRecruited {
+                settlement_id: *settlement_id,
+                unit: unit.clone(),
+                units: *units,
+                soldiers: order.soldiers,
+                ready_in_turns: order.ready_in_turns,
+                army_id: order.army_id,
+            })
+        }
+        NationAction::DisbandArmy { army_id } => {
+            let (settlement_id, soldiers) = world.disband_army(nation_id, *army_id)?;
+            Ok(NationActionEffect::ArmyDisbanded {
+                army_id: *army_id,
+                settlement_id,
+                soldiers,
+            })
+        }
+        NationAction::MergeArmies { army_id, into } => {
+            world.merge_armies(nation_id, *army_id, *into)?;
+            Ok(NationActionEffect::ArmiesMerged {
+                army_id: *army_id,
+                into: *into,
+            })
+        }
+        NationAction::SplitArmy { army_id, units } => {
+            let new_army_id = world.split_army(nation_id, *army_id, units)?;
+            Ok(NationActionEffect::ArmySplit {
+                army_id: *army_id,
+                new_army_id,
+            })
+        }
     }
 }
 
@@ -177,6 +214,26 @@ fn report_error(error: NationOperationError) -> Result<NationActionError, WorldE
             Action::DecreeMinimumDuration { decree, turns_left }
         }
         Domain::Diplomacy(error) => Action::Diplomacy { error },
+        Domain::UnknownUnitType(unit) => Action::UnknownUnitType { unit },
+        Domain::EmptyRecruitment => Action::EmptyRecruitment,
+        Domain::ConscriptionPoolExceeded {
+            settlement_id,
+            requested,
+            available,
+        } => Action::ConscriptionPoolExceeded {
+            settlement_id,
+            requested,
+            available,
+        },
+        Domain::UnknownArmy(army_id) => Action::UnknownArmy { army_id },
+        Domain::ArmyNotOwned(army_id) => Action::ArmyNotOwned { army_id },
+        Domain::NotOwnProvince { army_id, province } => {
+            Action::NotOwnProvince { army_id, province }
+        }
+        Domain::ArmiesApart { army_id, into } => Action::ArmiesApart { army_id, into },
+        Domain::SameArmy(army_id) => Action::SameArmy { army_id },
+        Domain::InvalidUnitSelection(army_id) => Action::InvalidUnitSelection { army_id },
+        Domain::ArmyIdExhausted => Action::ArmyIdsExhausted,
     })
 }
 

@@ -385,6 +385,9 @@ See [Military](military.md) for rules and content.
 | File | Contents |
 | --- | --- |
 | [domain/military/unit_catalog.rs](../../../core/src/domain/military/unit_catalog.rs) | `UnitTypeId`, `MilitaryRules`, `UnitDefinition`, `UnitCatalog` loaded from `units.toml` (`standard`, `load`, `from_toml`, `get`, `definitions`, `garrison_unit`, `has_advantage`), `UnitCatalogError`. `World::unit_catalog` and `set_unit_catalog` live in `state.rs`. |
+| [domain/military/army.rs](../../../core/src/domain/military/army.rs) | `Unit` (type, living soldiers, morale, `raised_in`), `Army` (`soldiers`), `Recruitment`, `ArmyRegistry` (`of_nation`, `recruitments`, `serving_from`, `station`, `create`, `advance_recruitments`, `remove_nation`). |
+| [domain/military/report.rs](../../../core/src/domain/military/report.rs) | `MilitaryTurnReport`, `ArmyUpkeepReport`, `DesertedUnit`, `RecruitsJoined`. |
+| [domain/world/state/military.rs](../../../core/src/domain/world/state/military.rs) | `World::armies`, `army`, `conscription` (`Conscription`), `army_movement`, `army_upkeep_demand`, `recruit_units`, `disband_army`, `merge_armies`, `split_army`, `pay_army_upkeep`, `finish_recruitments`. |
 | [domain/world/province_graph.rs](../../../core/src/domain/world/province_graph.rs) | `ProvinceGraph` (`from_map`, `neighbors`, `are_neighbors`, `route`); `World::province_graph`, rebuilt by `set_tile_province` and `set_tile_terrain`. |
 
 ## Trade and transport

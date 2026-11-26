@@ -34,6 +34,17 @@ impl std::fmt::Display for NationId {
     }
 }
 
+/// Identifies one army: a group of a nation's units in one province (§10.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ArmyId(pub u32);
+
+impl std::fmt::Display for ArmyId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
 /// Identifies a building definition in the building catalog, e.g. `"farm"`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]

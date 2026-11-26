@@ -4,8 +4,8 @@
 //! summary, not their full observations) and the IDs of other nations are read.
 //! Another nation's treasury, stock and policy never enter the result.
 use super::nation_observation::{
-    DecreesObservation, DiplomacyObservation, NationObservation, OwnedSettlementObservation,
-    RelationObservation,
+    ArmyObservation, DecreesObservation, DiplomacyObservation, MilitaryObservation,
+    NationObservation, OwnedSettlementObservation, RelationObservation,
 };
 use crate::domain::ids::NationId;
 use crate::domain::nation::diplomacy::Proposal;
@@ -59,6 +59,7 @@ pub(crate) fn observe_nation(
             .collect(),
         decrees: observe_decrees(world, nation_id)?,
         diplomacy: observe_diplomacy(world, nation_id),
+        military: observe_military(world, nation_id)?,
         last_turn: last_turn.cloned(),
     })
 }
@@ -128,4 +129,36 @@ fn observe_diplomacy(world: &World, nation_id: NationId) -> DiplomacyObservation
             .map(|nation| (nation.id(), diplomacy.reputation(nation.id())))
             .collect(),
     }
+}
+
+/// Only own armies and recruitments; other nations' troops are not shown here.
+fn observe_military(world: &World, nation_id: NationId) -> Result<MilitaryObservation, WorldError> {
+    let (food_upkeep, gold_upkeep) = world.army_upkeep_demand(nation_id);
+    Ok(MilitaryObservation {
+        armies: world
+            .armies()
+            .of_nation(nation_id)
+            .map(|army| ArmyObservation {
+                army_id: army.id(),
+                province_id: army.province(),
+                movement: world.army_movement(army),
+                soldiers: army.soldiers(),
+                units: army.units().to_vec(),
+            })
+            .collect(),
+        recruitments: world
+            .armies()
+            .recruitments()
+            .iter()
+            .filter(|recruitment| recruitment.nation == nation_id)
+            .cloned()
+            .collect(),
+        conscription: world
+            .nation_settlements(nation_id)?
+            .into_iter()
+            .filter_map(|id| Some((id, world.conscription(id)?)))
+            .collect(),
+        food_upkeep,
+        gold_upkeep,
+    })
 }

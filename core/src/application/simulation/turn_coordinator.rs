@@ -8,6 +8,7 @@ use super::{
 use crate::application::commands::nation::handler::handle_nation_decision;
 use crate::application::commands::settlement::{CommandDispatch, handler::handle_decision};
 use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::military::MilitaryTurnReport;
 use crate::domain::nation::report::NationTurnReport;
 use crate::domain::nation::taxation::{MaterialTotals, NationTaxReport};
 use crate::domain::world::{World, pathfinding::path_finder::PathFinder};
@@ -55,6 +56,9 @@ pub(super) fn run_turn(
     // above pays nothing). A decree that cannot be paid is revoked (cooldown)
     // and has no effect this turn.
     let mut upkeep = world.pay_decree_upkeep();
+    // Armies are fed and paid next, from what the decisions and the decrees
+    // left in the national stock and treasury (§10.3).
+    let mut army_upkeep = world.pay_army_upkeep();
 
     let mut execution = Vec::new();
     let mut decisions = Vec::new();
@@ -168,6 +172,9 @@ pub(super) fn run_turn(
     }
     // National timers count completed turns, so they tick once, after every
     // phase; the nation reports show the state at the end of the turn.
+    // Recruitments count down; finished units join their armies, ready to
+    // act from the next turn.
+    let mut recruits = world.finish_recruitments();
     world.advance_nations_turn();
     // Diplomatic events of this turn: from decisions and from the end of the
     // turn (expired proposals, ended truces), per recipient.
@@ -184,9 +191,13 @@ pub(super) fn run_turn(
             let taxes = taxes.remove(&id).unwrap_or_default();
             let upkeep = upkeep.remove(&id).unwrap_or_default();
             let events = events.remove(&id).unwrap_or_default();
+            let military = MilitaryTurnReport {
+                upkeep: army_upkeep.remove(&id).unwrap_or_default(),
+                recruits_joined: recruits.remove(&id).unwrap_or_default(),
+            };
             (
                 id,
-                NationTurnReport::closing(nation, settlements, taxes, upkeep, events),
+                NationTurnReport::closing(nation, settlements, taxes, upkeep, events, military),
             )
         })
         .collect();

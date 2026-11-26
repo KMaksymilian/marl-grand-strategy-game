@@ -100,6 +100,13 @@ pub(crate) enum NationOperationError {
     /// Unit positions that are empty, repeated, outside the army or all of it.
     InvalidUnitSelection(ArmyId),
     ArmyIdExhausted,
+    UnknownProvince(usize),
+    /// No route through provinces the army may enter (own, allied, enemy at
+    /// war, or without a settlement).
+    NoRoute {
+        army_id: ArmyId,
+        province: usize,
+    },
 }
 
 /// Read access.

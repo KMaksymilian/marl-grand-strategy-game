@@ -107,7 +107,7 @@ impl World {
 /// Orders of a nation, for the nation decision handler. Each one checks
 /// everything first and changes nothing when it fails.
 impl World {
-    fn owned_army(
+    pub(super) fn owned_army(
         &self,
         nation_id: NationId,
         army_id: ArmyId,

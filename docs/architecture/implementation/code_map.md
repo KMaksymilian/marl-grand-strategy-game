@@ -388,7 +388,9 @@ See [Military](military.md) for rules and content.
 | [domain/military/army.rs](../../../core/src/domain/military/army.rs) | `Unit` (type, living soldiers, morale, `raised_in`), `Army` (`soldiers`), `Recruitment`, `ArmyRegistry` (`of_nation`, `recruitments`, `serving_from`, `station`, `create`, `advance_recruitments`, `remove_nation`). |
 | [domain/military/report.rs](../../../core/src/domain/military/report.rs) | `MilitaryTurnReport`, `ArmyUpkeepReport`, `DesertedUnit`, `RecruitsJoined`. |
 | [domain/world/state/military.rs](../../../core/src/domain/world/state/military.rs) | `World::armies`, `army`, `conscription` (`Conscription`), `army_movement`, `army_upkeep_demand`, `recruit_units`, `disband_army`, `merge_armies`, `split_army`, `pay_army_upkeep`, `finish_recruitments`. |
-| [domain/world/province_graph.rs](../../../core/src/domain/world/province_graph.rs) | `ProvinceGraph` (`from_map`, `neighbors`, `are_neighbors`, `route`); `World::province_graph`, rebuilt by `set_tile_province` and `set_tile_terrain`. |
+| [domain/military/battle.rs](../../../core/src/domain/military/battle.rs) | `Stat`, `advantage`, `side_strength`, `wall_multiplier`, `lose_soldiers`. |
+| [domain/world/state/war.rs](../../../core/src/domain/world/state/war.rs) | `World::set_battle_seed`, `may_enter`, `is_enemy_province`, `terrain_modifier`, `wall_bonus`, `garrison`, `order_army_march`, `resolve_war` (withdrawals, marches, battles, conquest, sieges), `refill_garrisons`; `WarTurn`. |
+| [domain/world/province_graph.rs](../../../core/src/domain/world/province_graph.rs) | `ProvinceGraph` (`from_map`, `neighbors`, `are_neighbors`, `route`, `route_to_nearest`); `World::province_graph`, rebuilt by `set_tile_province` and `set_tile_terrain`. |
 
 ## Trade and transport
 

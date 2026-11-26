@@ -29,6 +29,11 @@ impl World {
                 nation_id,
             });
         }
+        for settlement in [sender_id, receiver_id] {
+            if self.is_under_attack(settlement) {
+                return Err(TradeCommandError::SettlementUnderAttack(settlement));
+            }
+        }
         self.settlement_mut(sender_id)
             .expect("validated caravan sender")
             .order_caravan(receiver_id, offers)

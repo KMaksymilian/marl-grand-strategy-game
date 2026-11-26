@@ -66,7 +66,7 @@ immediately. The domain also owns staffing, storage order and trade checks.
 | Workers | `WorkersAboveCapacity` (`workers > max_workers`), `InsufficientWorkers` (all buildings would request more staff than the population; reductions are always allowed), `UnsupportedWorkerCount` (count no `f32` load expresses; unreachable because definitions reject `max_workers` above `BuildingDefinition::MAX_WORKERS` = 2^24) |
 | Storage order | `InvalidStorageOrder` with the engine's `StorageOrderError` (`StorageOrder::validate`) |
 | Offers (market and caravans) | `LabourIsNotTradable`, `ZeroUnits`, `DuplicateOffer` |
-| Caravans | `EmptyOrder`, `TradeWithSelf`, `UnknownSettlement`, `TradeBlocked` (the receiver's `nation_id` is at war with this settlement's nation or under an embargo with it), `NothingToCarry` (no goods and a zero purchase budget; the engine would skip it), `InsufficientStock`, `InsufficientGold` (see funding order) |
+| Caravans | `EmptyOrder`, `TradeWithSelf`, `UnknownSettlement`, `TradeBlocked` (the receiver's `nation_id` is at war with this settlement's nation or under an embargo with it), `SettlementUnderAttack` (this settlement or the receiver is under attack), `NothingToCarry` (no goods and a zero purchase budget; the engine would skip it), `InsufficientStock`, `InsufficientGold` (see funding order) |
 | Market after caravans | `InsufficientStock`, `InsufficientGold`: a `PublishMarketOffers` may not reserve goods or gold already committed to caravans of this turn |
 | Same target twice | `Conflict { with_index }`: the earlier accepted action wins |
 | Exhausted IDs | `ProjectIdsExhausted` |

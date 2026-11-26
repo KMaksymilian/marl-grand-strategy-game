@@ -79,7 +79,20 @@ impl ProvinceGraph {
         to: usize,
         allowed: impl Fn(usize) -> bool,
     ) -> Option<Vec<usize>> {
-        if from == to {
+        self.route_to_nearest(from, allowed, |province| province == to)
+    }
+
+    /// The shortest route to the nearest province for which `goal` holds,
+    /// through provinces for which `allowed` holds; ties go to the lower ID
+    /// along the way. Empty when the start is a goal, None when no goal can
+    /// be reached.
+    pub fn route_to_nearest(
+        &self,
+        from: usize,
+        allowed: impl Fn(usize) -> bool,
+        goal: impl Fn(usize) -> bool,
+    ) -> Option<Vec<usize>> {
+        if goal(from) {
             return Some(Vec::new());
         }
         let mut previous = BTreeMap::from([(from, from)]);
@@ -90,8 +103,8 @@ impl ProvinceGraph {
                     continue;
                 }
                 previous.insert(next, current);
-                if next == to {
-                    let mut route = vec![to];
+                if goal(next) {
+                    let mut route = vec![next];
                     let mut step = current;
                     while step != from {
                         route.push(step);
@@ -151,6 +164,26 @@ mod tests {
         assert!(ProvinceGraph::from_map(&short).are_neighbors(1, 2));
         let empty = Map::new(0, 3, vec![], vec![]);
         assert_eq!(ProvinceGraph::from_map(&empty), ProvinceGraph::default());
+    }
+
+    #[test]
+    fn the_nearest_goal_is_found_through_allowed_provinces() {
+        // 1 - 2 - 3
+        // |   |   |
+        // 4 - 5 - 6
+        let graph = ProvinceGraph::from_map(&map(&[&[1, 2, 3], &[4, 5, 6]]));
+        let goals = |p: usize| p == 3 || p == 4;
+        assert_eq!(graph.route_to_nearest(1, |_| true, goals), Some(vec![4]));
+        assert_eq!(
+            graph.route_to_nearest(1, |p| p != 4, goals),
+            Some(vec![2, 3])
+        );
+        assert_eq!(
+            graph.route_to_nearest(3, |_| false, goals),
+            Some(vec![]),
+            "already there"
+        );
+        assert_eq!(graph.route_to_nearest(1, |p| p == 2, goals), None);
     }
 
     #[test]

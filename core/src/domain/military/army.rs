@@ -32,6 +32,11 @@ pub struct Army {
     nation: NationId,
     province: usize,
     units: Vec<Unit>,
+    /// The province the army marches to; None when it stays (§11.1).
+    destination: Option<usize>,
+    /// The province the army entered its current one from, where it retreats
+    /// after a lost attack (§11.3); None for an army raised where it stands.
+    came_from: Option<usize>,
 }
 
 impl Army {
@@ -59,6 +64,42 @@ impl Army {
     pub(crate) fn units_mut(&mut self) -> &mut Vec<Unit> {
         &mut self.units
     }
+
+    pub fn destination(&self) -> Option<usize> {
+        self.destination
+    }
+
+    pub fn came_from(&self) -> Option<usize> {
+        self.came_from
+    }
+
+    pub(crate) fn set_destination(&mut self, destination: Option<usize>) {
+        self.destination = destination;
+    }
+
+    /// Enters a neighbouring province by marching: remembers where it came from.
+    pub(crate) fn enter(&mut self, province: usize) {
+        self.came_from = Some(self.province);
+        self.province = province;
+    }
+
+    /// Placed in a province without marching (retreat, withdrawal): there is
+    /// nothing to retreat to from there and no march continues.
+    pub(crate) fn relocate(&mut self, province: usize) {
+        self.province = province;
+        self.came_from = None;
+        self.destination = None;
+    }
+}
+
+/// A settlement's garrison (§11.4): levy from a share of its people, without
+/// upkeep and outside the conscription pool. Its soldiers stay part of the
+/// population; the fallen leave it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Garrison {
+    pub soldiers: u32,
+    pub morale: u32,
 }
 
 /// Units ordered by a nation that are not ready yet (§10.2). Their soldiers
@@ -82,6 +123,8 @@ pub struct Recruitment {
 pub struct ArmyRegistry {
     armies: BTreeMap<ArmyId, Army>,
     recruitments: Vec<Recruitment>,
+    /// Garrisons changed by battles; a settlement missing here has a full one.
+    garrisons: BTreeMap<SettlementId, Garrison>,
     next_id: u32,
 }
 
@@ -175,6 +218,8 @@ impl ArmyRegistry {
                 nation,
                 province,
                 units: Vec::new(),
+                destination: None,
+                came_from: None,
             },
         );
         Some(id)
@@ -204,6 +249,20 @@ impl ArmyRegistry {
     /// Removes armies without units.
     pub(crate) fn remove_empty(&mut self) {
         self.armies.retain(|_, army| !army.units.is_empty());
+    }
+
+    /// The garrison after battles; None when it is full.
+    pub fn garrison(&self, settlement: SettlementId) -> Option<Garrison> {
+        self.garrisons.get(&settlement).copied()
+    }
+
+    pub(crate) fn set_garrison(&mut self, settlement: SettlementId, garrison: Garrison) {
+        self.garrisons.insert(settlement, garrison);
+    }
+
+    /// The garrison is full again (it refilled while not attacked).
+    pub(crate) fn reset_garrison(&mut self, settlement: SettlementId) {
+        self.garrisons.remove(&settlement);
     }
 
     /// A nation that left the game takes its armies and recruitments with it.

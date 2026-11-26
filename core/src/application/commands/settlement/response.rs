@@ -104,6 +104,11 @@ pub enum ActionError {
         receiver_id: SettlementId,
         nation_id: NationId,
     },
+    /// This settlement or the receiver is under attack: an enemy army stands
+    /// in its province (§11.2).
+    SettlementUnderAttack {
+        settlement_id: SettlementId,
+    },
     /// Not enough stock for this action at funding time: `available` is what is
     /// left after the market (funded first) and earlier caravan orders.
     InsufficientStock {

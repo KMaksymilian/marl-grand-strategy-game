@@ -53,6 +53,8 @@ pub struct OwnedSettlementObservation {
     pub conquest_turns: u32,
     /// An enemy army stands in the province: the settlement pays no tax.
     pub under_attack: bool,
+    /// Garrison soldiers now (§11.4).
+    pub garrison: u32,
     /// Free warehouse space, the limit for material subsidies.
     pub free_capacity: u64,
 }
@@ -126,6 +128,8 @@ pub struct ArmyObservation {
     pub province_id: usize,
     /// Provinces per turn: the speed of the slowest unit.
     pub movement: u32,
+    /// The province the army marches to; None when it stays.
+    pub destination: Option<usize>,
     pub soldiers: u32,
     /// In army order; positions are used by `split_army`.
     pub units: Vec<Unit>,

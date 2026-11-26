@@ -11,6 +11,7 @@ mod resource_sites;
 mod site_facts;
 mod taxation;
 mod trade;
+mod war;
 pub use inspection::TileView;
 pub use military::Conscription;
 pub(crate) use nations::NationOperationError;
@@ -139,6 +140,10 @@ pub struct World {
     diplomacy: Diplomacy,
     /// Armies of every nation and the recruitments in progress (§10).
     armies: ArmyRegistry,
+    /// Settlements besieged by armies after the last battles (§11.2).
+    sieges: std::collections::BTreeSet<SettlementId>,
+    /// Random variance of battles, seeded (`set_battle_seed`).
+    battle_rng: rand::rngs::StdRng,
 }
 impl World {
     pub(crate) fn completed_turn(&self) -> u64 {
@@ -343,6 +348,8 @@ impl World {
             nations: NationRegistry::default(),
             diplomacy: Diplomacy::default(),
             armies: ArmyRegistry::default(),
+            sieges: std::collections::BTreeSet::new(),
+            battle_rng: rand::SeedableRng::seed_from_u64(0),
         }
     }
 

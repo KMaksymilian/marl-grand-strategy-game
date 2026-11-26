@@ -13,6 +13,7 @@ pub struct TileView<'a> {
     pub position: Position,
     pub terrain: &'a Area,
     pub deposit: Option<ResourceType>,
+    pub coastal: bool,
     pub province_id: usize,
     /// Settlement registered in this province, if any.
     pub province_settlement: Option<&'a Settlement>,
@@ -79,6 +80,7 @@ impl World {
             position,
             terrain: &self.map.terrain[index],
             deposit: self.map.deposit_at(position),
+            coastal: self.map.is_coastal(position),
             province_id,
             province_settlement: settlement,
             occupant_settlement,

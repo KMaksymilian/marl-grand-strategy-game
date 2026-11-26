@@ -28,9 +28,10 @@ impl Building {
         demand
     }
 
-    pub fn resolve_allocation(
+    pub(crate) fn produce_from_grants(
         &mut self,
         granted: Option<&HashMap<ResourceType, u32>>,
+        site_efficiency: u8,
     ) -> ProductionResult {
         let mut material_grants = granted.cloned().unwrap_or_default();
 
@@ -42,10 +43,14 @@ impl Building {
             material_grants.remove(&ResourceType::Labour);
         }
 
-        self.execute_production(&material_grants)
+        self.execute_production(&material_grants, site_efficiency)
     }
 
-    fn execute_production(&self, granted: &HashMap<ResourceType, u32>) -> ProductionResult {
+    fn execute_production(
+        &self,
+        granted: &HashMap<ResourceType, u32>,
+        site_efficiency: u8,
+    ) -> ProductionResult {
         let mut produced = HashMap::new();
         let mut unused = granted.clone();
 
@@ -87,9 +92,11 @@ impl Building {
                     }
                 }
                 for (resource, amount) in outputs {
-                    let output =
-                        self.location_productivity
-                            .scale_output(*amount, numerator, denominator);
+                    let output = self.location_productivity.scale_output(
+                        *amount,
+                        numerator * u128::from(site_efficiency),
+                        denominator * 100,
+                    );
                     let total = produced.entry(resource.clone()).or_insert(0_u32);
                     *total = total
                         .checked_add(output)

@@ -95,7 +95,7 @@ Additional methods on the same `Building` type, grouped around the production cy
 | Method on `Building` | Purpose |
 | --- | --- |
 | `calculate_demand` | Request inputs and labour according to activity and target load. |
-| `resolve_allocation` | Set staffing and return ProductionResult with products and unused grants. |
+| `produce_from_grants` | Apply actual staffing and site efficiency. Return products and unused grants. |
 | `execute_production` | Apply worker/material bottlenecks and exact output scaling. |
 
 ### [core/src/domain/buildings/definition.rs](../../../core/src/domain/buildings/definition.rs)
@@ -479,7 +479,7 @@ Contains `Tile`, `TileOccupancy`, settlement-qualified references and `Territory
 
 ### [core/src/domain/world/state/inspection.rs](../../../core/src/domain/world/state/inspection.rs)
 
-`World::inspect_tile` returns `TileView`: terrain, province, separate
+`World::inspect_tile` returns `TileView`: terrain, coastal-land designation, province, separate
 `province_settlement`/`occupant_settlement` references, occupancy and borrowed
 building/new-construction objects. It validates coordinates, province existence
 and structural references, returning `InconsistentOccupancy` for dangling or misplaced objects. This authoritative read does not filter agent knowledge.
@@ -520,6 +520,16 @@ diagonal and slope costs.
 | `move_cost` | Combine step length with asymmetric uphill/downhill slope costs. |
 
 ## World generation services
+
+### [core/src/domain/world/generation/deposits.rs](../../../core/src/domain/world/generation/deposits.rs)
+
+`DepositGenerationConfig` defines a seed, vein size limit and per-biome ore
+probabilities. `OreDepositRule::chance_for` reads the probability for a biome.
+`World::generate_deposits` validates configuration, samples independent focuses
+per province and ore, and grows connected land veins into the existing registry.
+It returns a `DepositGenerationReport` with focus and growth positions.
+See [world generation](../systems/world_generation.md) for biome selection,
+collision handling, water barriers and deterministic ordering.
 
 
 ### [core/src/domain/world/generation/config.rs](../../../core/src/domain/world/generation/config.rs)
@@ -645,7 +655,7 @@ projects outside their settlement's province after a membership change.
 
 | Source | Types and methods |
 | --- | --- |
-| [domain/spatial/mod.rs](../../../core/src/domain/spatial/mod.rs) | Coordinate/occupancy values, qualified references, `TerritoryError`, and the `ConstructionSpace` contract: reserve, validate, cancel, finish, register, release rejected. |
+| [domain/spatial/mod.rs](../../../core/src/domain/spatial/mod.rs) | Coordinate/occupancy values, qualified references, `TerritoryError`, and the `ConstructionSpace` contract: evaluate site requirements, reserve, validate, cancel, finish, register, release rejected. |
 | [domain/economy/cost.rs](../../../core/src/domain/economy/cost.rs) | `ProjectCost::normalize` removes zero entries; `is_fully_paid` checks materials and elapsed time. |
 | [domain/buildings/effects.rs](../../../core/src/domain/buildings/effects.rs) | `StatType`: shared housing, inventory and trade modifier targets. |
 | [domain/buildings/productivity.rs](../../../core/src/domain/buildings/productivity.rs) | `TravelCostSource::travel_cost` supplies a directed optional cost to the calculator. |

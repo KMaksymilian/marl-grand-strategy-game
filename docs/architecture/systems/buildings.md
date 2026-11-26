@@ -25,7 +25,7 @@ classDiagram
         -u32 current_workers
         -LocationProductivity location_productivity
         +calculate_demand()
-        +resolve_allocation()
+        +produce_from_grants()
         +upgrade(definition)
     }
     class BuildingDefinition {
@@ -80,7 +80,7 @@ Details: [productivity formulas and configuration](../implementation/building_pr
 [production arithmetic](../implementation/economy_rules.md#5-building-production),
 [project lifecycle](settlements.md#project-lifecycle).
 
-`Building::resolve_allocation` returns `ProductionResult` directly, containing
+`Building::produce_from_grants` returns `ProductionResult` directly, containing
 `produced` and `unused` material maps. There is no intermediate
 `BuildingUpdateResult` wrapper. The internal production calculation receives a
 reference to the prepared grants; missing allocations are handled at the public

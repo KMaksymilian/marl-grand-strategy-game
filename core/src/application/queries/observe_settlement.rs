@@ -148,6 +148,7 @@ impl ObservationQuery<'_> {
                     position,
                     elevation: area.determine_elevation(),
                     moisture: area.determine_moisture(),
+                    coastal: self.world.map().is_coastal(position),
                     deposit: self.world.map().deposit_at(position),
                     occupancy,
                     buildable: self
@@ -190,6 +191,7 @@ impl ObservationQuery<'_> {
                 ),
                 construction_turns: definition.construction_cost().turn_cost,
                 required_deposit: definition.required_deposit(),
+                requires_coast: definition.requires_coast(),
                 recipes: definition
                     .behaviors()
                     .iter()

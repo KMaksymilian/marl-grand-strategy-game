@@ -49,6 +49,9 @@ impl Settlement {
         space: &mut impl ConstructionSpace,
     ) -> Result<(), ProjectError> {
         self.validate_project_materials(&definition, &cost)?;
+        space
+            .evaluate_site(position, definition.site_requirements())
+            .map_err(ProjectError::Territory)?;
         let project = Project::new(
             project_id,
             ProjectResult::ConstructBuilding {
@@ -90,6 +93,44 @@ impl Settlement {
         cost: ProjectCost,
     ) -> Result<(), ProjectError> {
         self.validate_project_materials(&new_definition, &cost)?;
+        let building = self
+            .building_manager
+            .get(target_instance_id)
+            .ok_or(ProjectError::MissingBuilding(target_instance_id))?;
+        new_definition
+            .site_requirements()
+            .evaluate(building.position(), |_| None)
+            .map_err(ProjectError::Territory)?;
+        self.queue_validated_upgrade(project_id, target_instance_id, new_definition, cost)
+    }
+
+    /// Requests an upgrade whose location requirements can be checked by the environment.
+    pub fn queue_upgrade_with_space(
+        &mut self,
+        project_id: ProjectId,
+        target_instance_id: BuildingId,
+        new_definition: Arc<BuildingDefinition>,
+        cost: ProjectCost,
+        space: &impl ConstructionSpace,
+    ) -> Result<(), ProjectError> {
+        self.validate_project_materials(&new_definition, &cost)?;
+        let building = self
+            .building_manager
+            .get(target_instance_id)
+            .ok_or(ProjectError::MissingBuilding(target_instance_id))?;
+        space
+            .evaluate_site(building.position(), new_definition.site_requirements())
+            .map_err(ProjectError::Territory)?;
+        self.queue_validated_upgrade(project_id, target_instance_id, new_definition, cost)
+    }
+
+    fn queue_validated_upgrade(
+        &mut self,
+        project_id: ProjectId,
+        target_instance_id: BuildingId,
+        new_definition: Arc<BuildingDefinition>,
+        cost: ProjectCost,
+    ) -> Result<(), ProjectError> {
         if self.active_projects().iter().any(|project| {
             matches!(project.result(), ProjectResult::UpgradeBuilding { target_instance_id: active, .. }
                 if *active == target_instance_id)

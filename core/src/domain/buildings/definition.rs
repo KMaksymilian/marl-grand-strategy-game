@@ -1,6 +1,7 @@
 use crate::domain::buildings::effects::StatType;
 use crate::domain::economy::ResourceType;
 use crate::domain::economy::cost::ProjectCost;
+use crate::domain::spatial::site::SiteRequirements;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -31,7 +32,7 @@ pub struct BuildingDefinition {
     max_workers: u32,
     behaviors: Vec<BuildingBehavior>,
     construction_cost: ProjectCost,
-    required_deposit: Option<ResourceType>,
+    site_requirements: SiteRequirements,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,7 +65,7 @@ impl BuildingDefinition {
             max_workers,
             behaviors,
             construction_cost,
-            required_deposit: None,
+            site_requirements: SiteRequirements::default(),
         };
         definition.validate()?;
         Ok(definition)
@@ -93,16 +94,30 @@ impl BuildingDefinition {
         if resource == ResourceType::Labour {
             return Err(DefinitionError::InvalidDepositResource(resource));
         }
-        self.required_deposit = Some(resource);
+        self.site_requirements = self.site_requirements.requiring_deposit(resource);
         Ok(self)
     }
 
     pub fn required_deposit(&self) -> Option<ResourceType> {
-        self.required_deposit.clone()
+        self.site_requirements.tile_deposit().cloned()
     }
 
-    pub(crate) fn deposit_resource(&self) -> Option<&ResourceType> {
-        self.required_deposit.as_ref()
+    pub fn requiring_coast(mut self) -> Self {
+        self.site_requirements = self.site_requirements.requiring_coast();
+        self
+    }
+
+    pub fn requires_coast(&self) -> bool {
+        self.site_requirements.requires_coast()
+    }
+
+    pub fn with_site_requirements(mut self, requirements: SiteRequirements) -> Self {
+        self.site_requirements = requirements;
+        self
+    }
+
+    pub fn site_requirements(&self) -> &SiteRequirements {
+        &self.site_requirements
     }
 
     fn validate(&self) -> Result<(), DefinitionError> {

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fmt;
+use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -33,6 +34,7 @@ pub struct ResourceDefinition {
     category: ResourceCategory,
     #[serde(default)]
     aliases: Vec<String>,
+    max_vein_tiles: Option<NonZeroU32>,
 }
 
 impl ResourceDefinition {
@@ -50,6 +52,10 @@ impl ResourceDefinition {
 
     pub fn category(&self) -> ResourceCategory {
         self.category
+    }
+
+    pub fn max_vein_tiles(&self) -> Option<NonZeroU32> {
+        self.max_vein_tiles
     }
 
     pub fn food_class(&self) -> Option<FoodClass> {
@@ -111,6 +117,14 @@ impl std::error::Error for ResourceCatalogError {
 #[serde(deny_unknown_fields)]
 struct RawCatalog {
     resources: Vec<ResourceDefinition>,
+    deposits: Option<DepositLimits>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DepositLimits {
+    pub max_vein_tiles: NonZeroU32,
+    pub max_veins: u32,
 }
 
 /// Material metadata and default warehouse priorities loaded from content.
@@ -119,6 +133,7 @@ pub struct ResourceCatalog {
     definitions: HashMap<ResourceType, ResourceDefinition>,
     identifiers: HashMap<String, ResourceType>,
     materials: Vec<ResourceType>,
+    deposit_limits: Option<DepositLimits>,
 }
 
 impl ResourceCatalog {
@@ -141,6 +156,7 @@ impl ResourceCatalog {
             definitions: HashMap::new(),
             identifiers: HashMap::new(),
             materials: Vec::new(),
+            deposit_limits: raw.deposits,
         };
         for definition in raw.resources {
             catalog.insert(definition)?;
@@ -169,6 +185,14 @@ impl ResourceCatalog {
     /// Materials in their configured default warehouse order.
     pub fn materials(&self) -> &[ResourceType] {
         &self.materials
+    }
+
+    pub(crate) fn deposit_limits(&self) -> DepositLimits {
+        self.deposit_limits.unwrap_or_else(|| {
+            Self::standard()
+                .deposit_limits
+                .expect("the bundled resource catalogue defines deposit limits")
+        })
     }
 
     fn insert(&mut self, definition: ResourceDefinition) -> Result<(), ResourceCatalogError> {

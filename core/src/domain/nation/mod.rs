@@ -7,6 +7,7 @@
 //! succession, extinction, subsidies) are coordinated by World.
 pub mod decree;
 pub mod decree_catalog;
+pub mod diplomacy;
 pub mod registry;
 pub mod report;
 pub mod taxation;

@@ -210,6 +210,7 @@ fn observation_describes_the_local_economy() {
             province_id: 20,
             // A settlement registered alone founds its own nation: 0 for ME, 1 here.
             nation_id: NationId(1),
+            trade_allowed: true,
         }]
     );
     assert_eq!(

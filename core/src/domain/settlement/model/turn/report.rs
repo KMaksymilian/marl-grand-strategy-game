@@ -200,6 +200,8 @@ pub enum CaravanDepartureRoute {
     Routed,
     NoRoute,
     ReceiverMissing,
+    /// The nations are at war or under an embargo (§8.1); the caravan stayed.
+    TradeBlocked,
 }
 
 /// A caravan unloaded this turn.

@@ -228,6 +228,13 @@ pub(super) fn trade_error(error: TradeCommandError) -> ActionError {
         TradeCommandError::EmptyOrder => ActionError::EmptyOrder,
         TradeCommandError::NothingToCarry => ActionError::NothingToCarry,
         TradeCommandError::TradeWithSelf => ActionError::TradeWithSelf,
+        TradeCommandError::TradeBlocked {
+            receiver_id,
+            nation_id,
+        } => ActionError::TradeBlocked {
+            receiver_id,
+            nation_id,
+        },
         TradeCommandError::UnknownSender(settlement_id)
         | TradeCommandError::UnknownReceiver(settlement_id) => {
             ActionError::UnknownSettlement { settlement_id }

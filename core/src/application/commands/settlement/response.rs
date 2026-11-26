@@ -1,7 +1,7 @@
 //! Serializable results returned for commands after execution.
 use super::contract::ActionKind;
 use crate::domain::economy::{ResourceType, storage_order::StorageOrderError};
-use crate::domain::ids::{BuildingId, BuildingTypeId, ProjectId, SettlementId};
+use crate::domain::ids::{BuildingId, BuildingTypeId, NationId, ProjectId, SettlementId};
 use crate::domain::spatial::Position;
 use serde::{Deserialize, Serialize};
 
@@ -84,6 +84,12 @@ pub enum ActionError {
     /// purchases at price 0); the engine would skip it.
     NothingToCarry,
     TradeWithSelf,
+    /// The receiver's nation (`nation_id`) is at war with this settlement's
+    /// nation or under an embargo with it (§8.1).
+    TradeBlocked {
+        receiver_id: SettlementId,
+        nation_id: NationId,
+    },
     /// Not enough stock for this action at funding time: `available` is what is
     /// left after the market (funded first) and earlier caravan orders.
     InsufficientStock {

@@ -4,6 +4,7 @@
 use super::observation::ResourceAmounts;
 use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::nation::decree::{DecreeEffects, DecreeId, DecreeState};
+use crate::domain::nation::diplomacy::{Proposal, Relation};
 use crate::domain::nation::report::NationTurnReport;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -31,6 +32,8 @@ pub struct NationObservation {
     pub other_nations: Vec<NationId>,
     /// Decree slots, states, upkeep and effects (§7).
     pub decrees: DecreesObservation,
+    /// Relations, own proposals and the public reputation of all nations (§8).
+    pub diplomacy: DiplomacyObservation,
     /// The nation's report of the latest completed turn; None before the first.
     pub last_turn: Option<NationTurnReport>,
 }
@@ -67,6 +70,33 @@ pub struct DecreesObservation {
     pub upkeep: BTreeMap<DecreeId, u64>,
     /// Combined effects of the active decrees.
     pub effects: DecreeEffects,
+}
+
+/// What a nation agent needs for diplomacy (§8).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DiplomacyObservation {
+    /// The relation with every other nation.
+    pub relations: BTreeMap<NationId, RelationObservation>,
+    /// Nations with which a treaty was broken this turn: no war until the next turn.
+    pub warning_period: Vec<NationId>,
+    /// Proposals to this nation; `answerable` ones can be answered now.
+    pub incoming_proposals: Vec<Proposal>,
+    /// This nation's proposals still waiting for an answer.
+    pub outgoing_proposals: Vec<Proposal>,
+    /// Broken treaties of every nation, this one included (public, §8.4).
+    pub reputation: BTreeMap<NationId, u32>,
+}
+
+/// The relation with one other nation and how long it has held.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RelationObservation {
+    pub relation: Relation,
+    /// The global turn in which this relation started; 0 when it has held
+    /// since the start of the game. With `turn` it gives e.g. the length of a
+    /// war or the age of an alliance.
+    pub since_turn: u64,
 }
 
 impl NationObservation {

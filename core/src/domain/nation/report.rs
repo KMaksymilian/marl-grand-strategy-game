@@ -1,7 +1,7 @@
-//! One nation's turn, written for the nation agent. Later systems (diplomacy)
-//! add their parts here.
+//! One nation's turn, written for the nation agent.
 use super::Nation;
 use super::decree::{DecreeId, DecreeState, DecreeUpkeepReport};
+use super::diplomacy::DiplomaticEvent;
 use super::taxation::NationTaxReport;
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::SettlementId;
@@ -26,16 +26,22 @@ pub struct NationTurnReport {
     /// Decree upkeep paid this turn, and decrees revoked because the treasury
     /// could not pay them.
     pub decree_upkeep: DecreeUpkeepReport,
+    /// Diplomatic events concerning this nation this turn, in order: wars
+    /// declared on it, alliances drawn into wars or peace, proposals received
+    /// and answered, broken treaties, embargoes, expired proposals and ended
+    /// truces (§8).
+    pub diplomacy: Vec<DiplomaticEvent>,
 }
 
 impl NationTurnReport {
     /// The end-of-turn state of a nation owning `settlements`, with this
-    /// turn's taxes and decree upkeep.
+    /// turn's taxes, decree upkeep and diplomatic events.
     pub(crate) fn closing(
         nation: &Nation,
         settlements: Vec<SettlementId>,
         taxes: NationTaxReport,
         decree_upkeep: DecreeUpkeepReport,
+        diplomacy: Vec<DiplomaticEvent>,
     ) -> Self {
         Self {
             tax_rate: nation.tax_rate(),
@@ -47,6 +53,7 @@ impl NationTurnReport {
             taxes,
             decrees: nation.decrees().states().clone(),
             decree_upkeep,
+            diplomacy,
         }
     }
 }

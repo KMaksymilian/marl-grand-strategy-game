@@ -9,7 +9,8 @@
 //! error always means that nothing happened.
 use super::{World, WorldError};
 use crate::domain::economy::{InventoryAddResult, ResourceType};
-use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::ids::{ArmyId, NationId, SettlementId};
+use crate::domain::military::UnitTypeId;
 use crate::domain::nation::Nation;
 use crate::domain::nation::decree::DecreeId;
 use crate::domain::nation::diplomacy::DiplomacyError;
@@ -74,6 +75,31 @@ pub(crate) enum NationOperationError {
     },
     /// A diplomatic action that is not possible now (§8).
     Diplomacy(DiplomacyError),
+    UnknownUnitType(UnitTypeId),
+    /// A recruitment of zero units.
+    EmptyRecruitment,
+    /// More soldiers than the settlement's conscription pool has left.
+    ConscriptionPoolExceeded {
+        settlement_id: SettlementId,
+        requested: u32,
+        available: u32,
+    },
+    UnknownArmy(ArmyId),
+    ArmyNotOwned(ArmyId),
+    /// The army stands outside the nation's own provinces.
+    NotOwnProvince {
+        army_id: ArmyId,
+        province: usize,
+    },
+    /// The two armies stand in different provinces.
+    ArmiesApart {
+        army_id: ArmyId,
+        into: ArmyId,
+    },
+    SameArmy(ArmyId),
+    /// Unit positions that are empty, repeated, outside the army or all of it.
+    InvalidUnitSelection(ArmyId),
+    ArmyIdExhausted,
 }
 
 /// Read access.
@@ -175,8 +201,10 @@ impl World {
             change.extinct = true;
             change.gold_lost = nation.take_treasury();
             change.stock_lost = nation.take_stock();
-            // Its relations, proposals and reputation leave the game with it.
+            // Its relations, proposals, reputation and armies leave the game
+            // with it.
             self.diplomacy.remove_nation(from);
+            self.armies.remove_nation(from);
             return Ok(change);
         }
         // 4. The previous owner survives.

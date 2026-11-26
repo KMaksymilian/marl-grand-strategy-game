@@ -1,8 +1,9 @@
 //! Serializable decisions submitted by nation agents (gameplay specification §5.2).
 //!
-//! The contract holds the policy, subsidies, decrees and diplomacy implemented
-//! so far; recruitment and army orders are added as new action variants. Decrees are
-//! named by their ID from `decrees.toml`; whether the ID exists is checked by
+//! The contract holds the policy, subsidies, decrees, diplomacy, recruitment
+//! and army grouping implemented so far; army movement is added as new action
+//! variants. Decrees and unit types are
+//! named by their ID from `decrees.toml` and `units.toml`; whether the ID exists is checked by
 //! validation, not by parsing.
 //! Each action is checked against the current world as it executes.
 //! Deserialization checks only the shape and numeric types.
@@ -18,7 +19,9 @@
 //!     { "type": "revoke_decree", "decree": "games" },
 //!     { "type": "declare_war", "target": 1 },
 //!     { "type": "propose_treaty", "target": 2, "treaty": "trade_agreement" },
-//!     { "type": "respond_to_proposal", "proposer": 2, "treaty": "peace", "accept": true }
+//!     { "type": "respond_to_proposal", "proposer": 2, "treaty": "peace", "accept": true },
+//!     { "type": "recruit_units", "settlement_id": 2, "unit": "spearmen", "units": 3 },
+//!     { "type": "merge_armies", "army_id": 4, "into": 1 }
 //!   ]
 //! }
 //! ```
@@ -27,7 +30,8 @@ pub use super::response::{
     NationDecisionOutcome,
 };
 use crate::domain::economy::ResourceType;
-use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::ids::{ArmyId, NationId, SettlementId};
+use crate::domain::military::UnitTypeId;
 use crate::domain::nation::decree::DecreeId;
 use crate::domain::nation::diplomacy::Treaty;
 use serde::{Deserialize, Serialize};
@@ -101,6 +105,24 @@ pub enum NationAction {
         treaty: Treaty,
         accept: bool,
     },
+    /// Raise `units` units of a type from an own settlement (§10.2): the
+    /// people leave its population and the equipment the national stock now;
+    /// the units join an army in the settlement's province after the
+    /// recruitment time (at once with Mobilization).
+    RecruitUnits {
+        settlement_id: SettlementId,
+        unit: UnitTypeId,
+        units: u32,
+    },
+    /// Disband an own army standing in an own province: its living soldiers
+    /// join that province's settlement.
+    DisbandArmy { army_id: ArmyId },
+    /// Move every unit of `army_id` into `into`, an own army in the same
+    /// province.
+    MergeArmies { army_id: ArmyId, into: ArmyId },
+    /// Move the units at these positions of the army's unit list into a new
+    /// army in the same province; at least one unit stays.
+    SplitArmy { army_id: ArmyId, units: Vec<usize> },
 }
 
 impl NationAction {
@@ -117,6 +139,10 @@ impl NationAction {
             Self::BreakAlliance { .. } => NationActionKind::BreakAlliance,
             Self::ProposeTreaty { .. } => NationActionKind::ProposeTreaty,
             Self::RespondToProposal { .. } => NationActionKind::RespondToProposal,
+            Self::RecruitUnits { .. } => NationActionKind::RecruitUnits,
+            Self::DisbandArmy { .. } => NationActionKind::DisbandArmy,
+            Self::MergeArmies { .. } => NationActionKind::MergeArmies,
+            Self::SplitArmy { .. } => NationActionKind::SplitArmy,
         }
     }
 }
@@ -136,11 +162,15 @@ pub enum NationActionKind {
     BreakAlliance,
     ProposeTreaty,
     RespondToProposal,
+    RecruitUnits,
+    DisbandArmy,
+    MergeArmies,
+    SplitArmy,
 }
 
 impl NationActionKind {
     /// Every kind in a fixed order, e.g. for a fixed-size mask vector.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 15] = [
         Self::SetTaxRate,
         Self::Subsidize,
         Self::EnactDecree,
@@ -152,6 +182,10 @@ impl NationActionKind {
         Self::BreakAlliance,
         Self::ProposeTreaty,
         Self::RespondToProposal,
+        Self::RecruitUnits,
+        Self::DisbandArmy,
+        Self::MergeArmies,
+        Self::SplitArmy,
     ];
 }
 
@@ -216,6 +250,20 @@ mod tests {
                 treaty: Treaty::Peace,
                 accept: true,
             },
+            NationAction::RecruitUnits {
+                settlement_id: SettlementId(2),
+                unit: UnitTypeId::new("spearmen").unwrap(),
+                units: 3,
+            },
+            NationAction::DisbandArmy { army_id: ArmyId(1) },
+            NationAction::MergeArmies {
+                army_id: ArmyId(4),
+                into: ArmyId(1),
+            },
+            NationAction::SplitArmy {
+                army_id: ArmyId(1),
+                units: vec![0, 2],
+            },
         ]
     }
 
@@ -252,7 +300,11 @@ mod tests {
                 {"type": "break_trade_agreement", "target": 1},
                 {"type": "break_alliance", "target": 1},
                 {"type": "propose_treaty", "target": 2, "treaty": "trade_agreement"},
-                {"type": "respond_to_proposal", "proposer": 2, "treaty": "peace", "accept": true}
+                {"type": "respond_to_proposal", "proposer": 2, "treaty": "peace", "accept": true},
+                {"type": "recruit_units", "settlement_id": 2, "unit": "spearmen", "units": 3},
+                {"type": "disband_army", "army_id": 1},
+                {"type": "merge_armies", "army_id": 4, "into": 1},
+                {"type": "split_army", "army_id": 1, "units": [0, 2]}
             ]
         });
         // Compared as the text an agent receives: `to_value` would widen the f32
@@ -298,6 +350,13 @@ mod tests {
             wrap(r#"{"type": "declare_war", "nation": 2}"#),
             wrap(r#"{"type": "propose_treaty", "target": 2, "treaty": "marriage"}"#),
             wrap(r#"{"type": "respond_to_proposal", "proposer": 2, "treaty": "peace"}"#),
+            wrap(
+                r#"{"type": "recruit_units", "settlement_id": 2, "unit": "Spearmen", "units": 1}"#,
+            ),
+            wrap(
+                r#"{"type": "recruit_units", "settlement_id": 2, "unit": "spearmen", "units": -1}"#,
+            ),
+            wrap(r#"{"type": "split_army", "army_id": 1}"#),
             wrap(r#"{"type": "enact_decree", "decree": "Free Beer"}"#),
             wrap(r#"{"type": "enact_decree"}"#),
             wrap(r#"{"type": "revoke_decree", "decree": 3}"#),

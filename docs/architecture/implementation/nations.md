@@ -248,6 +248,7 @@ proposals, ended truces).
 | `enact_decree` | `decree_enacted` with the `upkeep` per active turn | `unknown_decree`, `decree_already_enacted`, `decree_on_cooldown` (`turns_left`), `no_free_decree_slot`, `conflict` for the same decree twice |
 | `revoke_decree` | `decree_revoked` with `cooldown_turns` | `unknown_decree`, `decree_not_active` (also a pending one), `decree_minimum_duration` (`turns_left`), `conflict` |
 | `declare_war`, `declare_embargo`, `lift_embargo`, `break_trade_agreement`, `break_alliance`, `propose_treaty`, `respond_to_proposal` | `diplomacy` with a `DiplomaticOutcome` (`war_declared`, `embargo_declared`, `embargo_lifted`, `treaty_broken`, `proposal_sent`, `proposal_accepted`, `proposal_rejected`) | `diplomacy` with a `DiplomacyError` (`unknown_nation`, `diplomacy_with_self`, `invalid_relation`, `truce_in_force`, `warning_period`, `not_embargo_imposer`, `proposal_already_pending`, `no_such_proposal`), `conflict` for a second action towards the same nation |
+| `recruit_units`, `disband_army`, `merge_armies`, `split_army` | see [Military](military.md#armies-recruitment-and-upkeep-10) | |
 
 A decree ID only needs the snake-case shape to parse; whether it exists in the
 catalogue is checked by validation (`unknown_decree`), so the contract does not
@@ -263,9 +264,9 @@ settlement actually received.
 ## Global turn
 
 ```
-nation decisions -> decree upkeep -> settlement decisions -> Preparation -> Allocation ->
+nation decisions -> decree upkeep -> army upkeep -> settlement decisions -> Preparation -> Allocation ->
 Consumption -> Construction -> Production -> Taxation -> EconomicUpdates ->
-trade dispatch -> national timers, decree states, truces and proposals -> nation reports
+trade dispatch -> recruitments -> national timers, decree states, truces and proposals -> nation reports
 ```
 
 `Simulation::queue_nation_decision` accepts decisions of existing nations. Nation
@@ -274,7 +275,8 @@ decide under the new policy and can use this turn's subsidies.
 `SimulationTurnReport::nation_decisions` holds the outcomes and
 `SimulationTurnReport::nations` each nation's own `NationTurnReport` (tax rate,
 capital, capital-loss turns, settlements, closing treasury and stock, taxes,
-decree states and `decree_upkeep`, diplomatic events concerning the nation).
+decree states and `decree_upkeep`, diplomatic events concerning the nation,
+`military`).
 Decrees advance with the national timers:
 pending becomes active, active counts a turn, cooldowns run down. Settlement
 decisions stay independent: a nation never builds, staffs or trades for its
@@ -289,8 +291,9 @@ population, gold, conquest turns, under attack, free warehouse capacity), the ID
 of other nations, `decrees` (slots, used slots, minimum duration, cooldown,
 states, the upkeep of every decree of the catalogue and the combined effects),
 `diplomacy` (relation with every nation and the turn it started, nations in the
-warning period, own incoming and outgoing proposals, every nation's reputation)
-and `last_turn`. Proposals between other nations are not visible. Another
+warning period, own incoming and outgoing proposals, every nation's reputation),
+`military` (own armies, recruitments, conscription pools, upkeep) and
+`last_turn`. Proposals between other nations are not visible. Another
 nation's treasury, stock and policy are not visible.
 
 A settlement's `SettlementObservation::nation` shows its owner's policy (nation,

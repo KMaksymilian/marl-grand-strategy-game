@@ -2,10 +2,12 @@
 //! of each own settlement. Other nations appear only by ID; settlement agents
 //! see the owner of each trade partner.
 use super::observation::ResourceAmounts;
-use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::ids::{ArmyId, NationId, SettlementId};
+use crate::domain::military::{Recruitment, Unit};
 use crate::domain::nation::decree::{DecreeEffects, DecreeId, DecreeState};
 use crate::domain::nation::diplomacy::{Proposal, Relation};
 use crate::domain::nation::report::NationTurnReport;
+use crate::domain::world::Conscription;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -34,6 +36,8 @@ pub struct NationObservation {
     pub decrees: DecreesObservation,
     /// Relations, own proposals and the public reputation of all nations (§8).
     pub diplomacy: DiplomacyObservation,
+    /// Armies, recruitments, conscription pools and upkeep (§10).
+    pub military: MilitaryObservation,
     /// The nation's report of the latest completed turn; None before the first.
     pub last_turn: Option<NationTurnReport>,
 }
@@ -97,6 +101,34 @@ pub struct RelationObservation {
     /// since the start of the game. With `turn` it gives e.g. the length of a
     /// war or the age of an alliance.
     pub since_turn: u64,
+}
+
+/// What a nation agent needs to command its armies (§10).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MilitaryObservation {
+    /// Own armies, ascending ID.
+    pub armies: Vec<ArmyObservation>,
+    /// Own units not ready yet, in order of recruitment.
+    pub recruitments: Vec<Recruitment>,
+    /// The conscription pool of every own settlement.
+    pub conscription: BTreeMap<SettlementId, Conscription>,
+    /// Food and gold the armies need per turn now, from the national stock
+    /// and treasury.
+    pub food_upkeep: u64,
+    pub gold_upkeep: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArmyObservation {
+    pub army_id: ArmyId,
+    pub province_id: usize,
+    /// Provinces per turn: the speed of the slowest unit.
+    pub movement: u32,
+    pub soldiers: u32,
+    /// In army order; positions are used by `split_army`.
+    pub units: Vec<Unit>,
 }
 
 impl NationObservation {

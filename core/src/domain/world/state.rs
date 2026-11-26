@@ -5,12 +5,14 @@ mod decrees;
 mod diplomacy;
 mod inspection;
 mod map_commands;
+mod military;
 mod nations;
 mod resource_sites;
 mod site_facts;
 mod taxation;
 mod trade;
 pub use inspection::TileView;
+pub use military::Conscription;
 pub(crate) use nations::NationOperationError;
 pub use nations::{OwnershipChange, SubsidyTransfer};
 pub use taxation::TaxCollection;
@@ -20,7 +22,7 @@ use super::territory::{TerritoryManager, Tile};
 use crate::domain::buildings::catalog::BuildingCatalog;
 use crate::domain::economy::{ResourceCatalog, ResourceType};
 use crate::domain::ids::NationId;
-use crate::domain::military::{UnitCatalog, UnitTypeId};
+use crate::domain::military::{ArmyRegistry, UnitCatalog, UnitTypeId};
 use crate::domain::nation::decree::DecreeId;
 use crate::domain::nation::decree_catalog::DecreeCatalog;
 use crate::domain::nation::diplomacy::Diplomacy;
@@ -135,6 +137,8 @@ pub struct World {
     nations: NationRegistry,
     /// Relations between nations, proposals and reputation (§8).
     diplomacy: Diplomacy,
+    /// Armies of every nation and the recruitments in progress (§10).
+    armies: ArmyRegistry,
 }
 impl World {
     pub(crate) fn completed_turn(&self) -> u64 {
@@ -338,6 +342,7 @@ impl World {
             decree_catalog: Arc::new(DecreeCatalog::standard().clone()),
             nations: NationRegistry::default(),
             diplomacy: Diplomacy::default(),
+            armies: ArmyRegistry::default(),
         }
     }
 

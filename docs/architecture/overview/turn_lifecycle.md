@@ -18,8 +18,9 @@ next phase begins. The order comes from the registry, not hash-map iteration.
 | EconomicUpdates | Collect output and trade/internal returns, admit materials, record losses and closing stock, and finalize projects. |
 
 Before the settlement phases, nations apply their decisions (taxes, subsidies,
-decrees and diplomacy) and pay decree upkeep. After the turn, national timers,
-decree states, truces and proposals advance.
+decrees, diplomacy and army orders), pay decree upkeep and then feed and pay
+their armies. After the turn, finished recruitments join their armies, and
+national timers, decree states, truces and proposals advance.
 After Decisions, `World::begin_trade_turn` moves existing caravans and queues returns.
 After EconomicUpdates, `World::finish_trade_turn` routes funded departures. These
 transport boundaries are not separate `TurnPhase` entries. New caravans first

@@ -1,7 +1,8 @@
 //! Serializable results of nation decisions.
 use super::contract::NationActionKind;
 use crate::domain::economy::ResourceType;
-use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::ids::{ArmyId, NationId, SettlementId};
+use crate::domain::military::UnitTypeId;
 use crate::domain::nation::decree::DecreeId;
 use crate::domain::nation::diplomacy::{DiplomacyError, DiplomaticOutcome};
 use serde::{Deserialize, Serialize};
@@ -12,17 +13,26 @@ use std::collections::BTreeMap;
 #[serde(tag = "reason", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NationActionError {
     /// The rate is not a fraction from 0.0 to 1.0.
-    InvalidTaxRate { rate: f32 },
+    InvalidTaxRate {
+        rate: f32,
+    },
     /// No settlement with this ID exists.
-    UnknownSettlement { settlement_id: SettlementId },
+    UnknownSettlement {
+        settlement_id: SettlementId,
+    },
     /// The settlement belongs to another nation.
-    SettlementNotOwned { settlement_id: SettlementId },
+    SettlementNotOwned {
+        settlement_id: SettlementId,
+    },
     /// A subsidy with no gold and no materials.
     EmptySubsidy,
     /// Labour is a per-turn capacity of a population, not a stored good.
     LabourIsNotTransferable,
     /// `available` is the treasury after earlier applied actions.
-    InsufficientTreasury { requested: u64, available: u64 },
+    InsufficientTreasury {
+        requested: u64,
+        available: u64,
+    },
     /// `available` is the national stock after earlier actual deliveries.
     InsufficientStock {
         resource: ResourceType,
@@ -30,26 +40,84 @@ pub enum NationActionError {
         available: u32,
     },
     /// The settlement's gold counter cannot hold the subsidy.
-    SettlementTreasuryFull { settlement_id: SettlementId },
+    SettlementTreasuryFull {
+        settlement_id: SettlementId,
+    },
     /// No decree with this ID in the decree catalogue.
-    UnknownDecree { decree: DecreeId },
+    UnknownDecree {
+        decree: DecreeId,
+    },
     /// The decree is already pending or active.
-    DecreeAlreadyEnacted { decree: DecreeId },
+    DecreeAlreadyEnacted {
+        decree: DecreeId,
+    },
     /// The decree was revoked recently; it can be enacted again after
     /// `turns_left` more turns.
-    DecreeOnCooldown { decree: DecreeId, turns_left: u32 },
+    DecreeOnCooldown {
+        decree: DecreeId,
+        turns_left: u32,
+    },
     /// Every decree slot is taken by a pending or active decree.
-    NoFreeDecreeSlot { slots: usize },
+    NoFreeDecreeSlot {
+        slots: usize,
+    },
     /// Only an active decree can be revoked (not a pending one).
-    DecreeNotActive { decree: DecreeId },
+    DecreeNotActive {
+        decree: DecreeId,
+    },
     /// The decree must stay active for `turns_left` more turns.
-    DecreeMinimumDuration { decree: DecreeId, turns_left: u32 },
+    DecreeMinimumDuration {
+        decree: DecreeId,
+        turns_left: u32,
+    },
     /// A diplomatic action that is not possible now (§8), with the reason.
-    Diplomacy { error: DiplomacyError },
+    Diplomacy {
+        error: DiplomacyError,
+    },
+    /// No unit type with this ID in the unit catalogue.
+    UnknownUnitType {
+        unit: UnitTypeId,
+    },
+    /// A recruitment of zero units.
+    EmptyRecruitment,
+    /// `available` soldiers may still be recruited in this settlement now
+    /// (§10.2: 10% of its people, 20% with Mobilization).
+    ConscriptionPoolExceeded {
+        settlement_id: SettlementId,
+        requested: u32,
+        available: u32,
+    },
+    UnknownArmy {
+        army_id: ArmyId,
+    },
+    /// The army belongs to another nation.
+    ArmyNotOwned {
+        army_id: ArmyId,
+    },
+    /// Armies are disbanded only in an own province.
+    NotOwnProvince {
+        army_id: ArmyId,
+        province: usize,
+    },
+    /// Armies are merged only in the same province.
+    ArmiesApart {
+        army_id: ArmyId,
+        into: ArmyId,
+    },
+    SameArmy {
+        army_id: ArmyId,
+    },
+    /// Unit positions that are empty, repeated, outside the army or all of it.
+    InvalidUnitSelection {
+        army_id: ArmyId,
+    },
+    ArmyIdsExhausted,
     /// An earlier action of the same decision already sets the same policy,
     /// targets the same decree or takes a diplomatic action towards the same
     /// nation.
-    Conflict { with_index: usize },
+    Conflict {
+        with_index: usize,
+    },
     /// Retained for existing serialized outcomes.
     ExecutionFailed,
 }
@@ -84,6 +152,30 @@ pub enum NationActionEffect {
     /// reaches them as events in their turn reports.
     Diplomacy {
         outcome: DiplomaticOutcome,
+    },
+    /// People and equipment are taken; the units join an army after
+    /// `ready_in_turns` turns, or joined `army_id` at once (0 turns).
+    UnitsRecruited {
+        settlement_id: SettlementId,
+        unit: UnitTypeId,
+        units: u32,
+        soldiers: u32,
+        ready_in_turns: u32,
+        army_id: Option<ArmyId>,
+    },
+    /// The living soldiers joined this settlement.
+    ArmyDisbanded {
+        army_id: ArmyId,
+        settlement_id: SettlementId,
+        soldiers: u32,
+    },
+    ArmiesMerged {
+        army_id: ArmyId,
+        into: ArmyId,
+    },
+    ArmySplit {
+        army_id: ArmyId,
+        new_army_id: ArmyId,
     },
 }
 

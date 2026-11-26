@@ -121,6 +121,24 @@ impl Settlement {
         self.population_manager.population
     }
 
+    /// Authoritative change from outside the settlement's economy: people
+    /// recruited into the army leave (§10.2). Takes at most the whole
+    /// population and returns how many left. The labour capacity follows at
+    /// the next turn preparation.
+    // ECONOMY (population, §4): workers above the new population are the
+    // settlement's problem; its allocation sees less labour from next turn.
+    pub(crate) fn remove_population(&mut self, people: u32) -> u32 {
+        let removed = people.min(self.population_manager.population);
+        self.population_manager.population -= removed;
+        removed
+    }
+
+    /// Authoritative change: disbanded soldiers settle here (§10.2).
+    pub(crate) fn add_population(&mut self, people: u32) {
+        self.population_manager.population =
+            self.population_manager.population.saturating_add(people);
+    }
+
     /// Materials the population requests every turn at its current size.
     pub fn needs_per_turn(&self) -> std::collections::HashMap<ResourceType, u32> {
         self.population_manager.calculate_demand()

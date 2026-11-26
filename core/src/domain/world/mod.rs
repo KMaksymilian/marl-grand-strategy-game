@@ -16,4 +16,6 @@ pub use map::Map;
 pub use province::Province;
 pub use province_graph::ProvinceGraph;
 pub(crate) use state::NationOperationError;
-pub use state::{OwnershipChange, SubsidyTransfer, TaxCollection, TileView, World, WorldError};
+pub use state::{
+    Conscription, OwnershipChange, SubsidyTransfer, TaxCollection, TileView, World, WorldError,
+};

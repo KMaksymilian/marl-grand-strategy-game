@@ -2,7 +2,7 @@
 use super::super::Settlement;
 use super::super::trading::CaravanOrder;
 use crate::domain::economy::ResourceType;
-use crate::domain::ids::SettlementId;
+use crate::domain::ids::{NationId, SettlementId};
 use crate::domain::intelligence::{Information, InformationSnapshot};
 use crate::domain::trade::book::TradeBook;
 use crate::domain::trade::caravan::{CaravanCargo, CaravanOutcome, CaravanReturn};
@@ -16,6 +16,12 @@ pub enum TradeCommandError {
     TradeWithSelf,
     UnknownSender(SettlementId),
     UnknownReceiver(SettlementId),
+    /// The receiver's nation (`nation_id`) is at war with the sender's or
+    /// under an embargo with it (§8.1).
+    TradeBlocked {
+        receiver_id: SettlementId,
+        nation_id: NationId,
+    },
     EmptyOrder,
     UnknownMaterial(ResourceType),
     ZeroUnits(ResourceType),

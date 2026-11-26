@@ -4,9 +4,11 @@
 //! summary, not their full observations) and the IDs of other nations are read.
 //! Another nation's treasury, stock and policy never enter the result.
 use super::nation_observation::{
-    DecreesObservation, NationObservation, OwnedSettlementObservation,
+    DecreesObservation, DiplomacyObservation, NationObservation, OwnedSettlementObservation,
+    RelationObservation,
 };
 use crate::domain::ids::NationId;
+use crate::domain::nation::diplomacy::Proposal;
 use crate::domain::nation::report::NationTurnReport;
 use crate::domain::world::{World, WorldError};
 
@@ -56,6 +58,7 @@ pub(crate) fn observe_nation(
             .filter(|&id| id != nation_id)
             .collect(),
         decrees: observe_decrees(world, nation_id)?,
+        diplomacy: observe_diplomacy(world, nation_id),
         last_turn: last_turn.cloned(),
     })
 }
@@ -82,4 +85,47 @@ fn observe_decrees(world: &World, nation_id: NationId) -> Result<DecreesObservat
             .collect::<Result<_, WorldError>>()?,
         effects: world.nation_decree_effects(nation_id)?,
     })
+}
+
+/// Only proposals this nation sent or received; others' negotiations stay hidden.
+fn observe_diplomacy(world: &World, nation_id: NationId) -> DiplomacyObservation {
+    let others: Vec<_> = world
+        .nations()
+        .iter()
+        .map(|nation| nation.id())
+        .filter(|&id| id != nation_id)
+        .collect();
+    let diplomacy = world.diplomacy();
+    let own = |filter: fn(&Proposal, NationId) -> bool| {
+        diplomacy
+            .proposals()
+            .iter()
+            .filter(|proposal| filter(proposal, nation_id))
+            .copied()
+            .collect()
+    };
+    DiplomacyObservation {
+        relations: others
+            .iter()
+            .map(|&other| {
+                let status = RelationObservation {
+                    relation: diplomacy.relation(nation_id, other),
+                    since_turn: diplomacy.relation_since(nation_id, other),
+                };
+                (other, status)
+            })
+            .collect(),
+        warning_period: others
+            .iter()
+            .copied()
+            .filter(|&other| diplomacy.in_warning_period(nation_id, other))
+            .collect(),
+        incoming_proposals: own(|proposal, nation| proposal.to == nation),
+        outgoing_proposals: own(|proposal, nation| proposal.from == nation),
+        reputation: world
+            .nations()
+            .iter()
+            .map(|nation| (nation.id(), diplomacy.reputation(nation.id())))
+            .collect(),
+    }
 }

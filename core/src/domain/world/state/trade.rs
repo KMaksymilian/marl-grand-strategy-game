@@ -23,6 +23,12 @@ impl World {
         if self.settlement(receiver_id).is_none() {
             return Err(TradeCommandError::UnknownReceiver(receiver_id));
         }
+        if let Some(nation_id) = self.trade_blocked_by(sender_id, receiver_id) {
+            return Err(TradeCommandError::TradeBlocked {
+                receiver_id,
+                nation_id,
+            });
+        }
         self.settlement_mut(sender_id)
             .expect("validated caravan sender")
             .order_caravan(receiver_id, offers)
@@ -84,10 +90,21 @@ impl World {
             }
         }
         let existing: std::collections::HashSet<_> = self.settlement_ids().into_iter().collect();
-        for caravan in &mut self.caravans {
-            if caravan.state() == CaravanState::Trading && !existing.contains(&caravan.receiver_id)
-            {
-                caravan.abort_trading();
+        // Decided before borrowing the caravans mutably: a war or embargo
+        // declared since departure stops the trade at the receiver (§8.1).
+        let blocked: Vec<bool> = self
+            .caravans
+            .iter()
+            .map(|caravan| !self.trade_allowed(caravan.sender_id, caravan.receiver_id))
+            .collect();
+        for (caravan, blocked) in self.caravans.iter_mut().zip(blocked) {
+            if caravan.state() != CaravanState::Trading {
+                continue;
+            }
+            if !existing.contains(&caravan.receiver_id) {
+                caravan.abort_trading(CaravanOutcome::ReceiverMissing);
+            } else if blocked {
+                caravan.abort_trading(CaravanOutcome::TradeBlocked);
             }
         }
     }
@@ -114,6 +131,15 @@ impl World {
                         Some(CaravanReturn::undelivered(
                             cargo,
                             CaravanOutcome::ReceiverMissing,
+                        )),
+                    )
+                } else if !self.trade_allowed(cargo.sender_id, cargo.receiver_id) {
+                    // Ordered before a war or embargo of this turn: it never leaves.
+                    (
+                        CaravanDepartureRoute::TradeBlocked,
+                        Some(CaravanReturn::undelivered(
+                            cargo,
+                            CaravanOutcome::TradeBlocked,
                         )),
                     )
                 } else if let Some((&start, &end)) = route {

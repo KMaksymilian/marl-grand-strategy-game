@@ -5,6 +5,7 @@ use simulation_core::configuration::Configuration;
 use simulation_core::economy::ResourceCatalog;
 use simulation_core::military::UnitCatalog;
 use simulation_core::nation::decree_catalog::DecreeCatalog;
+use simulation_core::nation::diplomacy::DiplomacyRules;
 use simulation_core::world::World;
 use simulation_core::world::generation::world_builder::WorldBuilder;
 use simulation_core::world::pathfinding::path_finder::PathFinder;
@@ -23,6 +24,9 @@ async fn main() {
     let decrees =
         DecreeCatalog::load("decrees.toml").unwrap_or_else(|error| panic!("decrees.toml: {error}"));
     info!("Loaded {} decrees", decrees.definitions().len());
+    let diplomacy = DiplomacyRules::load("diplomacy.toml")
+        .unwrap_or_else(|error| panic!("diplomacy.toml: {error}"));
+    info!("Truces last {} turns", diplomacy.truce_turns);
     info!(
         "Building productivity uses A* costs: full up to {}, zero from {}",
         configuration
@@ -41,6 +45,9 @@ async fn main() {
     world
         .set_decree_catalog(Arc::new(decrees))
         .expect("a new world has no decrees yet");
+    world
+        .set_diplomacy_rules(Arc::new(diplomacy))
+        .expect("a new world has no diplomacy yet");
     let mut game_screen: GameScreen = ViewGenerator::generate(&world);
     let mut path_finder: PathFinder = PathFinder::new(world.map().width, world.map().height);
 

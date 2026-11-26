@@ -223,6 +223,9 @@ pub struct TradePartner {
     pub province_id: usize,
     /// Owning nation (public information).
     pub nation_id: NationId,
+    /// False while the two nations are at war or under an embargo (§8.1):
+    /// caravans to this partner are rejected.
+    pub trade_allowed: bool,
 }
 
 /// The owning nation's policy as seen by one of its settlements (§5.3).
@@ -236,6 +239,8 @@ pub struct NationPolicyObservation {
     pub is_capital: bool,
     /// Decrees of the nation in effect this turn, ascending ID.
     pub active_decrees: Vec<DecreeId>,
+    /// Nations this settlement's nation is at war with, ascending ID.
+    pub at_war_with: Vec<NationId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

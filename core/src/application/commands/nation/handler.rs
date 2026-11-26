@@ -4,15 +4,18 @@ use super::contract::{
     NationDecision, NationDecisionOutcome,
 };
 use crate::domain::ids::NationId;
+use crate::domain::nation::diplomacy::{DiplomaticOutcome, Treaty};
 use crate::domain::nation::{Nation, decree::DecreeId};
 use crate::domain::world::{NationOperationError, World, WorldError};
 use std::collections::BTreeMap;
 
-/// Policies and decrees that a decision may change once.
+/// Policies, decrees and other nations that a decision may change once.
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 enum Target<'a> {
     TaxRate,
     Decree(&'a DecreeId),
+    /// At most one diplomatic action towards each other nation (§8).
+    Nation(NationId),
 }
 
 impl<'a> Target<'a> {
@@ -24,6 +27,13 @@ impl<'a> Target<'a> {
             NationAction::EnactDecree { decree } | NationAction::RevokeDecree { decree } => {
                 Some(Self::Decree(decree))
             }
+            NationAction::DeclareWar { target }
+            | NationAction::DeclareEmbargo { target }
+            | NationAction::LiftEmbargo { target }
+            | NationAction::BreakTradeAgreement { target }
+            | NationAction::BreakAlliance { target }
+            | NationAction::ProposeTreaty { target, .. } => Some(Self::Nation(*target)),
+            NationAction::RespondToProposal { proposer, .. } => Some(Self::Nation(*proposer)),
             _ => None,
         }
     }
@@ -107,6 +117,25 @@ fn execute(
                 cooldown_turns,
             })
         }
+        NationAction::DeclareWar { target } => diplomacy(world.declare_war(nation_id, *target)),
+        NationAction::DeclareEmbargo { target } => {
+            diplomacy(world.declare_embargo(nation_id, *target))
+        }
+        NationAction::LiftEmbargo { target } => diplomacy(world.lift_embargo(nation_id, *target)),
+        NationAction::BreakTradeAgreement { target } => {
+            diplomacy(world.break_treaty(nation_id, *target, Treaty::TradeAgreement))
+        }
+        NationAction::BreakAlliance { target } => {
+            diplomacy(world.break_treaty(nation_id, *target, Treaty::Alliance))
+        }
+        NationAction::ProposeTreaty { target, treaty } => {
+            diplomacy(world.propose_treaty(nation_id, *target, *treaty))
+        }
+        NationAction::RespondToProposal {
+            proposer,
+            treaty,
+            accept,
+        } => diplomacy(world.respond_to_proposal(nation_id, *proposer, *treaty, *accept)),
     }
 }
 
@@ -147,5 +176,12 @@ fn report_error(error: NationOperationError) -> Result<NationActionError, WorldE
         Domain::DecreeMinimumDuration { decree, turns_left } => {
             Action::DecreeMinimumDuration { decree, turns_left }
         }
+        Domain::Diplomacy(error) => Action::Diplomacy { error },
     })
+}
+
+fn diplomacy(
+    outcome: Result<DiplomaticOutcome, NationOperationError>,
+) -> Result<NationActionEffect, NationOperationError> {
+    outcome.map(|outcome| NationActionEffect::Diplomacy { outcome })
 }

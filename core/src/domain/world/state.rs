@@ -2,6 +2,7 @@ use crate::domain::ids::SettlementId;
 use std::collections::HashMap;
 mod construction;
 mod decrees;
+mod diplomacy;
 mod inspection;
 mod map_commands;
 mod nations;
@@ -22,6 +23,7 @@ use crate::domain::ids::NationId;
 use crate::domain::military::{UnitCatalog, UnitTypeId};
 use crate::domain::nation::decree::DecreeId;
 use crate::domain::nation::decree_catalog::DecreeCatalog;
+use crate::domain::nation::diplomacy::Diplomacy;
 use crate::domain::nation::registry::NationRegistry;
 use crate::domain::settlement::{NeedRegistry, Settlement};
 use crate::domain::trade::caravan::Caravan;
@@ -99,6 +101,9 @@ pub enum WorldError {
     /// The decree catalogue cannot be replaced while a nation has a decree
     /// that is pending, active or cooling down.
     DecreeCatalogInUse,
+    /// The diplomacy rules cannot be replaced while a relation other than
+    /// neutrality or a proposal is in progress.
+    DiplomacyInProgress,
 }
 
 /// World layers are read-only outside the aggregate.
@@ -128,6 +133,8 @@ pub struct World {
     decree_catalog: Arc<DecreeCatalog>,
     /// Nations and the single record of which nation owns which settlement.
     nations: NationRegistry,
+    /// Relations between nations, proposals and reputation (§8).
+    diplomacy: Diplomacy,
 }
 impl World {
     pub(crate) fn completed_turn(&self) -> u64 {
@@ -330,6 +337,7 @@ impl World {
             province_graph,
             decree_catalog: Arc::new(DecreeCatalog::standard().clone()),
             nations: NationRegistry::default(),
+            diplomacy: Diplomacy::default(),
         }
     }
 

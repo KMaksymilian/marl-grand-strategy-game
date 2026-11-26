@@ -1,0 +1,23 @@
+# Diplomacy between nations (gameplay specification §8).
+#
+# Every pair of nations has one relation: neutral, embargo, trade agreement,
+# alliance, war or truce. Wars and embargoes block trade between the two
+# nations; the other relations allow it with the tariff below.
+
+# A peace starts a truce of `truce_turns` turns: no war between the two, trade
+# as in neutrality. It then ends in neutrality.
+truce_turns = 10
+
+# Reputation (§8.4), public: breaking a trade agreement or an alliance adds
+# `treaty_break_reputation`; declaring war on the same nation within
+# `betrayal_window_turns` turns after such a break adds `betrayal_reputation`.
+betrayal_window_turns = 5
+treaty_break_reputation = 1
+betrayal_reputation = 1
+
+# Customs duty on trade between two nations (§9), as a fraction of the value.
+# Data for the customs system; a truce trades as in neutrality.
+[tariffs]
+neutral = 0.2
+trade_agreement = 0.05
+alliance = 0.0

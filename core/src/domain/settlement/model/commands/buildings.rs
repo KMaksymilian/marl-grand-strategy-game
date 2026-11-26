@@ -3,12 +3,21 @@ use super::super::{BuildingCommandError, Settlement};
 use crate::domain::buildings::Building;
 use crate::domain::buildings::definition::{BuildingBehavior, BuildingDefinition};
 use crate::domain::buildings::productivity::BuildingProductivityCalculator;
-use crate::domain::buildings::productivity::TravelCostSource;
+use crate::domain::buildings::productivity::{ProductionModifierStrategy, TravelCostSource};
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::BuildingId;
 use crate::domain::spatial::{BuildingReference, ConstructionSpace};
 
 impl Settlement {
+    /// Adds a yield modifier source for this settlement's production turns.
+    pub fn add_production_modifier_strategy(
+        &mut self,
+        strategy: impl ProductionModifierStrategy + 'static,
+    ) {
+        self.building_manager
+            .add_production_modifier_strategy(strategy);
+    }
+
     pub fn first_unknown_building_material(
         &self,
         definition: &BuildingDefinition,
@@ -23,7 +32,7 @@ impl Settlement {
         recipes
             .map(|(resource, _)| resource)
             .chain(definition.construction_cost().needed_resources.keys())
-            .chain(definition.deposit_resource())
+            .chain(definition.site_requirements().deposits())
             .filter(|resource| !self.knows_material(resource))
             .min()
             .cloned()
@@ -42,6 +51,9 @@ impl Settlement {
         if let Some(resource) = self.first_unknown_building_material(building.definition()) {
             return Err(BuildingCommandError::UnknownMaterial(resource));
         }
+        environment
+            .evaluate_site(position, building.definition().site_requirements())
+            .map_err(BuildingCommandError::Territory)?;
         environment
             .register_building(
                 position,

@@ -35,6 +35,20 @@ pub enum ActionError {
     OceanTile {
         position: Position,
     },
+    CoastRequired {
+        position: Position,
+    },
+    ForbiddenBiome {
+        position: Position,
+    },
+    ProvinceDepositRequired {
+        position: Position,
+        resource: ResourceType,
+    },
+    SiteRequirementNotMet {
+        position: Position,
+        fact: String,
+    },
     RequiredDepositMissing {
         position: Position,
         resource: ResourceType,

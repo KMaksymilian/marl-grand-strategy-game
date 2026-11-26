@@ -7,6 +7,7 @@ mod inspection;
 mod map_commands;
 mod nations;
 mod resource_sites;
+mod site_facts;
 mod taxation;
 mod trade;
 pub use inspection::TileView;

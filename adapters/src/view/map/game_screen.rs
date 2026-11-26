@@ -1,6 +1,6 @@
 use simulation_core::{
     world::pathfinding::{a_star::AStar, dijkstra_flood::DijkstraFlood, path_finder::PathFinder},
-    world::{Point, World},
+    world::{Point, Position, World},
 };
 
 use crate::view::map::{map_camera::MapCamera, map_texture::MapTextureData};
@@ -27,6 +27,7 @@ pub struct GameScreen {
     pub dijkstra_flood_clicked_provinces: Vec<Point>,
     pub a_star_path: Vec<Point>,
     pub dijkstra_flood_path: Vec<Point>,
+    pub deposits_visible: bool,
 }
 
 impl GameScreen {
@@ -39,6 +40,7 @@ impl GameScreen {
             dijkstra_flood_clicked_provinces: Vec::new(),
             a_star_path: Vec::new(),
             dijkstra_flood_path: Vec::new(),
+            deposits_visible: true,
         }
     }
 
@@ -57,6 +59,9 @@ impl GameScreen {
 
     pub fn run(&mut self, world: &World, path_finder: &mut PathFinder) {
         self.camera.update();
+        if is_key_pressed(KeyCode::O) {
+            self.deposits_visible = !self.deposits_visible;
+        }
         if let Some(camera_type) = self.camera.select_camera_type() {
             self.camera_type = camera_type;
         };
@@ -125,6 +130,19 @@ impl GameScreen {
             WHITE,
         );
 
+        if self.deposits_visible {
+            for (position, resource) in world.map().deposits() {
+                let color = match resource.as_str() {
+                    "Coal" => DARKGRAY,
+                    "IronOre" => ORANGE,
+                    "CopperOre" => PINK,
+                    "TinOre" => SKYBLUE,
+                    _ => GOLD,
+                };
+                draw_rectangle(position.x as f32, position.y as f32, 1.0, 1.0, color);
+            }
+        }
+
         for &idx in &self.dijkstra_flood_path {
             draw_rectangle(idx.0 as f32, idx.1 as f32, 1.0, 1.0, PURPLE);
         }
@@ -142,5 +160,51 @@ impl GameScreen {
         }
 
         self.camera.end();
+
+        let layer = if self.deposits_visible { "on" } else { "off" };
+        draw_rectangle(8.0, 8.0, 440.0, 76.0, Color::new(0.0, 0.0, 0.0, 0.8));
+        draw_text(
+            format!("Ore deposits {layer}  [O]"),
+            18.0,
+            30.0,
+            20.0,
+            WHITE,
+        );
+        if self.deposits_visible {
+            for (index, (name, color)) in [
+                ("Coal", DARKGRAY),
+                ("Iron", ORANGE),
+                ("Copper", PINK),
+                ("Tin", SKYBLUE),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let x = 18.0 + index as f32 * 100.0;
+                draw_rectangle(x, 40.0, 10.0, 10.0, color);
+                draw_text(name, x + 16.0, 51.0, 18.0, WHITE);
+            }
+        }
+        if let Some(point) = self.cursor_tile(width, height) {
+            let position = Position {
+                x: point.0 as i32,
+                y: point.1 as i32,
+            };
+            if let Ok(tile) = world.inspect_tile(position) {
+                let deposit = tile
+                    .deposit
+                    .as_ref()
+                    .and_then(|resource| world.resource_catalog().get(resource));
+                let shore = if tile.coastal { "Coastal land" } else { "" };
+                let ore = deposit.map(|definition| definition.name()).unwrap_or("");
+                draw_text(
+                    format!("({}, {})  {shore}  {ore}", point.0, point.1),
+                    18.0,
+                    73.0,
+                    18.0,
+                    WHITE,
+                );
+            }
+        }
     }
 }

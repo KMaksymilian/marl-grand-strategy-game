@@ -1,11 +1,13 @@
 use crate::domain::buildings::Building;
 use crate::domain::buildings::definition::BuildingDefinition;
 use crate::domain::buildings::productivity::{
-    BuildingProductivityCalculator, LocationProductivity, TravelCostSource,
+    BuildingProductivityCalculator, LocationProductivity, ProductionModifierStrategy,
+    TravelCostSource,
 };
 use crate::domain::economy::ResourceType;
 use crate::domain::economy::allocation::{AllocationRecipient, AllocationResult, DemandRequest};
 use crate::domain::ids::BuildingId;
+use crate::domain::spatial::site::SiteEvaluation;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -13,6 +15,7 @@ use std::sync::Arc;
 pub struct BuildingManager {
     pub(in crate::domain::settlement) buildings: Vec<Building>,
     productivity_calculator: Option<BuildingProductivityCalculator>,
+    production_modifier_strategies: Vec<Box<dyn ProductionModifierStrategy>>,
 }
 
 impl BuildingManager {
@@ -20,6 +23,7 @@ impl BuildingManager {
         Self {
             buildings: Vec::new(),
             productivity_calculator: None,
+            production_modifier_strategies: Vec::new(),
         }
     }
 
@@ -66,6 +70,13 @@ impl BuildingManager {
             });
             building.set_location_productivity(productivity);
         }
+    }
+
+    pub(in crate::domain::settlement) fn add_production_modifier_strategy(
+        &mut self,
+        strategy: impl ProductionModifierStrategy + 'static,
+    ) {
+        self.production_modifier_strategies.push(Box::new(strategy));
     }
 
     fn productivity_at(
@@ -121,37 +132,48 @@ impl BuildingManager {
         }
     }
 
-    pub fn generate_requests(&self, can_operate: impl Fn(&Building) -> bool) -> Vec<DemandRequest> {
-        self.buildings
-            .iter()
-            .filter(|building| can_operate(building))
-            .filter_map(|b| {
-                let demand = b.calculate_demand();
-                if demand.is_empty() {
-                    None
-                } else {
-                    Some(DemandRequest {
-                        recipient: AllocationRecipient::Building(b.instance_id()),
+    pub fn generate_requests(
+        &self,
+        evaluate_site: impl Fn(&Building) -> Option<SiteEvaluation>,
+    ) -> (Vec<DemandRequest>, HashMap<BuildingId, SiteEvaluation>) {
+        let mut requests = Vec::new();
+        let mut sites = HashMap::new();
+        for building in &self.buildings {
+            if let Some(site) = evaluate_site(building) {
+                let demand = building.calculate_demand();
+                if !demand.is_empty() {
+                    let id = building.instance_id();
+                    sites.insert(id, site);
+                    requests.push(DemandRequest {
+                        recipient: AllocationRecipient::Building(id),
                         demand,
-                    })
+                    });
                 }
-            })
-            .collect()
+            }
+        }
+        (requests, sites)
     }
 
     pub fn process_allocations(
         &mut self,
         allocations: &AllocationResult,
+        sites: &HashMap<BuildingId, SiteEvaluation>,
     ) -> (HashMap<ResourceType, u64>, HashMap<ResourceType, u64>) {
         let mut all_produced = HashMap::new();
         let mut all_returned = HashMap::new();
 
         for building in self.buildings.iter_mut() {
             let grants = allocations.get(&AllocationRecipient::Building(building.instance_id()));
-            let update_result = building.resolve_allocation(grants);
+            let site = sites
+                .get(&building.instance_id())
+                .copied()
+                .unwrap_or_default();
+            let update_result =
+                building.produce_from_grants(grants, site, &self.production_modifier_strategies);
 
             for (res, amount) in update_result.produced {
-                *all_produced.entry(res).or_insert(0_u64) += u64::from(amount);
+                let total = all_produced.entry(res).or_insert(0_u64);
+                *total = total.saturating_add(amount);
             }
             for (res, amount) in update_result.unused {
                 if amount > 0 {
@@ -349,7 +371,7 @@ mod tests {
             .unwrap();
 
         // Act
-        let requests = manager.generate_requests(|_| true);
+        let (requests, _) = manager.generate_requests(|_| Some(SiteEvaluation::default()));
 
         // Assert
         assert_eq!(
@@ -417,7 +439,7 @@ mod tests {
         allocations.insert(AllocationRecipient::Building(BuildingId(2)), b2_grants);
 
         // Act
-        let (produced, returned) = manager.process_allocations(&allocations);
+        let (produced, returned) = manager.process_allocations(&allocations, &HashMap::new());
 
         // Assert
         // Both buildings worked at 100% capacity (10 labour, enough wood).

@@ -62,6 +62,9 @@ cargo run -p marl_grand_strategy
 cargo run -p simulation_core --example headless -- 100
 ```
 
+The map includes seeded ore veins. Press **O** to toggle deposit colors, and
+hover over a tile to inspect its deposit and coastal-land designation.
+
 ## Documentation
 
 - [Documentation index](docs/README.md)

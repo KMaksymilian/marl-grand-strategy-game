@@ -1,7 +1,11 @@
 //! Input/labour demand, allocation resolution and exact recipe execution.
 use super::{Building, ProductionResult};
 use crate::domain::buildings::definition::BuildingBehavior;
+use crate::domain::buildings::productivity::{
+    ProductionModifier, ProductionModifierContext, ProductionModifierStrategy,
+};
 use crate::domain::economy::ResourceType;
+use crate::domain::spatial::site::SiteEvaluation;
 use std::collections::HashMap;
 
 impl Building {
@@ -28,9 +32,11 @@ impl Building {
         demand
     }
 
-    pub fn resolve_allocation(
+    pub(crate) fn produce_from_grants(
         &mut self,
         granted: Option<&HashMap<ResourceType, u32>>,
+        site: SiteEvaluation,
+        modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
     ) -> ProductionResult {
         let mut material_grants = granted.cloned().unwrap_or_default();
 
@@ -42,16 +48,36 @@ impl Building {
             material_grants.remove(&ResourceType::Labour);
         }
 
-        self.execute_production(&material_grants)
+        self.execute_production(&material_grants, site, modifier_strategies)
     }
 
-    fn execute_production(&self, granted: &HashMap<ResourceType, u32>) -> ProductionResult {
+    fn execute_production(
+        &self,
+        granted: &HashMap<ResourceType, u32>,
+        site: SiteEvaluation,
+        modifier_strategies: &[Box<dyn ProductionModifierStrategy>],
+    ) -> ProductionResult {
         let mut produced = HashMap::new();
         let mut unused = granted.clone();
 
         if !self.is_active || self.current_workers == 0 {
             return ProductionResult { produced, unused };
         }
+
+        let context = ProductionModifierContext {
+            building: self,
+            biome: site.biome,
+        };
+        let site_modifier = (site.efficiency_percent != 100).then(|| {
+            ProductionModifier::multiplicative("site", u32::from(site.efficiency_percent) * 100)
+        });
+        let production_yield = self.location_productivity.apply_modifiers(
+            site_modifier.into_iter().chain(
+                modifier_strategies
+                    .iter()
+                    .filter_map(|strategy| strategy.modifier(&context)),
+            ),
+        );
 
         // Recipes run in definition order against the remaining material balance.
         // Exact fractions avoid floating-point rounding at the withdrawal boundary.
@@ -87,13 +113,9 @@ impl Building {
                     }
                 }
                 for (resource, amount) in outputs {
-                    let output =
-                        self.location_productivity
-                            .scale_output(*amount, numerator, denominator);
-                    let total = produced.entry(resource.clone()).or_insert(0_u32);
-                    *total = total
-                        .checked_add(output)
-                        .expect("production exceeds u32 capacity");
+                    let output = production_yield.scale_output(*amount, numerator, denominator);
+                    let total = produced.entry(resource.clone()).or_insert(0_u64);
+                    *total = total.saturating_add(output);
                 }
             }
         }

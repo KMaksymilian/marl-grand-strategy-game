@@ -5,6 +5,7 @@ mod terrain;
 use super::config::{
     ElevationTuningFineConfig, NoiseConfig, SeedConfig, VoronoiConfig, WarpConfig, WorldDimensions,
 };
+use super::deposits::DepositGenerationConfig;
 use super::noise_manager::NoiseManager;
 use crate::domain::economy::ResourceCatalog;
 use crate::domain::world::terrain::area::Area;
@@ -101,6 +102,12 @@ impl WorldBuilder {
         builder.build_voronoi(warp_field, &mut provinces, points, &voronoi_config);
         builder.edge_alignment(&mut provinces);
         builder.ocean_set();
-        World::with_resource_catalog(builder.map, provinces, resources)
+        let seed = seed_config.points_seed_option.unwrap_or_else(rand::random);
+        let deposits = DepositGenerationConfig::for_catalog(seed, &resources);
+        let mut world = World::with_resource_catalog(builder.map, provinces, resources);
+        world
+            .generate_deposits(&deposits)
+            .expect("generated terrain and standard ore rules must be valid");
+        world
     }
 }

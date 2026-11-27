@@ -146,14 +146,26 @@ fn visiting_caravan_records_prefunded_market_offers_even_without_a_trade() {
             .unwrap();
         let mut simulation = simulation_core::simulation::Simulation::new(world).unwrap();
 
+        // Caravans also carry troop observations of their route (MGS-45);
+        // only the market snapshots matter here.
+        let markets = |caravan: &crate::trade::caravan::Caravan| {
+            caravan
+                .observations()
+                .iter()
+                .filter(|snapshot| {
+                    matches!(snapshot.information(), Information::ForeignMarket { .. })
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+        };
         simulation.step().unwrap();
-        assert!(simulation.world().caravans[0].observations().is_empty());
+        assert!(markets(&simulation.world().caravans[0]).is_empty());
 
         let report = simulation.step().unwrap();
         let caravan = &simulation.world().caravans[0];
-        let [snapshot] = caravan.observations() else {
+        let [snapshot] = markets(caravan).try_into().unwrap_or_else(|_| {
             panic!("expected one observation from the market visit");
-        };
+        });
         assert_eq!(snapshot.observed_turn(), report.turn);
         assert_eq!(
             snapshot.information(),

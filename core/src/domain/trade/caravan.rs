@@ -77,6 +77,8 @@ pub struct Caravan {
     observations: Vec<InformationSnapshot>,
     /// Why the caravan turned back without trading; None when it traded.
     aborted: Option<CaravanOutcome>,
+    /// Tiles passed since the last troop observation, in order (MGS-45).
+    passed: Vec<Point>,
 }
 
 impl Caravan {
@@ -131,6 +133,7 @@ impl Caravan {
             trades: Vec::new(),
             observations: Vec::new(),
             aborted: None,
+            passed: Vec::new(),
         }
     }
 
@@ -158,6 +161,16 @@ impl Caravan {
     /// Keeps an observation for delivery to the sender on return.
     pub(crate) fn record_observation(&mut self, snapshot: InformationSnapshot) {
         self.observations.push(snapshot);
+    }
+
+    /// The tiles passed since the last call, the current one included: the
+    /// caravan's route of this turn, for its troop observations.
+    pub(crate) fn take_passed(&mut self) -> Vec<Point> {
+        let mut passed = std::mem::take(&mut self.passed);
+        if passed.last() != Some(&self.current_position) {
+            passed.push(self.current_position);
+        }
+        passed
     }
 
     pub fn travel(&mut self) {
@@ -208,23 +221,32 @@ impl Caravan {
         })
     }
 
+    /// Moves to a path index, remembering every tile on the way.
+    fn step_to(&mut self, index: usize) {
+        let from = self.current_position_idx;
+        let tiles: Vec<Point> = if index >= from {
+            self.path[from + 1..=index].to_vec()
+        } else {
+            self.path[index..from].iter().rev().copied().collect()
+        };
+        self.passed.extend(tiles);
+        self.current_position_idx = index;
+        self.current_position = self.path[index];
+    }
+
     fn travel_to(&mut self) {
         if self.current_position_idx + MOVE_SPEED < self.path.len() - 1 {
-            self.current_position_idx += MOVE_SPEED;
-            self.current_position = self.path[self.current_position_idx];
+            self.step_to(self.current_position_idx + MOVE_SPEED);
         } else {
-            self.current_position_idx = self.path.len() - 1;
-            self.current_position = self.path[self.current_position_idx];
+            self.step_to(self.path.len() - 1);
             self.caravan_state = CaravanState::Trading;
         }
     }
     fn travel_back(&mut self) {
         if self.current_position_idx > MOVE_SPEED {
-            self.current_position_idx -= MOVE_SPEED;
-            self.current_position = self.path[self.current_position_idx];
+            self.step_to(self.current_position_idx - MOVE_SPEED);
         } else {
-            self.current_position_idx = 0;
-            self.current_position = self.path[self.current_position_idx];
+            self.step_to(0);
             self.caravan_state = CaravanState::Back;
         }
     }

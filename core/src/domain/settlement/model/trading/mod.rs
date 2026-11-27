@@ -51,6 +51,9 @@ pub(in crate::domain::settlement) struct TradeManager {
     pub(in crate::domain::settlement) returning: Vec<CaravanReturn>,
     /// Latest delivered observation for each foreign market.
     known_markets: BTreeMap<SettlementId, InformationSnapshot>,
+    /// Latest troop observation of each province (MGS-45): from caravans and
+    /// from the settlement's own watch.
+    known_troops: BTreeMap<usize, InformationSnapshot>,
 }
 
 impl TradeManager {
@@ -68,6 +71,20 @@ impl TradeManager {
 
     pub(super) fn has_escrowed_gold(&self) -> bool {
         self.orders.iter().any(|order| order.gold > 0)
+    }
+
+    pub(super) fn known_troops(&self) -> impl Iterator<Item = &InformationSnapshot> {
+        self.known_troops.values()
+    }
+
+    /// A newer or equally recent observation replaces the stored one.
+    pub(super) fn remember_troops(&mut self, province_id: usize, snapshot: InformationSnapshot) {
+        match self.known_troops.entry(province_id) {
+            Entry::Occupied(entry) if snapshot.observed_turn() < entry.get().observed_turn() => {}
+            entry => {
+                let _ = entry.insert_entry(snapshot);
+            }
+        }
     }
 
     pub(super) fn known_markets(&self) -> impl Iterator<Item = &InformationSnapshot> {

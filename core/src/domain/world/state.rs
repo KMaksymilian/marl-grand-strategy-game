@@ -4,6 +4,7 @@ mod construction;
 mod decrees;
 mod diplomacy;
 mod inspection;
+mod intelligence;
 mod map_commands;
 mod military;
 mod nations;

@@ -9,7 +9,7 @@ extern crate self as simulation_core;
 mod test_support;
 
 pub use application::simulation;
-pub use domain::{buildings, economy, ids, military, nation, spatial, trade};
+pub use domain::{buildings, economy, ids, intelligence, military, nation, spatial, trade};
 
 pub mod settlement {
     pub use crate::application::commands::settlement::contract as decision;

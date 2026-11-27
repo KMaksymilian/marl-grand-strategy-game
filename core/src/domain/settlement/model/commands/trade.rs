@@ -188,7 +188,21 @@ impl Settlement {
             Information::ForeignMarket { market, .. } => {
                 self.trade.remember_market(*market, snapshot)
             }
+            Information::TroopPresence { province_id, .. } => {
+                self.trade.remember_troops(*province_id, snapshot)
+            }
         }
+    }
+
+    /// What the settlement's own watch saw this turn (MGS-45).
+    pub(crate) fn remember_troop_observation(&mut self, snapshot: InformationSnapshot) {
+        self.remember_observation(snapshot);
+    }
+
+    /// The latest troop observation of each province, ascending province ID:
+    /// from returned caravans and from the settlement's own watch.
+    pub fn known_troops(&self) -> impl Iterator<Item = &InformationSnapshot> {
+        self.trade.known_troops()
     }
 
     fn validate_offers(

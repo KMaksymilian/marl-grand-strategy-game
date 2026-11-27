@@ -15,6 +15,7 @@ pub use crate::application::queries::nation_observation::{
     ArmyObservation, DecreesObservation, DiplomacyObservation, MilitaryObservation,
     NationObservation, OwnedSettlementObservation, RelationObservation,
 };
+pub use crate::application::queries::troop_observation::TroopObservation;
 pub use crate::domain::nation::report::NationTurnReport;
 pub use crate::domain::world::OwnershipChange;
 pub use turn_report::{PhaseExecution, SimulationTurnReport, TurnPhase};

@@ -390,6 +390,9 @@ See [Military](military.md) for rules and content.
 | [domain/world/state/military.rs](../../../core/src/domain/world/state/military.rs) | `World::armies`, `army`, `conscription` (`Conscription`), `army_movement`, `army_upkeep_demand`, `recruit_units`, `disband_army`, `merge_armies`, `split_army`, `pay_army_upkeep`, `finish_recruitments`. |
 | [domain/military/battle.rs](../../../core/src/domain/military/battle.rs) | `Stat`, `advantage`, `side_strength`, `wall_multiplier`, `lose_soldiers`. |
 | [domain/world/state/war.rs](../../../core/src/domain/world/state/war.rs) | `World::set_battle_seed`, `may_enter`, `is_enemy_province`, `terrain_modifier`, `wall_bonus`, `garrison`, `order_army_march`, `resolve_war` (withdrawals, marches, battles, conquest, sieges), `refill_garrisons`; `WarTurn`. |
+| [domain/intelligence/troops.rs](../../../core/src/domain/intelligence/troops.rs) | `TroopSighting`, `TroopSource`; `Information::TroopPresence` in `intelligence/mod.rs`. |
+| [domain/world/state/intelligence.rs](../../../core/src/domain/world/state/intelligence.rs) | `World::observe_troops`: armies, settlements and caravans observe at the end of the turn. |
+| [application/queries/troop_observation.rs](../../../core/src/application/queries/troop_observation.rs) | `TroopObservation`, `troop_observations` (leaves out the reader's own and allied armies). |
 | [domain/world/province_graph.rs](../../../core/src/domain/world/province_graph.rs) | `ProvinceGraph` (`from_map`, `neighbors`, `are_neighbors`, `route`, `route_to_nearest`); `World::province_graph`, rebuilt by `set_tile_province` and `set_tile_terrain`. |
 
 ## Trade and transport

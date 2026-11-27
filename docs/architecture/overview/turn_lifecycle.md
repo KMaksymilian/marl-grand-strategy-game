@@ -21,8 +21,9 @@ Before the settlement phases, nations apply their decisions (taxes, subsidies,
 decrees, diplomacy and army orders), pay decree upkeep, feed and pay their
 armies, and then the war runs: withdrawals, marches, battles, conquests and
 sieges. After the turn, finished recruitments join their armies, garrisons of
-settlements not under attack refill, and national timers, decree states,
-truces and proposals advance.
+settlements not under attack refill, armies, settlements and caravans observe
+the troops around them, and national timers, decree states, truces and
+proposals advance.
 After Decisions, `World::begin_trade_turn` moves existing caravans and queues returns.
 After EconomicUpdates, `World::finish_trade_turn` routes funded departures. These
 transport boundaries are not separate `TurnPhase` entries. New caravans first

@@ -179,6 +179,8 @@ pub(super) fn run_turn(
     // act from the next turn.
     let mut recruits = world.finish_recruitments();
     world.refill_garrisons();
+    // Troop observations (MGS-45) at the final positions of the turn.
+    world.observe_troops();
     world.advance_nations_turn();
     // Diplomatic events of this turn: from decisions and from the end of the
     // turn (expired proposals, ended truces), per recipient.

@@ -1,6 +1,6 @@
 # 0006 - Information Scope for the Thesis
 
-Status: accepted. Market observations implemented. Troop presence pending.
+Status: accepted. Market observations and troop presence implemented.
 
 ## Context
 
@@ -29,11 +29,25 @@ observations: troop presence and foreign-market conditions.
    during a journey. The same transport works for market data and future
    observations such as troop presence.
 
-## Still to decide
+## Visibility and timing of troop presence
 
-Set the visibility area and observation timing for each kind of observer. Other
-observation types and a broader information network are deferred beyond the
-thesis scope.
+Decided with the implementation (see [Military](../architecture/implementation/military.md#troop-visibility-mgs-45)):
+
+- Observations are made once per turn, at its end, at the final positions of
+  the armies.
+- An army and a settlement see their own province and the neighbouring ones.
+  Their nation and the nation's allies learn it at once; the settlement keeps
+  its own observations as well.
+- A caravan sees the provinces of the tiles it passed during the turn and
+  delivers them to its sending settlement on return, with the turn they were
+  made.
+- An observation records every nation's soldiers in the province (not the
+  unit composition). Readers leave out their own and their allies' armies.
+  The latest observation of each province is kept; an empty one is an observed
+  absence, a missing one an unobserved province.
+
+Other observation types and a broader information network are deferred beyond
+the thesis scope.
 
 ## Details
 

@@ -1,10 +1,12 @@
 //! Snapshots of information collected by actors in the simulation.
 mod market;
+mod troops;
 
 use crate::domain::{economy::ResourceType, ids::SettlementId};
 use std::collections::BTreeMap;
 
 pub use market::{MarketObservation, MarketObservationSource, MarketOffer, MarketOfferSide};
+pub use troops::{TroopSighting, TroopSource};
 
 /// A record of what was visible at a particular point in the simulation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,5 +45,12 @@ pub enum Information {
         province_id: usize,
         /// An empty map means the market was observed with no open offers.
         offers: BTreeMap<ResourceType, MarketOffer>,
+    },
+    /// The armies standing in a province (ADR 0006): every nation's living
+    /// soldiers there, ascending nation ID; empty when no army stood there.
+    TroopPresence {
+        province_id: usize,
+        source: TroopSource,
+        troops: Vec<TroopSighting>,
     },
 }

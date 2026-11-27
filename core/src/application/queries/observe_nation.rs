@@ -7,6 +7,7 @@ use super::nation_observation::{
     ArmyObservation, DecreesObservation, DiplomacyObservation, MilitaryObservation,
     NationObservation, OwnedSettlementObservation, RelationObservation,
 };
+use super::troop_observation::troop_observations;
 use crate::domain::ids::NationId;
 use crate::domain::nation::diplomacy::Proposal;
 use crate::domain::nation::report::NationTurnReport;
@@ -63,6 +64,7 @@ pub(crate) fn observe_nation(
         decrees: observe_decrees(world, nation_id)?,
         diplomacy: observe_diplomacy(world, nation_id),
         military: observe_military(world, nation_id)?,
+        troops: troop_observations(world, Some(nation_id), nation.known_troops()),
         last_turn: last_turn.cloned(),
     })
 }

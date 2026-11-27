@@ -15,6 +15,7 @@ pub mod taxation;
 use crate::domain::economy::gold_inventory::GoldInventory;
 use crate::domain::economy::{InventoryAddResult, ResourceInventory, ResourceType};
 use crate::domain::ids::{NationId, SettlementId};
+use crate::domain::intelligence::{Information, InformationSnapshot};
 use decree::DecreeBook;
 use std::collections::BTreeMap;
 
@@ -40,6 +41,9 @@ pub struct Nation {
     capital_loss_turns: u32,
     /// Pending, active and cooling-down decrees (§7).
     decrees: DecreeBook,
+    /// Latest troop observation of each province from the nation's and its
+    /// allies' armies and settlements (MGS-45).
+    known_troops: BTreeMap<usize, InformationSnapshot>,
 }
 
 impl Nation {
@@ -65,6 +69,7 @@ impl Nation {
             tax_rate: Self::BASE_TAX_RATE,
             capital_loss_turns: 0,
             decrees: DecreeBook::default(),
+            known_troops: BTreeMap::new(),
         }
     }
 
@@ -163,6 +168,27 @@ impl Nation {
     /// nothing; the stock above it simply accepts no more until it drops below.
     pub(crate) fn set_stock_capacity(&mut self, capacity: u32) {
         self.stock.resize(capacity);
+    }
+
+    /// The latest troop observation of each province, ascending province ID.
+    pub fn known_troops(&self) -> impl Iterator<Item = &InformationSnapshot> {
+        self.known_troops.values()
+    }
+
+    /// Keeps a troop observation unless a newer one of the province is known.
+    pub(crate) fn remember_troops(&mut self, snapshot: InformationSnapshot) {
+        let Information::TroopPresence { province_id, .. } = snapshot.information() else {
+            return;
+        };
+        let province_id = *province_id;
+        if self
+            .known_troops
+            .get(&province_id)
+            .is_some_and(|known| known.observed_turn() > snapshot.observed_turn())
+        {
+            return;
+        }
+        self.known_troops.insert(province_id, snapshot);
     }
 
     pub fn decrees(&self) -> &DecreeBook {

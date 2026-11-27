@@ -35,6 +35,7 @@ generation: [application/queries/observe_settlement.rs](../../../core/src/applic
 | `trade_partners` | Other settlements as `{settlement_id, province_id, nation_id, trade_allowed}`, ascending ID; `nation_id` is the public owner, `trade_allowed` is false while the two nations are at war or under an embargo, or while either settlement is under attack. |
 | `building_types` | The public catalog: name, tier, `max_workers`, construction cost and turns, recipes and optional `required_deposit` and `requires_coast`. |
 | `nation` | The owner's policy: `nation_id`, `tax_rate`, `capital`, `is_capital`, `active_decrees`, `at_war_with`. Every settlement belongs to a nation. See [Nations](nations.md). |
+| `troops` | Latest foreign troop observation of each province from the settlement's own watch (its province and the neighbouring ones) and its returned caravans, ascending province ID; see [Military](military.md#troop-visibility-mgs-45). |
 
 `buildable` covers province membership, land and vacancy. For a particular
 blueprint, the command also checks that the tile has its `required_deposit`,

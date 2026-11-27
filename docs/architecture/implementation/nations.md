@@ -293,7 +293,9 @@ of other nations, `decrees` (slots, used slots, minimum duration, cooldown,
 states, the upkeep of every decree of the catalogue and the combined effects),
 `diplomacy` (relation with every nation and the turn it started, nations in the
 warning period, own incoming and outgoing proposals, every nation's reputation),
-`military` (own armies, recruitments, conscription pools, upkeep) and
+`military` (own armies, recruitments, conscription pools, upkeep), `troops`
+(latest foreign troop observation of each province from own and allied armies
+and settlements, see [Military](military.md#troop-visibility-mgs-45)) and
 `last_turn`. Proposals between other nations are not visible. Another
 nation's treasury, stock and policy are not visible.
 

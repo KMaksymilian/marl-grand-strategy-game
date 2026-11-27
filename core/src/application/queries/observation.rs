@@ -7,6 +7,7 @@
 //! partners. Not visible: other settlements' stock, gold, buildings, projects,
 //! live offers, caravans and any tile outside the own province. Returned
 //! caravans supply dated foreign-market snapshots.
+pub use super::troop_observation::TroopObservation;
 use crate::application::commands::settlement::contract::{OfferSide, OfferSpec};
 use crate::domain::economy::ResourceType;
 use crate::domain::ids::{BuildingId, BuildingTypeId, NationId, ProjectId, SettlementId};
@@ -50,6 +51,9 @@ pub struct SettlementObservation {
     pub building_types: Vec<BuildingTypeObservation>,
     /// Policy of the owning nation; every settlement belongs to one (§5.3).
     pub nation: NationPolicyObservation,
+    /// Latest troop observation of each province from this settlement's own
+    /// watch and its returned caravans, ascending province ID (MGS-45).
+    pub troops: Vec<TroopObservation>,
 }
 
 impl SettlementObservation {

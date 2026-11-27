@@ -6,8 +6,7 @@ province, never tile by tile.
 
 Status: the unit catalogue loaded from `units.toml`, the province graph,
 armies, recruitment, upkeep, morale, desertion, grouping, disbanding, marches,
-sieges, battles, retreats and conquest are implemented. Troop visibility
-builds on them.
+sieges, battles, retreats, conquest and troop visibility are implemented.
 
 | Part | Source |
 | --- | --- |
@@ -19,7 +18,10 @@ builds on them.
 | Recruitment, grouping, upkeep in World; `Conscription` | [domain/world/state/military.rs](../../../core/src/domain/world/state/military.rs) |
 | Battle arithmetic (strength, advantage, walls, losses) | [domain/military/battle.rs](../../../core/src/domain/military/battle.rs) |
 | Access, marches, battles, conquest, sieges, garrisons in World | [domain/world/state/war.rs](../../../core/src/domain/world/state/war.rs) |
-| Tests | [unit_catalog_tests.rs](../../../core/tests/unit_catalog_tests.rs), [army_tests.rs](../../../core/tests/army_tests.rs), [war_tests.rs](../../../core/tests/war_tests.rs) |
+| `TroopSighting`, `TroopSource`, `Information::TroopPresence` | [domain/intelligence/troops.rs](../../../core/src/domain/intelligence/troops.rs) |
+| Troop observations of a turn in World | [domain/world/state/intelligence.rs](../../../core/src/domain/world/state/intelligence.rs) |
+| `TroopObservation` and the reader's filter | [application/queries/troop_observation.rs](../../../core/src/application/queries/troop_observation.rs) |
+| Tests | [unit_catalog_tests.rs](../../../core/tests/unit_catalog_tests.rs), [army_tests.rs](../../../core/tests/army_tests.rs), [war_tests.rs](../../../core/tests/war_tests.rs), [troop_observation_tests.rs](../../../core/tests/troop_observation_tests.rs) |
 
 ## Unit catalogue
 
@@ -179,7 +181,27 @@ each own settlement's `garrison`.
 
 
 
-## Province graph
+## Troop visibility (MGS-45)
+
+Troop presence is the information that is not public (ADR 0006): a nation sees
+foreign armies only where it has eyes, and the news may be old. At the end of
+every turn, at the final positions of the armies (`World::observe_troops`):
+
+| Observer | Sees | Learns it | When |
+| --- | --- | --- | --- |
+| Army | its province and the neighbouring ones | its nation and the nation's allies | at once |
+| Settlement | its province and the neighbouring ones | the settlement, its nation and the nation's allies | at once |
+| Caravan | the provinces of the tiles it passed this turn | its sending settlement | on return, with the market snapshot |
+
+An observation (`Information::TroopPresence` in an `InformationSnapshot`)
+records the province, the turn, the observer (`TroopSource`) and every
+nation's living soldiers there (`TroopSighting`), not the unit composition.
+Nations and settlements keep the latest observation of each province; a newer
+one replaces it. Reading them (`troops` in the nation and settlement
+observations), a nation's own and its allies' armies are left out by the
+relations of now. A province with an empty `troops` list is an observed
+absence; a province missing from the list was never observed.
+
 
 `World::province_graph()` says which provinces border each other: two
 provinces are neighbours when a land tile of one shares an edge with a land tile

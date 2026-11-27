@@ -9,6 +9,7 @@ use crate::application::queries::observation::{
     WorkforceObservation,
 };
 use crate::application::queries::observation::{KnownMarketObservation, KnownMarketOffer};
+use crate::application::queries::troop_observation::troop_observations;
 use crate::domain::buildings::Building;
 use crate::domain::buildings::definition::BuildingBehavior;
 use crate::domain::economy::{ResourceInventory, ResourceType};
@@ -84,7 +85,10 @@ impl ObservationQuery<'_> {
             next_project_id: settlement.next_project_id(),
             trade: TradeObservation {
                 market_offers: market_offers(settlement),
-                known_markets: settlement.known_markets().map(known_market).collect(),
+                known_markets: settlement
+                    .known_markets()
+                    .filter_map(known_market)
+                    .collect(),
                 caravans_in_transit: self
                     .world
                     .caravans
@@ -100,6 +104,11 @@ impl ObservationQuery<'_> {
             nation: self
                 .nation_policy(settlement_id)
                 .ok_or(WorldError::MissingSettlement(settlement_id))?,
+            troops: troop_observations(
+                self.world,
+                self.world.settlement_owner(settlement_id),
+                settlement.known_troops(),
+            ),
         })
     }
 
@@ -315,13 +324,13 @@ fn market_offers(settlement: &Settlement) -> Vec<OfferSpec> {
     offers
 }
 
-fn known_market(snapshot: &InformationSnapshot) -> KnownMarketObservation {
+fn known_market(snapshot: &InformationSnapshot) -> Option<KnownMarketObservation> {
     match snapshot.information() {
         Information::ForeignMarket {
             market,
             province_id,
             offers,
-        } => KnownMarketObservation {
+        } => Some(KnownMarketObservation {
             market: *market,
             province_id: *province_id,
             observed_turn: snapshot.observed_turn(),
@@ -342,7 +351,8 @@ fn known_market(snapshot: &InformationSnapshot) -> KnownMarketObservation {
                     )
                 })
                 .collect(),
-        },
+        }),
+        Information::TroopPresence { .. } => None,
     }
 }
 

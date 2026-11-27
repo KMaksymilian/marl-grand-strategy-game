@@ -2,6 +2,7 @@
 //! of each own settlement. Other nations appear only by ID; settlement agents
 //! see the owner of each trade partner.
 use super::observation::ResourceAmounts;
+use super::troop_observation::TroopObservation;
 use crate::domain::ids::{ArmyId, NationId, SettlementId};
 use crate::domain::military::{Recruitment, Unit};
 use crate::domain::nation::decree::{DecreeEffects, DecreeId, DecreeState};
@@ -38,6 +39,10 @@ pub struct NationObservation {
     pub diplomacy: DiplomacyObservation,
     /// Armies, recruitments, conscription pools and upkeep (§10).
     pub military: MilitaryObservation,
+    /// Latest troop observation of each province from own and allied armies
+    /// and settlements, ascending province ID (MGS-45). A province missing
+    /// here was never observed.
+    pub troops: Vec<TroopObservation>,
     /// The nation's report of the latest completed turn; None before the first.
     pub last_turn: Option<NationTurnReport>,
 }
